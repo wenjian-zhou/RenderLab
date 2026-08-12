@@ -8,10 +8,10 @@
 
 ## 2. Toolchain and Dependency Locking
 
-- [ ] Record the verified Visual Studio, MSBuild, Windows SDK, and CMake versions.
-- [ ] Pin the vcpkg baseline and triplet.
-- [ ] Pin the Agility SDK, DXC, and WinPixEventRuntime versions.
-- [ ] Complete `docs/build-environment.md` and the dependency manifests.
+- [x] Record the verified Visual Studio, MSBuild, Windows SDK, and CMake versions.
+- [x] Pin the vcpkg baseline and triplet.
+- [x] Pin the Agility SDK, DXC, and WinPixEventRuntime versions.
+- [x] Complete `docs/build-environment.md` and the dependency manifests.
 
 ## 3. Automation
 
@@ -26,4 +26,4 @@
 
 ## Next Task
 
-Continue with loop 2: lock the toolchain and initial dependency versions.
+Continue with loop 3: implement bootstrap and Windows build/test automation.

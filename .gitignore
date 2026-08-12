@@ -1,4 +1,6 @@
 /out/
+/vcpkg_installed/
+/external/vcpkg/
 /external/nuget/
 /assets/downloaded/
 /CMakeUserPresets.json
