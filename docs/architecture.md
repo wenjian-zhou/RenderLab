@@ -1,12 +1,12 @@
-# DXRLab Graphics Conventions
+# RenderLab Graphics Conventions
 
-This document defines the graphics conventions shared by the CPU renderer, HLSL shaders, rasterization passes, ray-tracing passes, asset importers, and validation tools in DXRLab.
+This document defines the graphics conventions shared by the CPU renderer, HLSL shaders, rasterization passes, ray-tracing passes, asset importers, and validation tools in RenderLab.
 
 The keywords **MUST**, **MUST NOT**, **SHOULD**, and **SHOULD NOT** describe requirements rather than suggestions. A convention may change only through an explicit architecture decision record (ADR) and the corresponding validation updates.
 
 ## 1. Coordinate System and Units
 
-DXRLab uses a left-handed world coordinate system:
+RenderLab uses a left-handed world coordinate system:
 
 - `+X` points right.
 - `+Y` points up.
@@ -20,7 +20,7 @@ The words *screen right* and *screen up* refer to the default camera orientation
 
 ## 2. Vectors, Matrices, and Transform Composition
 
-DXRLab follows the native DirectXMath convention:
+RenderLab follows the native DirectXMath convention:
 
 - Vectors are row vectors.
 - Matrices use row-major memory layout.
@@ -45,7 +45,7 @@ DirectXMath left-handed helpers, including `XMMatrixLookAtLH`, `XMMatrixLookToLH
 
 ## 3. Clip Space and Reversed-Z Depth
 
-DXRLab uses the Direct3D clip-space convention:
+RenderLab uses the Direct3D clip-space convention:
 
 - NDC X and Y range from `-1` to `1`.
 - NDC Z ranges from `0` to `1`.
@@ -90,7 +90,7 @@ Algorithms that consume depth MUST follow the reversed ordering: a larger depth 
 
 ## 4. Front Faces, Culling, and Mirrored Transforms
 
-DXRLab defines clockwise triangles as front-facing.
+RenderLab defines clockwise triangles as front-facing.
 
 The default rasterizer state is:
 
@@ -101,7 +101,7 @@ CullMode              = D3D12_CULL_MODE_BACK;
 
 The canonical ray-tracing instance does not set `D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE`, so DXR and rasterization agree on clockwise front faces.
 
-In v0.1, source node or instance transforms with a negative determinant are unsupported and MUST fail import with the offending node name or path. This check excludes the single global basis reflection used by the glTF-to-DXRLab coordinate conversion.
+In v0.1, source node or instance transforms with a negative determinant are unsupported and MUST fail import with the offending node name or path. This check excludes the single global basis reflection used by the glTF-to-RenderLab coordinate conversion.
 
 Later versions may support static mirrored transforms by baking the transform into duplicated geometry, reversing triangle winding, and repairing normal and tangent data. Animated scale that crosses zero remains unsupported because it produces singular transforms and discontinuous orientation.
 
@@ -115,7 +115,7 @@ glTF 2.0 has a fixed source convention rather than per-file handedness or windin
 - Front faces use counter-clockwise winding.
 - Camera local forward is `-Z`.
 
-The importer converts glTF data once into the canonical DXRLab representation. The conversion MUST be centralized and MUST NOT be repeated in shaders.
+The importer converts glTF data once into the canonical RenderLab representation. The conversion MUST be centralized and MUST NOT be repeated in shaders.
 
 The basis conversion includes:
 
@@ -129,7 +129,7 @@ The importer MUST validate the complete transform and tangent frame with known-a
 
 ## 6. UVs, Images, and Tangent-Space Normal Maps
 
-DXRLab uses a top-left texture convention:
+RenderLab uses a top-left texture convention:
 
 - UV `(0, 0)` is the top-left corner.
 - `+U` points right.
@@ -170,7 +170,7 @@ Normal maps MUST be sampled as linear data, never through an sRGB view.
 
 ## 7. Color Space and Texture Semantics
 
-DXRLab uses linear sRGB as its working space:
+RenderLab uses linear sRGB as its working space:
 
 - RGB primaries match sRGB/Rec.709.
 - Lighting, blending, interpolation, filtering, RTGI, and temporal accumulation occur in linear space.
@@ -213,7 +213,7 @@ Linear HDR scene color
 
 ## 8. Material and BRDF Convention
 
-DXRLab follows the glTF metallic-roughness material model.
+RenderLab follows the glTF metallic-roughness material model.
 
 The baseline BRDF is:
 
@@ -258,7 +258,7 @@ Light color is stored as linear-sRGB chromaticity multiplied by the scalar photo
 
 ## 10. glTF Emissive Mapping
 
-Standard glTF emissive values are relative and do not specify a physical luminance unit. DXRLab establishes a reproducible project policy:
+Standard glTF emissive values are relative and do not specify a physical luminance unit. RenderLab establishes a reproducible project policy:
 
 ```text
 1 glTF emissive unit = 100 nits by default
@@ -384,7 +384,7 @@ The implementation uses the geometric normal and a scale-aware or ULP-aware offs
 
 ## 15. Geometric and Shading Normals
 
-DXRLab maintains two distinct world-space normals at a surface hit:
+RenderLab maintains two distinct world-space normals at a surface hit:
 
 - `Ng`: geometric normal derived from triangle geometry.
 - `Ns`: shading normal derived from interpolated vertex normals and the normal map.
