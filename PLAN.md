@@ -1,8 +1,8 @@
-# DXRLab 可执行路线图
+# RenderLab 可执行路线图
 
 ## 1. 项目定位
 
-**项目名（暂定）**：DXRLab  
+**项目名（暂定）**：RenderLab  
 **目标平台**：Windows 11、D3D12、DXR 1.1、HLSL Shader Model 6.6+、C++20  
 **项目性质**：用于验证 D3D12/DXR 系统架构、Render Graph、GPU 生命周期和性能优化的轻量实验框架，不做完整游戏引擎。
 
@@ -232,7 +232,7 @@ Hair、Procedural Geometry 和大型公开场景仅在对应实验开始时加�
 ## 6. 仓库结构与自研边界
 
 ```text
-DXRLab/
+RenderLab/
 ├── CMakeLists.txt
 ├── CMakePresets.json
 ├── vcpkg.json
@@ -530,7 +530,7 @@ GitHub Actions 托管 runner 负责 Debug/Release 构建和 CPU 测试。普通 
 建议命令：
 
 ```powershell
-DXRLab.exe `
+RenderLab.exe `
   --scene assets/downloaded/cornell/cornell.gltf `
   --headless `
   --width 1920 `
