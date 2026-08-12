@@ -2,13 +2,13 @@
 
 ## 1. Repository Skeleton and Minimal Application
 
-- [ ] Create the project directories, root `CMakeLists.txt`, and CMake presets.
-- [ ] Build a dependency-free Win32 empty-window application.
-- [ ] Verify that both Debug and Release configurations build and run.
+- [x] Create the project directories, root `CMakeLists.txt`, and CMake presets.
+- [x] Build a dependency-free Win32 empty-window application.
+- [x] Verify that both Debug and Release configurations build and run.
 
 ## 2. Toolchain and Dependency Locking
 
-- [ ] Record the verified Visual Studio, Windows SDK, CMake, and Ninja versions.
+- [ ] Record the verified Visual Studio, MSBuild, Windows SDK, and CMake versions.
 - [ ] Pin the vcpkg baseline and triplet.
 - [ ] Pin the Agility SDK, DXC, and WinPixEventRuntime versions.
 - [ ] Complete `docs/build-environment.md` and the dependency manifests.
@@ -26,4 +26,4 @@
 
 ## Next Task
 
-Start with loop 1: establish the CMake and Win32 empty-window build without third-party dependencies.
+Continue with loop 2: lock the toolchain and initial dependency versions.

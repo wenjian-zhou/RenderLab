@@ -89,7 +89,7 @@
 | Visual Studio 2022 | MSVC、调试器、Windows 开发环境 | 开发机安装，记录最低版本 |
 | Windows SDK | Win32、DXGI、D3D12 基础接口 | VS Installer；在 CI 和文档固定最低版本 |
 | CMake | 构建系统 | `CMakePresets.json` 固定配置 |
-| Ninja | 本地/CI 构建器 | 开发机或 CI 安装 |
+| MSBuild | 本地/CI 构建器 | 随 Visual Studio 2022 安装，由 CMake Visual Studio 生成器驱动 |
 | vcpkg | 常规 C++ 依赖 | Manifest 模式，固定 baseline 与 triplet |
 | NuGet CLI | 微软 D3D12 运行时相关包 | `bootstrap.ps1` 下载固定版本 |
 | Git | 版本管理 | 主仓库 |
@@ -101,7 +101,7 @@
 
 阶段 1 必须在 `docs/build-environment.md` 中锁定并记录：
 
-- Visual Studio、MSVC、Windows SDK、CMake 和 Ninja 的最低验证版本；
+- Visual Studio、MSVC、MSBuild、Windows SDK 和 CMake 的最低验证版本；
 - vcpkg `builtin-baseline` 与唯一 Windows x64 triplet；
 - DirectX-Headers/`d3dx12.h` 的唯一来源，禁止混用不匹配的头文件；
 - Agility SDK、DXC、WinPixEventRuntime 和 NuGet CLI 的精确版本；
