@@ -1,0 +1,103 @@
+{
+    "schemaVersion":  1,
+    "vcpkg":  {
+                  "release":  "2026.07.29",
+                  "baseline":  "9e593bb18ea69cc5095e012465dcd675a822ed0d",
+                  "executableVersion":  "vcpkg package management program version 2026-07-27-98d7cb0cf1f4686a3e43aa5672b6230c1d56bce8",
+                  "executableSha256":  "13b8175e99a884c5ad34249218754b45541a1a63f216e92603aee57a285ac741"
+              },
+    "nuget":  {
+                  "source":  "https://api.nuget.org/v3/index.json",
+                  "client":  {
+                                 "lockedVersion":  "6.14.0",
+                                 "productVersion":  "6.14.0+0da03caba83448ee887f0f1846dd05e1f1705d45.0da03caba83448ee887f0f1846dd05e1f1705d45",
+                                 "sha256":  "92dbed160ddee0f64b901e907439e021211b428e57c089ecc12fc38dcc4bd9a5"
+                             },
+                  "packages":  [
+                                   {
+                                       "name":  "agility-sdk",
+                                       "id":  "Microsoft.Direct3D.D3D12",
+                                       "lockedVersion":  "1.619.5",
+                                       "actualVersion":  "1.619.5",
+                                       "files":  [
+                                                     {
+                                                         "path":  "build/native/include/d3d12.h",
+                                                         "sha256":  "dc55b65d24bf5c83079be5c3c708df8862b1d46308a3c8232886ad6f707932b8"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/include/d3d12sdklayers.h",
+                                                         "sha256":  "27cdc0e48f426d41e3ae62263f39343273d55dd098bc0bd9dae1bb46247a804a"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/bin/x64/D3D12Core.dll",
+                                                         "sha256":  "eddf4cff4eda8162624b88694ad2adf4b09bc5aee6339191f39adf8ae48b41e7",
+                                                         "fileVersion":  "1.619.5.0.20260730.3",
+                                                         "productVersion":  "1.619.5.0.20260730.3"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/bin/x64/d3d12SDKLayers.dll",
+                                                         "sha256":  "a78bca22ebe6c8ccdd6efff630d798b27447f8922bb889de2f50e0dd1ab10f85",
+                                                         "fileVersion":  "1.619.5.0.20260730.3",
+                                                         "productVersion":  "1.619.5.0.20260730.3"
+                                                     }
+                                                 ]
+                                   },
+                                   {
+                                       "name":  "dxc",
+                                       "id":  "Microsoft.Direct3D.DXC",
+                                       "lockedVersion":  "1.9.2607.13",
+                                       "actualVersion":  "1.9.2607.13",
+                                       "files":  [
+                                                     {
+                                                         "path":  "build/native/include/dxcapi.h",
+                                                         "sha256":  "ff3ca20c5ff948d7b1050c4b96d1ee42a9ecc054724dc4dafbef50cc04fd1cde"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/lib/x64/dxcompiler.lib",
+                                                         "sha256":  "a58018d6166a2b200a97fe1b4b8785dcfd0da82f616c6dec96ab5994510ba467"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/bin/x64/dxc.exe",
+                                                         "sha256":  "980a3a4c6e5c88f5737dde321e548860021d58fa2349790d4e572805cb298293",
+                                                         "fileVersion":  "1.9.0.5402",
+                                                         "productVersion":  "1.9.0.5402 (0d3ee6b55-dirty)"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/bin/x64/dxcompiler.dll",
+                                                         "sha256":  "9a5100511e127c6a2fc78edf984f95074a76d35b90c90c4d342430a5ae160e9b",
+                                                         "fileVersion":  "1.9.0.5402",
+                                                         "productVersion":  "1.9.0.5402 (0d3ee6b55-dirty)"
+                                                     },
+                                                     {
+                                                         "path":  "build/native/bin/x64/dxil.dll",
+                                                         "sha256":  "feb57253eff0a622561e29b44cedbe86b89fc9a5bc8dc00fa2f98fafd712c2d8",
+                                                         "fileVersion":  "1.9.0.5402",
+                                                         "productVersion":  "1.9.0.5402 (0d3ee6b55-dirty)"
+                                                     }
+                                                 ]
+                                   },
+                                   {
+                                       "name":  "pix-runtime",
+                                       "id":  "WinPixEventRuntime",
+                                       "lockedVersion":  "1.0.240308001",
+                                       "actualVersion":  "1.0.240308001",
+                                       "files":  [
+                                                     {
+                                                         "path":  "Include/WinPixEventRuntime/pix3.h",
+                                                         "sha256":  "e84cee448a1c1541347538efad1547e93165a3e577da118c645712c6923554b4"
+                                                     },
+                                                     {
+                                                         "path":  "bin/x64/WinPixEventRuntime.lib",
+                                                         "sha256":  "3ed035d81198cb0827c806b9c752e4f36dd0c824a903d3bfb09895f9b5655297"
+                                                     },
+                                                     {
+                                                         "path":  "bin/x64/WinPixEventRuntime.dll",
+                                                         "sha256":  "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d",
+                                                         "fileVersion":  "1.0.2403.08001",
+                                                         "productVersion":  "1.0.240308001-release"
+                                                     }
+                                                 ]
+                                   }
+                               ]
+              }
+}

@@ -19,6 +19,16 @@ target_compile_definitions(
 
 target_include_directories(RenderLab PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+target_link_libraries(
+    RenderLab
+    PRIVATE
+        RenderLab::AgilitySDK
+        RenderLab::DXC
+        RenderLab::WinPixEventRuntime
+        Shell32
+        User32
+)
+
 target_compile_options(
     RenderLab
     PRIVATE
@@ -28,11 +38,11 @@ target_compile_options(
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus>
 )
 
-target_link_libraries(RenderLab PRIVATE Shell32 User32)
-
 set_target_properties(
     RenderLab
     PROPERTIES
         CXX_EXTENSIONS OFF
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+renderlab_stage_microsoft_runtimes(RenderLab)

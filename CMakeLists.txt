@@ -36,11 +36,43 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "RenderLab requires the x64 MSVC toolchain.")
 endif()
 
+if(NOT MSVC)
+    message(FATAL_ERROR "RenderLab requires the MSVC v143 toolchain.")
+endif()
+
+if(NOT MSVC_TOOLSET_VERSION EQUAL 143)
+    message(
+        FATAL_ERROR
+        "RenderLab requires the MSVC v143 toolset; CMake selected "
+        "'${MSVC_TOOLSET_VERSION}'. Use the windows-vs2022 preset."
+    )
+endif()
+
+if(MSVC_VERSION LESS 1938)
+    message(FATAL_ERROR "RenderLab requires MSVC 19.38 or newer within the v143 toolset family.")
+endif()
+
+if(NOT CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+    message(
+        FATAL_ERROR
+        "CMake did not select a Windows SDK. Install Windows SDK 10.0.22621.0 or newer."
+    )
+endif()
+
+if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION VERSION_LESS "10.0.22621.0")
+    message(
+        FATAL_ERROR
+        "RenderLab requires Windows SDK 10.0.22621.0 or newer; CMake selected "
+        "'${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}'."
+    )
+endif()
+
+include(cmake/MicrosoftDependencies.cmake)
+
 add_subdirectory(src)
 
-option(BUILD_TESTING "Build RenderLab tests" ON)
+include(CTest)
 
 if(BUILD_TESTING)
-    enable_testing()
     add_subdirectory(tests)
 endif()
