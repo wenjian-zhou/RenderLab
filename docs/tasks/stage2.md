@@ -124,6 +124,28 @@ adapter remains. Do not choose a software adapter merely to make the smoke test 
 Depends only on completed Stage 1. Loops 2 and 3 consume its diagnostics state, factory, selected
 adapter, and adapter report.
 
+### Completion record (2026-08-15)
+
+Loop 1 is complete on the verified Windows 11 development machine:
+
+- Debug and Release builds and CPU tests pass. Selection/report tests cover empty, software,
+  unsupported, ordered hardware, diagnostics-state, and report-formatting cases.
+- Five consecutive Debug runs, one opt-in GPU-Based Validation run, and one Release run exited
+  with code zero. All runs selected preference index 0: NVIDIA GeForce RTX 4070 SUPER, LUID
+  `0x00000000:0x00011C59`.
+- Debug reported the Debug Layer enabled, the opt-in run reported GPU-Based Validation enabled,
+  Release reported both as not requested, and every run reported DRED configured before probes.
+- No D3D12/DXGI Error, Corruption, Warning, or device-removal message was observed. Device
+  InfoQueue remains correctly reported as `not-created` until Loop 2.
+- The non-retained `D3D12CreateDevice` probe returns `S_FALSE` with a null output pointer; this is
+  a successful capability result. `IDXGIAdapter::CheckInterfaceSupport` returns
+  `DXGI_ERROR_UNSUPPORTED` for the queried D3D12 interface on this system, so the report explicitly
+  records `driver_version=unavailable`. Driver version is best-effort in this loop and this does
+  not broaden the implementation into SetupAPI or registry discovery.
+- Visual Studio also reports repeatable first-chance `_com_error` and Windows
+  `directxdatabasehelper.dll` `0x80070002` messages during enumeration. They are system debugger
+  noise rather than Debug Layer findings; the process continues and exits normally.
+
 ## Closed Loop 2: Device, Direct Queue, and Base Error Handling
 
 ### Scope
@@ -500,9 +522,10 @@ passes:
 If the combined gate fails, reopen the earliest loop that owns the violated invariant, retain a
 minimal reproduction, and rerun all dependent loop checks after the fix.
 
-## First Implementation Task
+## Next Implementation Task
 
-Begin Closed Loop 1 only: add the pre-device diagnostics bootstrap, create the debug DXGI factory,
-enumerate/rank hardware adapters, emit the data-only adapter capability report, and add synthetic
-CPU tests for selection. Do not retain a D3D12 device or create a queue or swap chain in that first
-implementation change.
+Begin Closed Loop 2 only: retain one D3D12 device created from the selected Loop 1 adapter, query
+and report the required device feature baseline, create one named Direct queue, configure the
+device InfoQueue policy, and route creation failures through structured HRESULT/device-removal
+reporting. Do not create a swap chain, frame contexts, command allocators/lists, or enter any later
+stage scope in this change.

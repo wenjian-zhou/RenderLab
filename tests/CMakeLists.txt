@@ -9,10 +9,18 @@ find_package(Catch2 3 CONFIG REQUIRED)
 add_executable(
     RenderLabCpuTests
     cpu/bootstrap_contract_tests.cpp
+    cpu/adapter_report_tests.cpp
+    cpu/adapter_selection_tests.cpp
+    cpu/diagnostics_report_tests.cpp
 )
 
 target_compile_features(RenderLabCpuTests PRIVATE cxx_std_20)
-target_link_libraries(RenderLabCpuTests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(
+    RenderLabCpuTests
+    PRIVATE
+        Catch2::Catch2WithMain
+        RenderLabD3D12
+)
 
 target_compile_options(
     RenderLabCpuTests

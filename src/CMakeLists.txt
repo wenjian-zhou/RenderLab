@@ -1,3 +1,46 @@
+add_library(
+    RenderLabD3D12
+    STATIC
+    gfx/d3d12/adapter_discovery.cpp
+    gfx/d3d12/adapter_discovery.h
+    gfx/d3d12/adapter_report.cpp
+    gfx/d3d12/adapter_report.h
+    gfx/d3d12/adapter_selection.cpp
+    gfx/d3d12/adapter_selection.h
+    gfx/d3d12/diagnostics_bootstrap.cpp
+    gfx/d3d12/diagnostics_bootstrap.h
+    gfx/d3d12/diagnostics_config.h
+    gfx/d3d12/diagnostics_report.cpp
+    gfx/d3d12/diagnostics_report.h
+    gfx/d3d12/dxgi_factory.cpp
+    gfx/d3d12/dxgi_factory.h
+)
+
+target_link_libraries(
+    RenderLabD3D12
+    PUBLIC
+        RenderLab::AgilitySDK
+        d3d12
+        dxgi
+)
+
+target_compile_features(RenderLabD3D12 PUBLIC cxx_std_20)
+
+target_include_directories(
+    RenderLabD3D12
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_compile_options(
+    RenderLabD3D12
+    PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+        $<$<CXX_COMPILER_ID:MSVC>:/permissive->
+        $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
+        $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus>
+)
+
 add_executable(
     RenderLab
     WIN32
@@ -22,6 +65,7 @@ target_include_directories(RenderLab PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
     RenderLab
     PRIVATE
+        RenderLabD3D12
         RenderLab::AgilitySDK
         RenderLab::DXC
         RenderLab::WinPixEventRuntime

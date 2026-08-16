@@ -354,6 +354,8 @@ Debug 默认开启 D3D12 Debug Layer、DXGI Debug、DRED Breadcrumb 与 Page Fau
 
 ### 阶段 2：D3D12 Core 与三帧生命周期（约 2 周）
 
+**当前进度（2026-08-15）**：进行中。Closed Loop 1（D3D12 调试启动、DXGI Factory、Adapter 枚举/选择与能力报告）已完成并通过 CPU、Debug、GPU-Based Validation 和 Release 验证；下一步为 Closed Loop 2（保留 Device、创建 Direct Queue 与基础错误处理）。详细闭环与验收记录见 `docs/tasks/stage2.md`。
+
 **交付内容**：
 
 - Adapter 枚举、Feature Check、Device、Direct Queue 与 SwapChain

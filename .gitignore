@@ -3,6 +3,7 @@
 /external/vcpkg/
 /external/nuget/
 /assets/downloaded/
+/references/
 /CMakeUserPresets.json
 /.vs/
 /.vscode/
