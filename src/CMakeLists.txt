@@ -7,6 +7,16 @@ add_library(
     gfx/d3d12/adapter_report.h
     gfx/d3d12/adapter_selection.cpp
     gfx/d3d12/adapter_selection.h
+    gfx/d3d12/device_bootstrap.cpp
+    gfx/d3d12/device_bootstrap.h
+    gfx/d3d12/device_bootstrap_report.cpp
+    gfx/d3d12/device_bootstrap_report.h
+    gfx/d3d12/device_feature_report.cpp
+    gfx/d3d12/device_feature_report.h
+    gfx/d3d12/device_features.cpp
+    gfx/d3d12/device_features.h
+    gfx/d3d12/device_removal_report.cpp
+    gfx/d3d12/device_removal_report.h
     gfx/d3d12/diagnostics_bootstrap.cpp
     gfx/d3d12/diagnostics_bootstrap.h
     gfx/d3d12/diagnostics_config.h
@@ -14,6 +24,12 @@ add_library(
     gfx/d3d12/diagnostics_report.h
     gfx/d3d12/dxgi_factory.cpp
     gfx/d3d12/dxgi_factory.h
+    gfx/d3d12/hresult_error.cpp
+    gfx/d3d12/hresult_error.h
+    gfx/d3d12/info_queue_messages.cpp
+    gfx/d3d12/info_queue_messages.h
+    gfx/d3d12/info_queue_report.cpp
+    gfx/d3d12/info_queue_report.h
 )
 
 target_link_libraries(

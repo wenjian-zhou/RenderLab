@@ -4,18 +4,28 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+#include <cstring>
 #include <exception>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <system_error>
 
 #include "gfx/d3d12/adapter_discovery.h"
 #include "gfx/d3d12/adapter_report.h"
+#include "gfx/d3d12/device_bootstrap.h"
+#include "gfx/d3d12/device_bootstrap_report.h"
+#include "gfx/d3d12/device_feature_report.h"
+#include "gfx/d3d12/device_features.h"
+#include "gfx/d3d12/device_removal_report.h"
 #include "gfx/d3d12/diagnostics_bootstrap.h"
 #include "gfx/d3d12/diagnostics_config.h"
 #include "gfx/d3d12/diagnostics_report.h"
 #include "gfx/d3d12/dxgi_factory.h"
+#include "gfx/d3d12/hresult_error.h"
+#include "gfx/d3d12/info_queue_messages.h"
+#include "gfx/d3d12/info_queue_report.h"
 
 namespace
 {
@@ -31,6 +41,7 @@ struct StartupOptions
 {
     bool smokeTest = false;
     bool gpuBasedValidation = false;
+    bool forceDeviceInitializationFailure = false;
 };
 
 StartupOptions ParseStartupOptions()
@@ -56,9 +67,85 @@ StartupOptions ParseStartupOptions()
         {
             options.gpuBasedValidation = true;
         }
+        else if (argument == L"--force-device-init-failure")
+        {
+            options.forceDeviceInitializationFailure = true;
+        }
     }
 
     return options;
+}
+
+void OutputDiagnostic(const char *diagnostic, std::size_t length) noexcept
+{
+    OutputDebugStringA(diagnostic);
+    OutputDebugStringA("\n");
+
+    const HANDLE standardError = GetStdHandle(STD_ERROR_HANDLE);
+    if (standardError == nullptr || standardError == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    DWORD bytesWritten = 0;
+    static_cast<void>(WriteFile(
+        standardError,
+        diagnostic,
+        static_cast<DWORD>(length),
+        &bytesWritten,
+        nullptr));
+    static constexpr char newline = '\n';
+    static_cast<void>(WriteFile(
+        standardError,
+        &newline,
+        1,
+        &bytesWritten,
+        nullptr));
+}
+
+void OutputDiagnostic(const std::string &diagnostic) noexcept
+{
+    OutputDiagnostic(diagnostic.c_str(), diagnostic.size());
+}
+
+void OutputDiagnostic(const char *diagnostic) noexcept
+{
+    OutputDiagnostic(diagnostic, std::strlen(diagnostic));
+}
+
+renderlab::gfx::d3d12::InfoQueueCollectionResult
+CollectAndOutputInfoQueueMessages(ID3D12InfoQueue *infoQueue)
+{
+    auto collection =
+        renderlab::gfx::d3d12::CollectInfoQueueMessages(infoQueue);
+    const auto report =
+        renderlab::gfx::d3d12::FormatInfoQueueReport(collection);
+
+    OutputDiagnostic(report);
+    return collection;
+}
+
+void EnforceInfoQueueCollection(
+    const renderlab::gfx::d3d12::InfoQueueCollectionResult &collection)
+{
+    renderlab::gfx::d3d12::ThrowIfFailed(
+        collection.status,
+        "CollectInfoQueueMessages");
+
+    if (collection.hasRunFailure)
+    {
+        throw std::runtime_error(
+            "D3D12 InfoQueue reported Error or Corruption messages");
+    }
+}
+
+void ReportDeviceRemovalState(ID3D12Device *device)
+{
+    const auto report =
+        renderlab::gfx::d3d12::FormatDeviceRemovalReport(
+            renderlab::gfx::d3d12::CaptureDeviceRemovalReport(device));
+
+    OutputDiagnostic(report);
 }
 } // namespace
 
@@ -82,16 +169,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
         const auto diagnosticsReport =
             renderlab::gfx::d3d12::FormatDiagnosticsReport(diagnosticsConfig, diagnostics);
 
-        OutputDebugStringA(diagnosticsReport.c_str());
-        OutputDebugStringA("\n");
+        OutputDiagnostic(diagnosticsReport);
 
-        if (FAILED(diagnostics.status))
-        {
-            throw std::system_error(
-                static_cast<int>(diagnostics.status),
-                std::system_category(),
-                "ConfigureD3D12Diagnostics");
-        }
+        renderlab::gfx::d3d12::ThrowIfFailed(
+            diagnostics.status,
+            "ConfigureD3D12Diagnostics");
 
         Microsoft::WRL::ComPtr<IDXGIFactory6> factory;
 
@@ -100,13 +182,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
                 diagnostics.debugLayerEnabled,
                 factory);
 
-        if (FAILED(factoryStatus))
-        {
-            throw std::system_error(
-                static_cast<int>(factoryStatus),
-                std::system_category(),
-                "CreateDxgiFactory");
-        }
+        renderlab::gfx::d3d12::ThrowIfFailed(
+            factoryStatus,
+            "CreateDxgiFactory");
 
         const auto adapterDiscovery =
             renderlab::gfx::d3d12::DiscoverHardwareAdapters(*factory.Get());
@@ -117,26 +195,105 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
         OutputDebugStringW(adapterReport.c_str());
         OutputDebugStringW(L"\n");
 
-        if (FAILED(adapterDiscovery.status))
-        {
-            throw std::system_error(
-                static_cast<int>(adapterDiscovery.status),
-                std::system_category(),
-                "DiscoverHardwareAdapters");
-        }
+        renderlab::gfx::d3d12::ThrowIfFailed(
+            adapterDiscovery.status,
+            "DiscoverHardwareAdapters");
 
         if (!adapterDiscovery.selectedIndex.has_value())
         {
             throw std::runtime_error("No hardware adapter supporting D3D12 was found");
         }
 
+        const std::size_t selectedIndex = *adapterDiscovery.selectedIndex;
+        if (selectedIndex >= adapterDiscovery.adapters.size())
+        {
+            throw std::logic_error("Selected adapter index is out of range");
+        }
+
+        const auto &selectedAdapterInfo =
+            adapterDiscovery.adapters[selectedIndex];
+
+        auto deviceBootstrap =
+            renderlab::gfx::d3d12::CreateDeviceBootstrap(
+                selectedAdapterInfo.adapter,
+                diagnostics.debugLayerEnabled);
+
+        const auto deviceBootstrapReportData =
+            renderlab::gfx::d3d12::MakeDeviceBootstrapReportData(
+                deviceBootstrap);
+
+        const auto deviceBootstrapReport =
+            renderlab::gfx::d3d12::FormatDeviceBootstrapReport(
+                deviceBootstrapReportData);
+
+        OutputDiagnostic(deviceBootstrapReport);
+
+        if (FAILED(deviceBootstrap.status) && deviceBootstrap.device)
+        {
+            static_cast<void>(CollectAndOutputInfoQueueMessages(
+                deviceBootstrap.infoQueue.Get()));
+
+            const auto removalReport =
+                renderlab::gfx::d3d12::FormatDeviceRemovalReport(
+                    renderlab::gfx::d3d12::CaptureDeviceRemovalReport(
+                        deviceBootstrap.device.Get()));
+            OutputDiagnostic(removalReport);
+        }
+
+        renderlab::gfx::d3d12::ThrowIfFailed(
+            deviceBootstrap.status,
+            "CreateDeviceBootstrap");
+
+        if (options.forceDeviceInitializationFailure)
+        {
+            const auto failureMessages =
+                CollectAndOutputInfoQueueMessages(
+                    deviceBootstrap.infoQueue.Get());
+            ReportDeviceRemovalState(deviceBootstrap.device.Get());
+            EnforceInfoQueueCollection(failureMessages);
+            renderlab::gfx::d3d12::ThrowIfFailed(
+                E_FAIL,
+                "ForcedDeviceInitializationFailure");
+        }
+
+        const auto deviceFeatureQuery =
+            renderlab::gfx::d3d12::QueryDeviceFeatures(
+                *deviceBootstrap.device.Get());
+
+        const auto deviceFeatureReport =
+            renderlab::gfx::d3d12::FormatDeviceFeatureReport(
+                deviceFeatureQuery);
+
+        OutputDiagnostic(deviceFeatureReport);
+
+        ReportDeviceRemovalState(deviceBootstrap.device.Get());
+
+        const auto initializationMessages =
+            CollectAndOutputInfoQueueMessages(
+                deviceBootstrap.infoQueue.Get());
+
+        renderlab::gfx::d3d12::ThrowIfFailed(
+            deviceFeatureQuery.status,
+            "QueryDeviceFeatures");
+        EnforceInfoQueueCollection(initializationMessages);
+
         renderlab::platform::Win32Application application(instance, showCommand, smokeTest);
-        return application.Run();
+        const int applicationResult = application.Run();
+
+        // Release the queue while the InfoQueue and Device are still alive so
+        // teardown diagnostics are included in the final checkpoint.
+        deviceBootstrap.directQueue.Reset();
+
+        const auto shutdownMessages =
+            CollectAndOutputInfoQueueMessages(
+                deviceBootstrap.infoQueue.Get());
+        EnforceInfoQueueCollection(shutdownMessages);
+
+        return applicationResult;
     }
     catch (const std::exception &exception)
     {
-        OutputDebugStringA(exception.what());
-        OutputDebugStringA("\n");
+        OutputDiagnostic(exception.what());
 
         if (!smokeTest)
         {

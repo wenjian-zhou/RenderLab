@@ -11,7 +11,12 @@ add_executable(
     cpu/bootstrap_contract_tests.cpp
     cpu/adapter_report_tests.cpp
     cpu/adapter_selection_tests.cpp
+    cpu/device_bootstrap_report_tests.cpp
+    cpu/device_feature_report_tests.cpp
+    cpu/device_removal_report_tests.cpp
     cpu/diagnostics_report_tests.cpp
+    cpu/hresult_error_tests.cpp
+    cpu/info_queue_report_tests.cpp
 )
 
 target_compile_features(RenderLabCpuTests PRIVATE cxx_std_20)
@@ -59,5 +64,22 @@ set_tests_properties(
     renderlab.window_smoke
     PROPERTIES
         LABELS "smoke;windows"
+        TIMEOUT 15
+)
+
+add_test(
+    NAME renderlab.forced_device_initialization_failure
+    COMMAND
+        "${POWERSHELL_EXECUTABLE}"
+        -NoProfile
+        -ExecutionPolicy Bypass
+        -File "${CMAKE_CURRENT_SOURCE_DIR}/forced_device_initialization_failure.ps1"
+        -Executable "$<TARGET_FILE:RenderLab>"
+)
+
+set_tests_properties(
+    renderlab.forced_device_initialization_failure
+    PROPERTIES
+        LABELS "failure-path;windows"
         TIMEOUT 15
 )

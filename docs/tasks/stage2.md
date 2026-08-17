@@ -201,6 +201,44 @@ without reporting and testing an explicit selection policy.
 Depends on Loop 1. Loops 3, 4, 6, and 7 require the retained device; Loop 3 also requires the
 factory and queue.
 
+### Completion record (2026-08-17)
+
+Loop 2 is complete on the verified Windows 11 development machine:
+
+- Debug and Release builds pass, and all 55 CPU tests pass in both configurations. Synthetic tests
+  cover feature-value naming and partial query failures, HRESULT categories and source context,
+  InfoQueue severity/category classification and partial collection failures, and complete,
+  unavailable, and partial DRED removal reports.
+- Five consecutive Debug runs, one opt-in GPU-Based Validation run, and one Release run exited with
+  code zero. The runs were executed serially with
+  `tests/device_queue_validation.ps1`; every run asserted the complete Device/Queue/Feature
+  report, two InfoQueue checkpoints, and a healthy device-removal report rather than relying only
+  on the process exit code.
+- The retained device reports Feature Level 12_2, Shader Model 6.8, Resource Binding Tier 3, Root
+  Signature 1.1, and Raytracing Tier 1.1. Raytracing support is report data only; no DXR object or
+  pipeline is created in this loop.
+- The selected Loop 1 adapter creates one retained device and one Direct queue. They are named
+  `RenderLab D3D12 Device` and `RenderLab D3D12 Direct Queue`. Normal shutdown releases the Direct
+  queue while the InfoQueue and device remain alive, drains and enforces the final diagnostic
+  checkpoint, then releases the InfoQueue, device, and adapter in that order.
+- Debug reports the device InfoQueue created and its policy configured. Error and Corruption break
+  policies are installed and become active when a debugger is attached; no broad Warning filter is
+  installed. Both initialization and post-queue-release checkpoints reported zero stored messages,
+  zero Warning, Error, and Corruption, and `run_failure=false` in all validation runs. Release
+  accepts an unavailable InfoQueue and reports that state explicitly.
+- Every normal run reported `GetDeviceRemovedReason()` as `S_OK` with
+  `removal_detected=false`, so DRED collection was not attempted. The tested removal path queries
+  DRED 1.1 and falls back to 1.0, copies breadcrumb and page-fault data before device release, and
+  preserves useful partial results when only one query succeeds. No TDR or page fault was
+  manufactured.
+- `--force-device-init-failure` provides a bounded failure-path validation after Device,
+  InfoQueue, and Direct queue creation. Debug and Release CTest runs verify exit code 1 and assert
+  that diagnostics contain a zero-failure InfoQueue report, `removal_detected=false`, operation
+  `ForcedDeviceInitializationFailure`, and HRESULT `0x80004005`.
+- Loop 2 does not create a swap chain, descriptor heap, frame context, fence, command allocator or
+  list, Present/Resize path, deferred deletion system, render graph, DXR pipeline, complex
+  descriptor allocator, or additional command queue.
+
 ## Closed Loop 3: Win32 Swap Chain, RTV Storage, and Stable Present
 
 ### Scope
