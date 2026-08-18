@@ -1,5 +1,7 @@
 set(RENDERLAB_APP_SOURCES
     app/main.cpp
+    app/FrameMarkers.cpp
+    app/FrameMarkers.h
     app/RenderingLabApp.cpp
     app/RenderingLabApp.h
     app/SceneCatalog.cpp

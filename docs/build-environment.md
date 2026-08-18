@@ -94,9 +94,13 @@ RenderLab selects a non-software adapter and prefers NVIDIA.
 
 ## PIX
 
-PIX 2603.25 is installed and will be used for the S0.5 capture checklist. Do not commit
-capture files. WinPixEventRuntime is not a locked source dependency in S0.1; Donut/NVRHI
-markers are enough until S0.5 decides otherwise.
+PIX 2603.25 is installed and is the S0.5 / M0 capture tool. Do not commit capture files.
+WinPixEventRuntime is not a locked source dependency. CPU markers use the Windows SDK
+`pix.h` queue events (`ID3D12CommandQueue::BeginEvent`). GPU markers use NVRHI
+`ICommandList::beginMarker`, which maps to `PIXBeginEvent` on the D3D12 command list.
+
+See [`docs/capture-guide.md`](capture-guide.md) for the M0 checklist and `pixtool`
+commands.
 
 ## Commands Used To Record This File
 

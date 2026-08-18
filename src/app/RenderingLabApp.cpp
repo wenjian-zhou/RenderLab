@@ -1,4 +1,5 @@
 #include "RenderingLabApp.h"
+#include "FrameMarkers.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -132,6 +133,7 @@ namespace renderlab
         log::info("Adapter: %s", capabilities.adapterName.c_str());
         log::info("Driver version: %s", capabilities.driverVersion.c_str());
         log::info("NVRHI backend: %s", capabilities.nvrhiBackend.c_str());
+        log::info("Validation: %s", capabilities.validationMode.c_str());
         log::info("DXR tier: %s", capabilities.dxrTier.c_str());
         log::info("Shader model: %s", capabilities.shaderModel.c_str());
 
@@ -162,21 +164,22 @@ namespace renderlab
 
         ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(440.0f, 0.0f), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("RenderLab"))
+        if (!ImGui::Begin("RenderLab Diagnostics"))
         {
             ImGui::End();
             return;
         }
 
-        ImGui::TextUnformatted("S0.4 scene and camera");
+        ImGui::TextUnformatted("S0.5 observability");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
         ImGui::Text("NVRHI backend: %s", m_capabilities.nvrhiBackend.c_str());
-        ImGui::Text("DXR tier: %s", m_capabilities.dxrTier.c_str());
-        ImGui::Text("Shader model: %s", m_capabilities.shaderModel.c_str());
+        ImGui::Text("Validation: %s", m_capabilities.validationMode.c_str());
         ImGui::Text("Resolution: %d x %d", width, height);
         ImGui::Text("Frame: %u", deviceManager->GetFrameIndex());
+        ImGui::Text("DXR tier: %s", m_capabilities.dxrTier.c_str());
+        ImGui::Text("Shader model: %s", m_capabilities.shaderModel.c_str());
         ImGui::Separator();
         ImGui::Text("Scene: %s", m_sceneHud.sceneLabel.c_str());
         ImGui::Text("Meshes: %u", m_sceneHud.meshCount);
@@ -194,6 +197,12 @@ namespace renderlab
             m_sceneHud.cameraTarget.z);
         ImGui::Text("Locked: %s", m_sceneHud.cameraLocked ? "true" : "false");
         ImGui::End();
+    }
+
+    void RenderingLabUserInterface::Render(nvrhi::IFramebuffer* framebuffer)
+    {
+        markers::CpuMarker uiMarker(GetDevice(), markers::kUI);
+        ImGui_Renderer::Render(framebuffer);
     }
 
     RenderingLabApp::RenderingLabApp(
@@ -222,6 +231,7 @@ namespace renderlab
     {
         QueryCapabilities();
         PrintDeviceCapabilities(m_capabilities);
+        markers::PrintMarkerNames();
 
         if (!m_shaderFactory || !m_fileSystem)
         {
@@ -261,8 +271,13 @@ namespace renderlab
 
     void RenderingLabApp::ClearBackBuffer(nvrhi::IFramebuffer* framebuffer)
     {
+        markers::CpuMarker renderMarker(GetDevice(), markers::kRender);
         m_commandList->open();
-        nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
+        {
+            markers::GpuMarker frameMarker(m_commandList, markers::kFrame);
+            markers::GpuMarker renderGpuMarker(m_commandList, markers::kRender);
+            nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
+        }
         m_commandList->close();
         GetDevice()->executeCommandList(m_commandList);
     }
@@ -274,18 +289,29 @@ namespace renderlab
 
     void RenderingLabApp::RenderScene(nvrhi::IFramebuffer* framebuffer)
     {
+        markers::CpuMarker renderMarker(GetDevice(), markers::kRender);
         m_commandList->open();
-        if (m_scene)
         {
-            m_scene->Refresh(m_commandList, GetFrameIndex());
+            markers::GpuMarker frameMarker(m_commandList, markers::kFrame);
+            {
+                markers::GpuMarker sceneUpdateMarker(m_commandList, markers::kSceneUpdate);
+                if (m_scene)
+                {
+                    m_scene->Refresh(m_commandList, GetFrameIndex());
+                }
+            }
+            {
+                markers::GpuMarker renderGpuMarker(m_commandList, markers::kRender);
+                nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
+            }
         }
-        nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
         m_commandList->close();
         GetDevice()->executeCommandList(m_commandList);
     }
 
     void RenderingLabApp::Animate(float elapsedTimeSeconds)
     {
+        markers::CpuMarker sceneUpdateMarker(GetDevice(), markers::kSceneUpdate);
         if (m_options.lockCamera)
         {
             ApplyCameraPreset();
@@ -462,6 +488,31 @@ namespace renderlab
         m_capabilities.dxrTier = "not supported";
         m_capabilities.shaderModel = "unknown";
         m_capabilities.dxrSupported = false;
+
+        const app::DeviceCreationParameters& deviceParams = deviceManager->GetDeviceParams();
+        m_capabilities.nvrhiValidation = deviceParams.enableNvrhiValidationLayer;
+        m_capabilities.d3d12DebugRuntime = deviceParams.enableDebugRuntime;
+        m_capabilities.gpuBasedValidation = deviceParams.enableGPUValidation;
+        if (m_capabilities.nvrhiValidation && m_capabilities.d3d12DebugRuntime)
+        {
+            m_capabilities.validationMode = "NVRHI + D3D12 debug runtime";
+        }
+        else if (m_capabilities.nvrhiValidation)
+        {
+            m_capabilities.validationMode = "NVRHI";
+        }
+        else if (m_capabilities.d3d12DebugRuntime)
+        {
+            m_capabilities.validationMode = "D3D12 debug runtime";
+        }
+        else
+        {
+            m_capabilities.validationMode = "off";
+        }
+        if (m_capabilities.gpuBasedValidation)
+        {
+            m_capabilities.validationMode += " + GPU-based validation";
+        }
 
         const bool nvrhiDxr10 = device->queryFeatureSupport(nvrhi::Feature::RayTracingAccelStruct) &&
                                 device->queryFeatureSupport(nvrhi::Feature::RayTracingPipeline);

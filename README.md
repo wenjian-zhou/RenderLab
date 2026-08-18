@@ -11,10 +11,11 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.4 is complete**: the application loads the
-fixed Cesium Milk Truck glTF scene through Donut, applies a deterministic camera preset, and
-keeps device/queue/fence/swap-chain ownership in `donut::app::DeviceManager`. The next
-executable task is **S0.5: establish observability and capture**.
+This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**: the application
+loads the fixed Cesium Milk Truck glTF scene through Donut, presents a stable clear + UI
+frame, emits stable CPU/GPU markers, and can be captured with PIX. Device, queue, fence, and
+swap-chain ownership stay in `donut::app::DeviceManager`. The next executable task is
+**S1.1: freeze renderer conventions and the GBuffer contract**.
 
 ## Plans
 
@@ -25,6 +26,7 @@ executable task is **S0.5: establish observability and capture**.
 - [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
   and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
+- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist. Do not commit capture files.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 
 If these documents disagree, `IMPLEMENTATION_PLAN.md` controls execution scope, while
@@ -73,25 +75,32 @@ After a Debug or Release build:
 ```powershell
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera
 .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
+powershell -NoProfile -File scripts\smoke.ps1
 ```
 
 The process opens a window, loads the default scene from `scenes/`, applies the S0.4 camera
-preset, clears the back buffer, draws the baseline ImGui panel, and presents through Donut.
-Startup prints the selected adapter, driver version when DXGI exposes it, NVRHI backend, DXR
-tier, shader model, scene inventory, and camera preset. Hardware without DXR still starts
-the raster path.
+preset, clears the back buffer, draws the diagnostics panel, and presents through Donut.
+Startup prints the selected adapter, driver version when DXGI exposes it, NVRHI backend,
+validation mode, DXR tier, shader model, stable marker names, scene inventory, and camera
+preset. Hardware without DXR still starts the raster path.
+
+`--headless` is the CI-safe smoke mode: the window is hidden, the camera is locked, and the
+process presents 8 frames by default. GitHub-hosted runners do not have the required NVIDIA
+GPU, so CI stays configure + build and smoke is a documented local test. See
+[`docs/capture-guide.md`](docs/capture-guide.md) for the M0 PIX checklist.
 
 Command-line parsing is stable:
 
-| Option | S0.4 behavior |
+| Option | S0.5 behavior |
 |---|---|
 | `--help` | print usage and exit |
 | `--frames <n>` | present `n` frames, then exit |
 | `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
 | `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
-| `--headless` | parsed; reports `not implemented` until S0.5 |
-| `--output <path>` | parsed; reports `not implemented` until S0.5 |
+| `--headless` | hidden-window fixed-frame smoke; locks the camera |
+| `--output <path>` | parsed; reports `not implemented` until S1.6 |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with

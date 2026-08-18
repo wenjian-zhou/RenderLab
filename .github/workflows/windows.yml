@@ -76,3 +76,15 @@ jobs:
       - name: Build Release
         shell: powershell
         run: cmake --build --preset windows-release --parallel
+
+      - name: Headless smoke when an NVIDIA GPU is present
+        shell: powershell
+        run: |
+          $gpu = Get-CimInstance Win32_VideoController |
+            Where-Object { $_.Name -match 'NVIDIA' }
+          if (-not $gpu) {
+            Write-Host 'Skipping RenderLab smoke: this runner has no NVIDIA GPU.'
+            Write-Host 'Local test: powershell -NoProfile -File scripts/smoke.ps1'
+            exit 0
+          }
+          powershell -NoProfile -File scripts/smoke.ps1

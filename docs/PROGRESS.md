@@ -5,11 +5,12 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S0.5 - Establish observability and capture**
+- Active step: **S1.1 - Freeze renderer conventions and the GBuffer contract**
 - State: **Not started**
 - Last updated: 2026-08-18
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
+- Stage 0 gate: **M0 satisfied**
 
 ## Completed Repository Reset
 
@@ -197,6 +198,60 @@ Known limitations:
   The default scene includes a Cesium trademark/logo; attribution is recorded and the logo is not used as a project mark
   Scene animations are not played, so later image tests stay on a static pose
 Next step: S0.5 - Establish observability and capture
+```
+
+### S0.5 - Establish observability and capture
+
+```text
+Step: S0.5
+State: Complete
+Date: 2026-08-18
+Commit: pending
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --output out.png
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+  powershell -NoProfile -File scripts\smoke.ps1
+  pixtool launch RenderLab.exe --command-line="--lock-camera --frames 90" take-capture save-capture captures\s05-m0-debug.wpix
+  pixtool open-capture captures\s05-m0-debug.wpix save-event-list captures\s05-m0-debug-events.csv
+  pixtool launch Release\RenderLab.exe --command-line="--lock-camera --frames 90" take-capture save-capture captures\s05-m0-release.wpix
+Automated tests: CLI help; --output remains unimplemented (S1.6); Debug and Release --headless smoke; Debug and Release --lock-camera --frames 30; scripts\smoke.ps1
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7
+  Release: same adapter/driver, validation=NVRHI
+  Marker line identical in Debug and Release: Frame, SceneUpdate, Render, UI, Present
+  Debug and Release --headless: 8 frames, errors=0
+  Debug and Release --lock-camera --frames 30: resized 1280x720 -> 1344x784, errors=0
+  PIX 2603.25 GPU captures of Debug and Release show the same readable hierarchy:
+    Frame / SceneUpdate / Render / Frame / SceneUpdate / Render / UI / ImGUI / Present
+  Capture files were not committed
+Artifacts:
+  src/app/FrameMarkers.h
+  src/app/FrameMarkers.cpp
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/CMakeLists.txt
+  docs/capture-guide.md
+  scripts/smoke.ps1
+  .github/workflows/windows.yml
+  .gitignore
+  README.md
+  docs/build-environment.md
+  docs/PROGRESS.md
+Known limitations:
+  Meshes are still not drawn; GBuffer starts in S1.4
+  --output remains unimplemented until S1.6 screenshot / image regression
+  --headless hides the Donut window; it is not a swap-chain-free device
+  GitHub-hosted windows-2022 has no NVIDIA GPU, so CI smoke skips and stays a local test
+  PIX prefixes Windows SDK pix.h events with a deprecation note; the stable names after the prefix are unchanged
+  WinPixEventRuntime / pix3.h was not added as a dependency
+Next step: S1.1 - Freeze renderer conventions and the GBuffer contract
 ```
 
 Selected baseline:

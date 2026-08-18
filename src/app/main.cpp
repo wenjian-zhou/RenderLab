@@ -1,3 +1,4 @@
+#include "FrameMarkers.h"
 #include "RenderingLabApp.h"
 #include "SceneCatalog.h"
 
@@ -53,9 +54,10 @@ namespace
             "                      Default: cesium-milk-truck\n"
             "                      Fallback: fallback-boxes\n"
             "  --lock-camera       Disable free-camera motion and keep the S0.4 preset\n"
-            "  --headless          Headless device (not implemented; scheduled for S0.5)\n"
+            "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
+            "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
-            "  --output <path>     Capture output path (not implemented; scheduled for S0.5)\n"
+            "  --output <path>     Capture output path (not implemented; scheduled for S1.6)\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -173,14 +175,9 @@ namespace
 
     bool RejectUnimplementedOptions(const CommandLineOptions& options, std::string& error)
     {
-        if (options.headless)
-        {
-            error = "--headless is not implemented (scheduled for S0.5).";
-            return false;
-        }
         if (options.output.has_value())
         {
-            error = "--output is not implemented (scheduled for S0.5).";
+            error = "--output is not implemented (screenshot capture is scheduled for S1.6).";
             return false;
         }
         return true;
@@ -364,10 +361,14 @@ int main(int argc, char** argv)
         rootFS,
         "/");
 
+    const uint32_t defaultHeadlessFrames = 8;
+    const bool limitedFrames = options.frames.has_value() || options.headless;
+    const uint32_t frameLimit = options.frames.value_or(defaultHeadlessFrames);
+
     renderlab::AppLaunchOptions launchOptions;
     launchOptions.scene = std::move(resolvedScene);
     launchOptions.camera = catalog.GetCameraPreset();
-    launchOptions.lockCamera = options.lockCamera;
+    launchOptions.lockCamera = options.lockCamera || options.headless;
 
     int exitCode = 0;
     {
@@ -389,24 +390,61 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        if (options.frames.has_value())
-        {
-            const uint32_t frameLimit = *options.frames;
-            deviceManager->m_callbacks.afterPresent =
-                [frameLimit](app::DeviceManager& manager, uint32_t frameIndex) {
-                    if (frameIndex == 8 && frameLimit > 16)
-                    {
-                        int width = 0;
-                        int height = 0;
-                        manager.GetWindowDimensions(width, height);
-                        glfwSetWindowSize(manager.GetWindow(), width + 64, height + 64);
-                    }
+        std::unique_ptr<renderlab::markers::CpuMarker> frameCpuMarker;
+        std::unique_ptr<renderlab::markers::CpuMarker> presentCpuMarker;
+        nvrhi::CommandListHandle presentMarkerList = deviceManager->GetDevice()->createCommandList();
 
-                    if (frameIndex + 1 >= frameLimit)
-                    {
-                        glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
-                    }
-                };
+        deviceManager->m_callbacks.beforeFrame =
+            [&frameCpuMarker](app::DeviceManager& manager, uint32_t) {
+                frameCpuMarker = std::make_unique<renderlab::markers::CpuMarker>(
+                    manager.GetDevice(),
+                    renderlab::markers::kFrame);
+            };
+
+        deviceManager->m_callbacks.beforePresent =
+            [&presentCpuMarker, presentMarkerList](app::DeviceManager& manager, uint32_t) {
+                presentCpuMarker = std::make_unique<renderlab::markers::CpuMarker>(
+                    manager.GetDevice(),
+                    renderlab::markers::kPresent);
+                renderlab::markers::EmitStandaloneGpuMarker(
+                    manager.GetDevice(),
+                    presentMarkerList,
+                    renderlab::markers::kPresent);
+            };
+
+        const bool probeResize = !options.headless && limitedFrames && frameLimit > 16;
+        deviceManager->m_callbacks.afterPresent =
+            [&frameCpuMarker, &presentCpuMarker, limitedFrames, frameLimit, probeResize](
+                app::DeviceManager& manager,
+                uint32_t frameIndex) {
+                presentCpuMarker.reset();
+                frameCpuMarker.reset();
+
+                if (!limitedFrames)
+                {
+                    return;
+                }
+
+                if (probeResize && frameIndex == 8)
+                {
+                    int width = 0;
+                    int height = 0;
+                    manager.GetWindowDimensions(width, height);
+                    glfwSetWindowSize(manager.GetWindow(), width + 64, height + 64);
+                }
+
+                if (frameIndex + 1 >= frameLimit)
+                {
+                    glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                }
+            };
+
+        if (options.headless)
+        {
+            glfwHideWindow(deviceManager->GetWindow());
+            log::info(
+                "Headless smoke: hidden window, locked camera, presenting %u frames.",
+                frameLimit);
         }
 
         deviceManager->AddRenderPassToBack(&app);
@@ -414,6 +452,16 @@ int main(int argc, char** argv)
         deviceManager->RunMessageLoop();
         deviceManager->RemoveRenderPass(&ui);
         deviceManager->RemoveRenderPass(&app);
+
+        if (limitedFrames)
+        {
+            log::info(
+                "Smoke finished: frames=%u adapter=%s validation=%s errors=%d",
+                deviceManager->GetFrameIndex(),
+                app.GetCapabilities().adapterName.c_str(),
+                app.GetCapabilities().validationMode.c_str(),
+                validationLog.errorCount.load());
+        }
 
         if (validationLog.errorCount.load() > 0)
         {

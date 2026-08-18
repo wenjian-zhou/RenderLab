@@ -2,6 +2,9 @@
 /scenes/downloaded/
 /results/
 /references/
+/captures/
+*.wpix
+pixtool.log
 /CMakeUserPresets.json
 /.vs/
 /.vscode/

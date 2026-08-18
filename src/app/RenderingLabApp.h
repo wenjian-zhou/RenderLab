@@ -22,7 +22,11 @@ namespace renderlab
         std::string nvrhiBackend = "D3D12";
         std::string dxrTier = "not supported";
         std::string shaderModel = "unknown";
+        std::string validationMode = "off";
         bool dxrSupported = false;
+        bool nvrhiValidation = false;
+        bool d3d12DebugRuntime = false;
+        bool gpuBasedValidation = false;
     };
 
     struct SceneHudState
@@ -58,6 +62,7 @@ namespace renderlab
 
     protected:
         void buildUI() override;
+        void Render(nvrhi::IFramebuffer* framebuffer) override;
 
     private:
         DeviceCapabilities m_capabilities;
