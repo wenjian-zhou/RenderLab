@@ -151,7 +151,7 @@ Next step: S0.4 - Load one fixed scene and camera
 Step: S0.4
 State: Complete
 Date: 2026-08-18
-Commit: 4a3308298f75cbd542b95dc82376d221c79db9ca
+Commit: ce08881324721424881809eef39155cb46c2ce5d
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
