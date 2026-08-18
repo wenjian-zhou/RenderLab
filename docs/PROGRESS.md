@@ -105,7 +105,7 @@ Next step: S0.3 - Create the minimal RenderLab application
 Step: S0.3
 State: Complete
 Date: 2026-08-18
-Commit: pending
+Commit: eeeadaba5b96319086226e00b93b5eba93f12e9a
 Commands:
   cmake --fresh --preset windows-vs2022
   cmake --build --preset windows-debug --parallel
