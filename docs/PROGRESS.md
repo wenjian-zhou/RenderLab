@@ -206,7 +206,7 @@ Next step: S0.5 - Establish observability and capture
 Step: S0.5
 State: Complete
 Date: 2026-08-18
-Commit: pending
+Commit: 87ee4c99d8209ef3bad7f66355a22716e73e8d8a
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
