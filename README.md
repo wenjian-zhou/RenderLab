@@ -11,10 +11,10 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is now a planning baseline. It deliberately contains no application target and no
-Donut submodule yet. **S0.1 is complete**: the Donut/NVRHI baseline is recorded in
-[`dependencies.lock.json`](dependencies.lock.json). The next executable task is **S0.2: add
-Donut as the pinned external dependency**.
+This branch is a Donut/NVRHI planning baseline. **S0.2 is complete**: Donut is pinned under
+[`external/donut`](external/donut) at the commit recorded in
+[`dependencies.lock.json`](dependencies.lock.json). The application target remains disabled.
+The next executable task is **S0.3: create the minimal RenderLab application**.
 
 ## Plans
 
@@ -30,7 +30,7 @@ Donut as the pinned external dependency**.
 If these documents disagree, `IMPLEMENTATION_PLAN.md` controls execution scope, while
 `NEW_PLAN.md` controls high-level intent.
 
-## Planning-Baseline Build
+## Bootstrap and Configure
 
 Requirements:
 
@@ -38,8 +38,18 @@ Requirements:
 - Visual Studio 2022 with **Desktop development with C++**
 - MSVC 19.38 or newer
 - CMake 3.25 or newer
+- Git, with recursive submodule support
 
-Generate the placeholder solution:
+A clean checkout must initialize Donut and its recursive submodules before CMake runs:
+
+```powershell
+powershell -NoProfile -File scripts\bootstrap.ps1
+```
+
+That script is equivalent to `git submodule update --init --recursive`, then checks every
+locked Git commit in `dependencies.lock.json`.
+
+Generate the Visual Studio 2022 x64 solution:
 
 ```powershell
 .\build.bat
@@ -53,5 +63,5 @@ cmake --build --preset windows-debug
 cmake --build --preset windows-release
 ```
 
-The application remains disabled until Donut/NVRHI is pinned and integrated in Stage 0. This
-prevents the new branch from silently falling back to the retired D3D12 ownership model.
+CMake enables only the D3D12 Donut/NVRHI backend. DX11, Vulkan, Streamline, DLSS, Aftermath,
+and RTXMU stay off. The application target remains disabled until S0.3.

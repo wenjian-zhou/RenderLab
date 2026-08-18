@@ -5,7 +5,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S0.2 - Add Donut as the pinned external dependency**
+- Active step: **S0.3 - Create the minimal RenderLab application**
 - State: **Not started**
 - Last updated: 2026-08-18
 - Current branch: `main`
@@ -58,6 +58,45 @@ Known limitations:
   Agility SDK, Streamline, DLSS, Vulkan, and RTXMU are deferred.
   Donut submodule is intentionally not added; that is S0.2.
 Next step: S0.2 - Add Donut as the pinned external dependency
+```
+
+### S0.2 - Add Donut as the pinned external dependency
+
+```text
+Step: S0.2
+State: Complete
+Date: 2026-08-18
+Commit: 27c11628dfbc8f83d3a8f1b57c9052a83be8ef59
+Commands:
+  git submodule add https://github.com/NVIDIA-RTX/Donut.git external/donut
+  git -C external/donut checkout --detach bfdebdd7dd5455c503b2737a1967a4ef651c145b
+  git submodule update --init --recursive -- external/donut
+  git submodule status --recursive
+  powershell -NoProfile -File scripts\bootstrap.ps1 -SkipUpdate
+  cmake --fresh --preset windows-vs2022
+  cmake --build --preset windows-debug --target ZERO_CHECK
+  cmake --build --preset windows-release --target ZERO_CHECK
+Automated tests: not applicable; S0.2 is a dependency-integration step
+GPU validation/capture: not applicable
+Artifacts:
+  .gitmodules
+  external/donut (gitlink bfdebdd7dd5455c503b2737a1967a4ef651c145b)
+  cmake/Donut.cmake
+  scripts/bootstrap.ps1
+  .github/workflows/windows.yml
+  CMakeLists.txt
+  CMakePresets.json
+  build.bat
+  README.md
+  THIRD_PARTY_NOTICES.md
+  docs/PROGRESS.md
+  docs/build-environment.md
+Known limitations:
+  CMake 3.25.3 configured this Donut revision; the README 3.31 request remains unused.
+  DirectX-Headers and DXC are fetched into the CMake build tree, not the Git work tree.
+  Donut core/engine/render/app targets stay EXCLUDE_FROM_ALL until S0.3 links them.
+  The RenderLab application target remains disabled.
+Next step: S0.3 - Create the minimal RenderLab application
 ```
 
 Selected baseline:

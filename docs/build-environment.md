@@ -55,10 +55,8 @@ toolset `v143` but not a specific MSVC side-by-side version. The S0.1 configure 
 | PIX for GPU capture | RenderLab Stage 0 | 2603.25 | satisfied |
 
 Donut's README asks for CMake 3.31, but the locked Donut, NVRHI, and ShaderMake trees only
-declare 3.10, 3.11, and 3.15. RenderLab currently requires CMake 3.25, which is the version
-validated on this machine. S0.2 must try configure with CMake 3.25.3 first. If Donut or
-ShaderMake FetchContent fails because of the documented 3.31 recommendation, upgrade CMake
-and record the new version here. Do not silently raise the requirement in S0.1.
+declare 3.10, 3.11, and 3.15. S0.2 configured this Donut revision successfully with CMake
+3.25.3. Keep that minimum until a later step proves 3.31 is required.
 
 ## Shader Compilation Path
 

@@ -26,13 +26,14 @@ endif()
 option(RENDERLAB_BUILD_APPLICATION "Build the Donut/NVRHI application" OFF)
 
 include(cmake/ProjectOptions.cmake)
+include(cmake/Donut.cmake)
 
 if(RENDERLAB_BUILD_APPLICATION)
     message(
         FATAL_ERROR
-        "The application target is intentionally disabled until implementation step S0.2 "
-        "pins and integrates Donut/NVRHI. See IMPLEMENTATION_PLAN.md."
+        "The application target is intentionally disabled until implementation step S0.3. "
+        "See IMPLEMENTATION_PLAN.md."
     )
 endif()
 
-message(STATUS "RenderLab planning baseline configured successfully.")
+message(STATUS "RenderLab Donut/NVRHI dependency configured successfully.")

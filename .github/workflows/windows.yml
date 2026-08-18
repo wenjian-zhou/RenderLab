@@ -1,4 +1,4 @@
-name: Windows planning baseline
+name: Windows
 
 on:
   push:
@@ -9,15 +9,63 @@ permissions:
   contents: read
 
 jobs:
-  configure-and-build:
+  configure:
+    name: Configure D3D12 Donut
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
 
-      - name: Configure planning baseline
+      - name: Verify locked submodules
+        shell: powershell
+        run: powershell -NoProfile -File scripts/bootstrap.ps1 -SkipUpdate
+
+      - name: Configure Debug and Release
+        shell: powershell
+        run: cmake --fresh --preset windows-vs2022
+
+      - name: Confirm D3D12 backend only
+        shell: powershell
+        run: |
+          $log = Get-Content 'out/build/windows-vs2022/CMakeCache.txt'
+          $required = @{
+            'DONUT_WITH_DX12:BOOL' = 'ON'
+            'DONUT_WITH_DX11:BOOL' = 'OFF'
+            'DONUT_WITH_VULKAN:BOOL' = 'OFF'
+            'NVRHI_WITH_DX12:BOOL' = 'ON'
+            'NVRHI_WITH_DX11:BOOL' = 'OFF'
+            'NVRHI_WITH_VULKAN:BOOL' = 'OFF'
+            'NVRHI_DIRECTX_HEADERS_GIT_TAG:STRING' = 'd873b344dc540898868697245f100c2a67fe68d9'
+          }
+          foreach ($name in $required.Keys) {
+            $line = $log | Where-Object { $_ -like "$name=*" } | Select-Object -First 1
+            if (-not $line) {
+              throw "CMake cache is missing $name"
+            }
+            $value = ($line -split '=', 2)[1]
+            if ($value -ne $required[$name]) {
+              throw "$name is $value, expected $($required[$name])"
+            }
+            Write-Host "$name=$value"
+          }
+
+  build:
+    name: Build planning targets
+    needs: configure
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+
+      - name: Configure
         shell: powershell
         run: cmake --fresh --preset windows-vs2022
 

@@ -1,18 +1,20 @@
 # Third-Party Notices
 
-S0.1 selected the Donut/NVRHI baseline and recorded exact revisions in
-[`dependencies.lock.json`](dependencies.lock.json). The sources themselves are
-not vendored yet; S0.2 will add Donut under `external/donut` at the locked
-commit. License texts below are taken from the inspected upstream trees so the
-baseline can be reviewed before the submodule exists.
+S0.2 added NVIDIA Donut under [`external/donut`](external/donut) at the exact
+commit recorded in [`dependencies.lock.json`](dependencies.lock.json). NVRHI and
+the other source dependencies arrive as Donut's recursive Git submodules. DirectX-Headers
+and DXC are still fetched by Donut/NVRHI/ShaderMake CMake at the locked
+commits/versions. This project does not use vcpkg.
 
-This project does not use vcpkg at the S0.1 baseline.
+License texts below match the files in the pinned trees.
 
 ## NVIDIA Donut
 
 - Source: https://github.com/NVIDIA-RTX/Donut
+- Path: `external/donut`
 - Commit: `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
 - License: MIT
+- Upstream file: `external/donut/LICENSE.txt`
 
 ```text
 Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
@@ -39,9 +41,11 @@ DEALINGS IN THE SOFTWARE.
 ## NVIDIA NVRHI
 
 - Source: https://github.com/NVIDIA-RTX/NVRHI
+- Path: `external/donut/nvrhi`
 - Commit: `8e8c36e37558acec333204619b95d9d2fcdc4a79`
 - License: MIT
 - Relationship: exact Donut submodule; not selected independently
+- Upstream file: `external/donut/nvrhi/LICENSE.txt`
 
 The NVRHI `LICENSE.txt` at that commit uses the same MIT text as Donut, with
 copyright `Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.`
@@ -49,8 +53,10 @@ copyright `Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.`
 ## NVIDIA ShaderMake
 
 - Source: https://github.com/NVIDIA-RTX/ShaderMake
+- Path: `external/donut/ShaderMake`
 - Commit: `5daebdbef45088fc2369d441391ecab0eba25e54`
 - License: MIT
+- Upstream file: `external/donut/ShaderMake/LICENSE.txt`
 
 Copyright at that commit: `Copyright (c) 2014-2023, NVIDIA CORPORATION. All rights reserved.`
 The license body matches the MIT text quoted for Donut.
@@ -58,17 +64,21 @@ The license body matches the MIT text quoted for Donut.
 ## Dear ImGui
 
 - Source: https://github.com/ocornut/imgui
+- Path: `external/donut/thirdparty/imgui`
 - Commit: `45acd5e0e82f4c954432533ae9985ff0e1aad6d5`
 - Version label: 1.92.2b
 - License: MIT
 - Copyright: Copyright (c) 2014-2025 Omar Cornut
+- Upstream file: `external/donut/thirdparty/imgui/LICENSE.txt`
 
 ## GLFW
 
 - Source: https://github.com/glfw/glfw
+- Path: `external/donut/thirdparty/glfw`
 - Commit: `7b6aead9fb88b3623e3b3725ebb42670cbe4c579`
 - Version label: 3.4
 - License: Zlib
+- Upstream file: `external/donut/thirdparty/glfw/LICENSE.md`
 
 ```text
 Copyright (c) 2002-2006 Marcus Geelnard
@@ -97,22 +107,26 @@ freely, subject to the following restrictions:
 ## cgltf
 
 - Source: https://github.com/jkuhlmann/cgltf
+- Path: `external/donut/thirdparty/cgltf`
 - Commit: `fa3b80fa762790192c9532b63c441627416ff300`
 - License: MIT
 - Copyright: Copyright (c) 2018 Johannes Kuhlmann
+- Upstream file: `external/donut/thirdparty/cgltf/LICENSE`
 
 ## stb
 
 - Source: https://github.com/nothings/stb
+- Path: `external/donut/thirdparty/stb`
 - Commit: `2e2bef463a5b53ddf8bb788e25da6b8506314c08`
 - License: MIT OR Unlicense
 - Copyright: Copyright (c) 2017 Sean Barrett
+- Upstream file: `external/donut/thirdparty/stb/LICENSE`
 
 ## JsonCpp
 
 - Source: https://github.com/open-source-parsers/jsoncpp
 - Version: 1.9.6
-- Location after S0.2: `external/donut/thirdparty/jsoncpp-amalgam`
+- Path: `external/donut/thirdparty/jsoncpp-amalgam`
 - License: Public Domain or MIT, per the amalgam `LICENSE` shipped by Donut
 
 ## DirectX-Headers
@@ -138,7 +152,7 @@ DXC is a compiler binary fetched at configure time. It is not a Git submodule.
 ## Intentionally Not Acquired
 
 The following packages exist in Donut/NVRHI option space but are not part of
-the S0.1 baseline and must stay disabled or unfetched in S0.2:
+the S0.2 baseline and stay disabled or unfetched:
 
 - Vulkan-Headers
 - Microsoft Direct3D 12 Agility SDK

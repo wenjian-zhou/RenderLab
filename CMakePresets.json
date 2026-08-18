@@ -8,7 +8,7 @@
   "configurePresets": [
     {
       "name": "windows-vs2022",
-      "displayName": "Visual Studio 2022 x64 (planning baseline)",
+      "displayName": "Visual Studio 2022 x64",
       "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "x64",
