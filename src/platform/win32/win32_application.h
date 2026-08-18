@@ -8,10 +8,13 @@ class Win32Application final
 {
   public:
     Win32Application(HINSTANCE instance, int showCommand, bool smokeTest) noexcept;
+    ~Win32Application() noexcept;
 
     Win32Application(const Win32Application &) = delete;
     Win32Application &operator=(const Win32Application &) = delete;
 
+    void Initialize();
+    [[nodiscard]] HWND window() const noexcept;
     int Run();
 
   private:

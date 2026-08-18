@@ -20,13 +20,44 @@ Win32Application::Win32Application(HINSTANCE instance, int showCommand, bool smo
 {
 }
 
-int Win32Application::Run()
+Win32Application::~Win32Application() noexcept
 {
+    Cleanup();
+}
+
+void Win32Application::Initialize()
+{
+    if (windowClass_ != 0 || window_ != nullptr)
+    {
+        throw std::logic_error("Win32 application is already initialized");
+    }
+
     try
     {
         RegisterWindowClass();
         CreateMainWindow();
+    }
+    catch (...)
+    {
+        Cleanup();
+        throw;
+    }
+}
 
+HWND Win32Application::window() const noexcept
+{
+    return window_;
+}
+
+int Win32Application::Run()
+{
+    if (window_ == nullptr || !IsWindow(window_))
+    {
+        throw std::logic_error("Win32 application must be initialized before Run");
+    }
+
+    try
+    {
         ShowWindow(window_, smokeTest_ ? SW_HIDE : showCommand_);
         UpdateWindow(window_);
 

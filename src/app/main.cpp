@@ -14,6 +14,7 @@
 
 #include "gfx/d3d12/adapter_discovery.h"
 #include "gfx/d3d12/adapter_report.h"
+#include "gfx/d3d12/depth_stencil_storage.h"
 #include "gfx/d3d12/device_bootstrap.h"
 #include "gfx/d3d12/device_bootstrap_report.h"
 #include "gfx/d3d12/device_feature_report.h"
@@ -26,6 +27,7 @@
 #include "gfx/d3d12/hresult_error.h"
 #include "gfx/d3d12/info_queue_messages.h"
 #include "gfx/d3d12/info_queue_report.h"
+#include "gfx/d3d12/window_swap_chain.h"
 
 namespace
 {
@@ -278,7 +280,35 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
         EnforceInfoQueueCollection(initializationMessages);
 
         renderlab::platform::Win32Application application(instance, showCommand, smokeTest);
+        application.Initialize();
+
+        auto windowSwapChain =
+            renderlab::gfx::d3d12::CreateWindowSwapChain(
+                *factory.Get(),
+                *deviceBootstrap.directQueue.Get(),
+                application.window());
+
+        renderlab::gfx::d3d12::CreateSwapChainRenderTargetStorage(
+            *deviceBootstrap.device.Get(),
+            windowSwapChain);
+
+        auto depthStencilStorage =
+            renderlab::gfx::d3d12::CreateDepthStencilStorage(
+                *deviceBootstrap.device.Get());
+
         const int applicationResult = application.Run();
+
+        depthStencilStorage.dsvHeap.Reset();
+
+        // Release swap-chain views and resources before the swap chain,
+        // Direct queue, and Device so teardown diagnostics observe the full
+        // owned lifetime.
+        for (auto &backBuffer : windowSwapChain.backBuffers)
+        {
+            backBuffer.Reset();
+        }
+        windowSwapChain.rtvHeap.Reset();
+        windowSwapChain.swapChain.Reset();
 
         // Release the queue while the InfoQueue and Device are still alive so
         // teardown diagnostics are included in the final checkpoint.

@@ -15,6 +15,8 @@ add_library(
     gfx/d3d12/device_feature_report.h
     gfx/d3d12/device_features.cpp
     gfx/d3d12/device_features.h
+    gfx/d3d12/depth_stencil_storage.cpp
+    gfx/d3d12/depth_stencil_storage.h
     gfx/d3d12/device_removal_report.cpp
     gfx/d3d12/device_removal_report.h
     gfx/d3d12/diagnostics_bootstrap.cpp
@@ -30,6 +32,8 @@ add_library(
     gfx/d3d12/info_queue_messages.h
     gfx/d3d12/info_queue_report.cpp
     gfx/d3d12/info_queue_report.h
+    gfx/d3d12/window_swap_chain.cpp
+    gfx/d3d12/window_swap_chain.h
 )
 
 target_link_libraries(
