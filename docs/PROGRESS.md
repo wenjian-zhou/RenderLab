@@ -66,7 +66,7 @@ Next step: S0.2 - Add Donut as the pinned external dependency
 Step: S0.2
 State: Complete
 Date: 2026-08-18
-Commit: 27c11628dfbc8f83d3a8f1b57c9052a83be8ef59
+Commit: 9d98dbbef57c4a8e5a0466d4ec0e114185795e8b
 Commands:
   git submodule add https://github.com/NVIDIA-RTX/Donut.git external/donut
   git -C external/donut checkout --detach bfdebdd7dd5455c503b2737a1967a4ef651c145b
