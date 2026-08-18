@@ -5,7 +5,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S0.4 - Load one fixed scene and camera**
+- Active step: **S0.5 - Establish observability and capture**
 - State: **Not started**
 - Last updated: 2026-08-18
 - Current branch: `main`
@@ -143,6 +143,60 @@ Known limitations:
   DXGI enumerated the NVIDIA adapter twice; software/WARP adapters are skipped
   No scene, GBuffer, RDG, or DXR pass is implemented
 Next step: S0.4 - Load one fixed scene and camera
+```
+
+### S0.4 - Load one fixed scene and camera
+
+```text
+Step: S0.4
+State: Complete
+Date: 2026-08-18
+Commit: 4a3308298f75cbd542b95dc82376d221c79db9ca
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --output out.png
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene <absolute-path>
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene does-not-exist.gltf
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
+  Flip one byte in the copied Debug CesiumMilkTruck.glb, rerun --lock-camera --frames 5, restore
+Automated tests: CLI help/unimplemented options; --scene id, relative path, absolute-path rejection, missing asset, SHA-256 mismatch; locked-camera identity across two Debug restarts and Release
+GPU validation/capture:
+  Debug and Release --lock-camera --frames 30: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, DXR 1.1, SM 6.7
+  Default scene '/scenes/cesium-milk-truck/CesiumMilkTruck.glb': meshes=2 instances=3 materials=4
+  Camera preset 's04-default': position=(4.800, 2.400, 5.600) target=(0.000, 0.850, 0.000) up=(0.000, 1.000, 0.000) vfov=45.000 deg znear=0.100 locked=true
+  Debug and Release camera lines were byte-identical after restart
+  Debug --frames 30 resized 1280x720 -> 1344x784 and exited 0 with no NVRHI or D3D12 error
+  Fallback '/scenes/fallback/boxes.gltf': meshes=3 instances=3 materials=3
+  Corrupt glb reported SHA-256 mismatch and exited 1 without an absolute path
+Artifacts:
+  scenes/manifest.json
+  scenes/README.md
+  scenes/cesium-milk-truck/CesiumMilkTruck.glb
+  scenes/cesium-milk-truck/LICENSE.md
+  scenes/cesium-milk-truck/README.md
+  scenes/fallback/boxes.gltf
+  scenes/fallback/boxes.bin
+  scenes/fallback/LICENSE.md
+  src/app/SceneCatalog.h
+  src/app/SceneCatalog.cpp
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/CMakeLists.txt
+  README.md
+  THIRD_PARTY_NOTICES.md
+  docs/PROGRESS.md
+Known limitations:
+  --headless and --output remain parsed and rejected until S0.5
+  Geometry is loaded and GPU buffers are uploaded, but no mesh is drawn; GBuffer starts in S1.4
+  The default scene includes a Cesium trademark/logo; attribution is recorded and the logo is not used as a project mark
+  Scene animations are not played, so later image tests stay on a static pose
+Next step: S0.5 - Establish observability and capture
 ```
 
 Selected baseline:

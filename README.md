@@ -11,10 +11,10 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.3 is complete**: the application target
-subclasses `donut::app::ApplicationBase` and lets `donut::app::DeviceManager` own the window,
-D3D12 device, queues, fences, and swap chain. The next executable task is **S0.4: load one
-fixed scene and camera**.
+This branch is a Donut/NVRHI planning baseline. **S0.4 is complete**: the application loads the
+fixed Cesium Milk Truck glTF scene through Donut, applies a deterministic camera preset, and
+keeps device/queue/fence/swap-chain ownership in `donut::app::DeviceManager`. The next
+executable task is **S0.5: establish observability and capture**.
 
 ## Plans
 
@@ -71,22 +71,29 @@ and RTXMU stay off.
 After a Debug or Release build:
 
 ```powershell
-.\out\build\windows-vs2022\bin\Debug\RenderLab.exe
-.\out\build\windows-vs2022\bin\Release\RenderLab.exe --frames 30
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera
+.\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 ```
 
-The process opens a window, clears the back buffer, draws the baseline ImGui panel, and
-presents through Donut. Startup prints the selected adapter, driver version when DXGI
-exposes it, NVRHI backend, DXR tier, and shader model. Hardware without DXR still starts
+The process opens a window, loads the default scene from `scenes/`, applies the S0.4 camera
+preset, clears the back buffer, draws the baseline ImGui panel, and presents through Donut.
+Startup prints the selected adapter, driver version when DXGI exposes it, NVRHI backend, DXR
+tier, shader model, scene inventory, and camera preset. Hardware without DXR still starts
 the raster path.
 
 Command-line parsing is stable:
 
-| Option | S0.3 behavior |
+| Option | S0.4 behavior |
 |---|---|
 | `--help` | print usage and exit |
 | `--frames <n>` | present `n` frames, then exit |
-| `--scene <path>` | parsed; reports `not implemented` until S0.4 |
+| `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
+| `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
 | `--headless` | parsed; reports `not implemented` until S0.5 |
 | `--output <path>` | parsed; reports `not implemented` until S0.5 |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
+
+The default scene is `cesium-milk-truck`. A tiny committed fallback is available with
+`--scene fallback-boxes`. Scene URLs, licenses, and SHA-256 hashes are recorded in
+[`scenes/manifest.json`](scenes/manifest.json). Absolute developer-machine paths are rejected.

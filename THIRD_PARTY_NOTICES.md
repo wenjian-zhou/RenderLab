@@ -165,3 +165,18 @@ the S0.2 baseline and stay disabled or unfetched:
 
 tinyexr is present as a Donut third-party header and remains optional through
 `DONUT_WITH_TINYEXR`. It is not a selected RenderLab-owned dependency.
+
+## Cesium Milk Truck
+
+- Source: https://github.com/KhronosGroup/glTF-Sample-Assets
+- Path: `scenes/cesium-milk-truck/`
+- Upstream commit: `97cb805c6f47bc9449e250bd795c34149f0a870e`
+- File: `Models/CesiumMilkTruck/glTF-Binary/CesiumMilkTruck.glb`
+- SHA-256: `09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49`
+- License: CC-BY 4.0 with Cesium trademark limitations
+- Copyright: 2017, Cesium
+- Upstream files: `scenes/cesium-milk-truck/LICENSE.md`, `scenes/cesium-milk-truck/README.md`
+
+This is the S0.4 default scene. RenderLab redistributes the official Khronos sample
+and does not claim the Cesium name or logo. The committed fallback boxes scene under
+`scenes/fallback/` is original RenderLab content licensed CC0 1.0.

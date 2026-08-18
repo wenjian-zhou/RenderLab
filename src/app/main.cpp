@@ -1,4 +1,5 @@
 #include "RenderingLabApp.h"
+#include "SceneCatalog.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -11,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +31,7 @@ namespace
         bool headless = false;
         std::optional<uint32_t> frames;
         std::optional<std::string> output;
+        bool lockCamera = false;
         bool help = false;
     };
 
@@ -40,20 +43,23 @@ namespace
 
     void PrintUsage(const char* executable)
     {
+        (void)executable;
         std::printf(
-            "Usage: %s [options]\n"
+            "Usage: RenderLab [options]\n"
             "\n"
             "Options:\n"
             "  --help              Show this help message\n"
-            "  --scene <path>      Scene path (not implemented; scheduled for S0.4)\n"
+            "  --scene <id|path>   Scene id or path relative to scenes/\n"
+            "                      Default: cesium-milk-truck\n"
+            "                      Fallback: fallback-boxes\n"
+            "  --lock-camera       Disable free-camera motion and keep the S0.4 preset\n"
             "  --headless          Headless device (not implemented; scheduled for S0.5)\n"
             "  --frames <n>        Present n frames, then exit\n"
             "  --output <path>     Capture output path (not implemented; scheduled for S0.5)\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
-            "fences, and swap chain.\n",
-            executable);
+            "fences, and swap chain. Scene files are loaded through Donut's VFS from scenes/.\n");
     }
 
     bool EqualsOption(std::string_view value, std::string_view option)
@@ -98,6 +104,12 @@ namespace
                     return false;
                 }
                 options.scene = argv[++index];
+                continue;
+            }
+
+            if (EqualsOption(argument, "--lock-camera") || EqualsOption(argument, "--no-free-camera"))
+            {
+                options.lockCamera = true;
                 continue;
             }
 
@@ -161,11 +173,6 @@ namespace
 
     bool RejectUnimplementedOptions(const CommandLineOptions& options, std::string& error)
     {
-        if (options.scene.has_value())
-        {
-            error = "--scene is not implemented (scheduled for S0.4).";
-            return false;
-        }
         if (options.headless)
         {
             error = "--headless is not implemented (scheduled for S0.5).";
@@ -193,11 +200,18 @@ namespace
         if (shaderDir.empty())
         {
             log::error(
-                "Could not find compiled Donut shaders (imgui_vertex.bin) above %s.",
-                startPath.generic_string().c_str());
+                "Could not find compiled Donut shaders (imgui_vertex.bin). "
+                "Rebuild the project so donut_shaders are available.");
         }
 
         return shaderDir;
+    }
+
+    std::filesystem::path FindScenesDirectory()
+    {
+        auto nativeFS = std::make_shared<vfs::NativeFileSystem>();
+        const std::filesystem::path startPath = app::GetDirectoryWithExecutable();
+        return app::FindDirectoryWithFile(*nativeFS, startPath, "scenes/manifest.json", 8);
     }
 }
 
@@ -211,13 +225,13 @@ int main(int argc, char** argv)
     if (!ParseCommandLine(argc, argv, options, parseError))
     {
         std::fprintf(stderr, "error: %s\n", parseError.c_str());
-        PrintUsage(argv[0] ? argv[0] : "RenderLab");
+        PrintUsage("RenderLab");
         return 2;
     }
 
     if (options.help)
     {
-        PrintUsage(argv[0] ? argv[0] : "RenderLab");
+        PrintUsage("RenderLab");
         return 0;
     }
 
@@ -307,23 +321,67 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    const std::filesystem::path scenesDirectory = FindScenesDirectory();
+    if (scenesDirectory.empty())
+    {
+        log::error(
+            "Could not find scenes/manifest.json next to the executable or in the repository. "
+            "Rebuild the project so scenes/ is copied next to RenderLab.exe.");
+        deviceManager->Shutdown();
+        return 1;
+    }
+
     auto rootFS = std::make_shared<vfs::RootFileSystem>();
     rootFS->mount("/donut", shaderDirectory);
+    rootFS->mount("/scenes", scenesDirectory);
+
+    renderlab::SceneCatalog catalog;
+    std::string catalogError;
+    if (!renderlab::SceneCatalog::Load(*rootFS, "/scenes/manifest.json", catalog, catalogError))
+    {
+        log::error("%s", catalogError.c_str());
+        deviceManager->Shutdown();
+        return 1;
+    }
+
+    renderlab::ResolvedScene resolvedScene;
+    if (!catalog.Resolve(options.scene, resolvedScene, catalogError))
+    {
+        log::error("%s", catalogError.c_str());
+        deviceManager->Shutdown();
+        return 2;
+    }
+
+    if (!renderlab::VerifySceneIntegrity(*rootFS, resolvedScene, catalogError))
+    {
+        log::error("%s", catalogError.c_str());
+        deviceManager->Shutdown();
+        return 1;
+    }
+
     auto shaderFactory = std::make_shared<engine::ShaderFactory>(
         deviceManager->GetDevice(),
         rootFS,
         "/");
 
+    renderlab::AppLaunchOptions launchOptions;
+    launchOptions.scene = std::move(resolvedScene);
+    launchOptions.camera = catalog.GetCameraPreset();
+    launchOptions.lockCamera = options.lockCamera;
+
     int exitCode = 0;
     {
-        renderlab::RenderingLabApp app(deviceManager.get());
+        renderlab::RenderingLabApp app(deviceManager.get(), shaderFactory, rootFS, std::move(launchOptions));
         if (!app.Init())
         {
             deviceManager->Shutdown();
             return 1;
         }
 
-        renderlab::RenderingLabUserInterface ui(deviceManager.get(), app.GetCapabilities());
+        renderlab::RenderingLabUserInterface ui(
+            deviceManager.get(),
+            app.GetCapabilities(),
+            app.GetSceneHud());
         if (!ui.Init(shaderFactory))
         {
             log::error("Failed to initialize the ImGui renderer.");

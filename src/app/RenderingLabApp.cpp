@@ -3,6 +3,9 @@
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
 #include <donut/core/vfs/VFS.h>
+#include <donut/engine/CommonRenderPasses.h>
+#include <donut/engine/SceneGraph.h>
+#include <donut/engine/TextureCache.h>
 #include <nvrhi/utils.h>
 
 #include <cstdio>
@@ -141,9 +144,11 @@ namespace renderlab
 
     RenderingLabUserInterface::RenderingLabUserInterface(
         app::DeviceManager* deviceManager,
-        const DeviceCapabilities& capabilities)
+        const DeviceCapabilities& capabilities,
+        const SceneHudState& sceneHud)
         : ImGui_Renderer(deviceManager)
         , m_capabilities(capabilities)
+        , m_sceneHud(sceneHud)
     {
         ImGui::GetIO().IniFilename = nullptr;
     }
@@ -156,14 +161,14 @@ namespace renderlab
         deviceManager->GetWindowDimensions(width, height);
 
         ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(420.0f, 0.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(440.0f, 0.0f), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("RenderLab"))
         {
             ImGui::End();
             return;
         }
 
-        ImGui::TextUnformatted("S0.3 baseline");
+        ImGui::TextUnformatted("S0.4 scene and camera");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -172,13 +177,45 @@ namespace renderlab
         ImGui::Text("Shader model: %s", m_capabilities.shaderModel.c_str());
         ImGui::Text("Resolution: %d x %d", width, height);
         ImGui::Text("Frame: %u", deviceManager->GetFrameIndex());
+        ImGui::Separator();
+        ImGui::Text("Scene: %s", m_sceneHud.sceneLabel.c_str());
+        ImGui::Text("Meshes: %u", m_sceneHud.meshCount);
+        ImGui::Text("Instances: %u", m_sceneHud.instanceCount);
+        ImGui::Text("Materials: %u", m_sceneHud.materialCount);
+        ImGui::Text(
+            "Camera: (%.3f, %.3f, %.3f)",
+            m_sceneHud.cameraPosition.x,
+            m_sceneHud.cameraPosition.y,
+            m_sceneHud.cameraPosition.z);
+        ImGui::Text(
+            "Look at: (%.3f, %.3f, %.3f)",
+            m_sceneHud.cameraTarget.x,
+            m_sceneHud.cameraTarget.y,
+            m_sceneHud.cameraTarget.z);
+        ImGui::Text("Locked: %s", m_sceneHud.cameraLocked ? "true" : "false");
         ImGui::End();
     }
 
-    RenderingLabApp::RenderingLabApp(app::DeviceManager* deviceManager)
+    RenderingLabApp::RenderingLabApp(
+        app::DeviceManager* deviceManager,
+        std::shared_ptr<engine::ShaderFactory> shaderFactory,
+        std::shared_ptr<vfs::IFileSystem> fileSystem,
+        AppLaunchOptions options)
         : ApplicationBase(deviceManager)
+        , m_shaderFactory(std::move(shaderFactory))
+        , m_fileSystem(std::move(fileSystem))
+        , m_options(std::move(options))
     {
         SetAsynchronousLoadingEnabled(false);
+        m_camera.SetMoveSpeed(3.0f);
+        m_camera.SetRotateSpeed(0.005f);
+        ApplyCameraPreset();
+        m_sceneHud.sceneId = m_options.scene.id;
+        m_sceneHud.sceneLabel = m_options.scene.virtualPath;
+        m_sceneHud.license = m_options.scene.license;
+        m_sceneHud.cameraLocked = m_options.lockCamera;
+        m_sceneHud.cameraTarget = m_options.camera.target;
+        m_sceneHud.verticalFovDegrees = m_options.camera.verticalFovDegrees;
     }
 
     bool RenderingLabApp::Init()
@@ -186,10 +223,26 @@ namespace renderlab
         QueryCapabilities();
         PrintDeviceCapabilities(m_capabilities);
 
+        if (!m_shaderFactory || !m_fileSystem)
+        {
+            log::error("Scene loading requires a ShaderFactory and VFS.");
+            return false;
+        }
+
+        m_CommonPasses = std::make_shared<engine::CommonRenderPasses>(GetDevice(), m_shaderFactory);
+        m_TextureCache = std::make_shared<engine::TextureCache>(GetDevice(), m_fileSystem, nullptr);
+
         m_commandList = GetDevice()->createCommandList();
         if (!m_commandList)
         {
             log::error("Failed to create the NVRHI command list.");
+            return false;
+        }
+
+        BeginLoadingScene(m_fileSystem, m_options.scene.virtualPath);
+        if (!IsSceneLoaded() || !m_scene)
+        {
+            log::error("Failed to load scene '%s'.", m_options.scene.virtualPath.c_str());
             return false;
         }
 
@@ -201,7 +254,12 @@ namespace renderlab
         return m_capabilities;
     }
 
-    void RenderingLabApp::Render(nvrhi::IFramebuffer* framebuffer)
+    const SceneHudState& RenderingLabApp::GetSceneHud() const
+    {
+        return m_sceneHud;
+    }
+
+    void RenderingLabApp::ClearBackBuffer(nvrhi::IFramebuffer* framebuffer)
     {
         m_commandList->open();
         nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
@@ -209,9 +267,35 @@ namespace renderlab
         GetDevice()->executeCommandList(m_commandList);
     }
 
+    void RenderingLabApp::RenderSplashScreen(nvrhi::IFramebuffer* framebuffer)
+    {
+        ClearBackBuffer(framebuffer);
+    }
+
+    void RenderingLabApp::RenderScene(nvrhi::IFramebuffer* framebuffer)
+    {
+        m_commandList->open();
+        if (m_scene)
+        {
+            m_scene->Refresh(m_commandList, GetFrameIndex());
+        }
+        nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
+        m_commandList->close();
+        GetDevice()->executeCommandList(m_commandList);
+    }
+
     void RenderingLabApp::Animate(float elapsedTimeSeconds)
     {
-        (void)elapsedTimeSeconds;
+        if (m_options.lockCamera)
+        {
+            ApplyCameraPreset();
+        }
+        else
+        {
+            m_camera.Animate(elapsedTimeSeconds);
+        }
+
+        UpdateSceneHud();
         GetDeviceManager()->SetInformativeWindowTitle("RenderLab");
     }
 
@@ -230,15 +314,141 @@ namespace renderlab
         std::shared_ptr<vfs::IFileSystem> fs,
         const std::filesystem::path& sceneFileName)
     {
-        (void)fs;
-        (void)sceneFileName;
-        log::error("--scene is not implemented (scheduled for S0.4).");
-        return false;
+        const std::string virtualPath = sceneFileName.generic_string();
+        log::info("Loading scene '%s'", virtualPath.c_str());
+
+        auto scene = std::make_shared<engine::Scene>(
+            GetDevice(),
+            *m_shaderFactory,
+            fs,
+            m_TextureCache,
+            nullptr,
+            nullptr);
+
+        if (!scene->Load(sceneFileName))
+        {
+            log::error("Donut failed to load scene '%s'.", virtualPath.c_str());
+            return false;
+        }
+
+        m_scene = std::move(scene);
+        return true;
+    }
+
+    void RenderingLabApp::SceneLoaded()
+    {
+        ApplicationBase::SceneLoaded();
+        if (!m_scene)
+        {
+            return;
+        }
+
+        m_scene->FinishedLoading(GetFrameIndex());
+        ApplyCameraPreset();
+        UpdateSceneHud();
+
+        log::info(
+            "Loaded scene '%s' (%s)",
+            m_options.scene.virtualPath.c_str(),
+            m_options.scene.displayName.c_str());
+        if (!m_options.scene.license.empty())
+        {
+            log::info("Scene license: %s", m_options.scene.license.c_str());
+        }
+        log::info(
+            "Scene contents: meshes=%u instances=%u materials=%u",
+            m_sceneHud.meshCount,
+            m_sceneHud.instanceCount,
+            m_sceneHud.materialCount);
+        log::info(
+            "Camera preset '%s': position=(%.3f, %.3f, %.3f) target=(%.3f, %.3f, %.3f) "
+            "up=(%.3f, %.3f, %.3f) vfov=%.3f deg znear=%.3f locked=%s",
+            m_options.camera.name.c_str(),
+            m_options.camera.position.x,
+            m_options.camera.position.y,
+            m_options.camera.position.z,
+            m_options.camera.target.x,
+            m_options.camera.target.y,
+            m_options.camera.target.z,
+            m_options.camera.up.x,
+            m_options.camera.up.y,
+            m_options.camera.up.z,
+            m_options.camera.verticalFovDegrees,
+            m_options.camera.zNear,
+            m_options.lockCamera ? "true" : "false");
     }
 
     bool RenderingLabApp::ShouldRenderUnfocused()
     {
         return true;
+    }
+
+    bool RenderingLabApp::KeyboardUpdate(int key, int scancode, int action, int mods)
+    {
+        if (m_options.lockCamera)
+        {
+            return false;
+        }
+        m_camera.KeyboardUpdate(key, scancode, action, mods);
+        return false;
+    }
+
+    bool RenderingLabApp::MousePosUpdate(double xpos, double ypos)
+    {
+        if (m_options.lockCamera)
+        {
+            return false;
+        }
+        m_camera.MousePosUpdate(xpos, ypos);
+        return false;
+    }
+
+    bool RenderingLabApp::MouseButtonUpdate(int button, int action, int mods)
+    {
+        if (m_options.lockCamera)
+        {
+            return false;
+        }
+        m_camera.MouseButtonUpdate(button, action, mods);
+        return false;
+    }
+
+    bool RenderingLabApp::MouseScrollUpdate(double xoffset, double yoffset)
+    {
+        (void)xoffset;
+        (void)yoffset;
+        return false;
+    }
+
+    void RenderingLabApp::ApplyCameraPreset()
+    {
+        m_camera.LookAt(m_options.camera.position, m_options.camera.target, m_options.camera.up);
+    }
+
+    void RenderingLabApp::UpdateSceneHud()
+    {
+        m_sceneHud.sceneId = m_options.scene.id;
+        m_sceneHud.sceneLabel = m_options.scene.virtualPath;
+        m_sceneHud.license = m_options.scene.license;
+        m_sceneHud.cameraLocked = m_options.lockCamera;
+        m_sceneHud.cameraPosition = m_camera.GetPosition();
+        m_sceneHud.cameraDirection = m_camera.GetDir();
+        m_sceneHud.cameraTarget = m_options.camera.target;
+        m_sceneHud.verticalFovDegrees = m_options.camera.verticalFovDegrees;
+        m_sceneHud.sceneLoaded = m_scene != nullptr;
+
+        if (!m_scene || !m_scene->GetSceneGraph())
+        {
+            m_sceneHud.meshCount = 0;
+            m_sceneHud.instanceCount = 0;
+            m_sceneHud.materialCount = 0;
+            return;
+        }
+
+        const auto graph = m_scene->GetSceneGraph();
+        m_sceneHud.meshCount = static_cast<uint32_t>(graph->GetMeshes().size());
+        m_sceneHud.instanceCount = static_cast<uint32_t>(graph->GetMeshInstances().size());
+        m_sceneHud.materialCount = static_cast<uint32_t>(graph->GetMaterials().size());
     }
 
     void RenderingLabApp::QueryCapabilities()

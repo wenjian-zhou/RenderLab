@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-08-18",
+  "step": "S0.4",
+  "defaultSceneId": "cesium-milk-truck",
+  "cameraPreset": {
+    "name": "s04-default",
+    "position": [4.800, 2.400, 5.600],
+    "target": [0.000, 0.850, 0.000],
+    "up": [0.000, 1.000, 0.000],
+    "verticalFovDegrees": 45.0,
+    "zNear": 0.1
+  },
+  "scenes": [
+    {
+      "id": "cesium-milk-truck",
+      "role": "default",
+      "displayName": "Cesium Milk Truck",
+      "path": "cesium-milk-truck/CesiumMilkTruck.glb",
+      "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/97cb805c6f47bc9449e250bd795c34149f0a870e/Models/CesiumMilkTruck/glTF-Binary/CesiumMilkTruck.glb",
+      "sourceRepository": "https://github.com/KhronosGroup/glTF-Sample-Assets",
+      "sourceCommit": "97cb805c6f47bc9449e250bd795c34149f0a870e",
+      "license": "CC-BY-4.0 with Cesium trademark limitations",
+      "spdx": "LicenseRef-CC-BY-TM",
+      "copyright": "2017, Cesium",
+      "sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49",
+      "files": [
+        {
+          "path": "cesium-milk-truck/CesiumMilkTruck.glb",
+          "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/97cb805c6f47bc9449e250bd795c34149f0a870e/Models/CesiumMilkTruck/glTF-Binary/CesiumMilkTruck.glb",
+          "sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49",
+          "sizeBytes": 369980
+        },
+        {
+          "path": "cesium-milk-truck/LICENSE.md",
+          "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/97cb805c6f47bc9449e250bd795c34149f0a870e/Models/CesiumMilkTruck/LICENSE.md",
+          "sha256": "de1b42f65638330e93aabd5776deb8ad551cc6c28ede1af98b45b5b06b1fa7c2",
+          "sizeBytes": 742
+        },
+        {
+          "path": "cesium-milk-truck/README.md",
+          "url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/97cb805c6f47bc9449e250bd795c34149f0a870e/Models/CesiumMilkTruck/README.md",
+          "sha256": "39232930833aa5a88904068e796c67794d844c6a064a7f3ad5b4d6d7849859c5",
+          "sizeBytes": 980
+        }
+      ]
+    },
+    {
+      "id": "fallback-boxes",
+      "role": "fallback",
+      "displayName": "Fallback Boxes",
+      "path": "fallback/boxes.gltf",
+      "url": "in-repository",
+      "license": "CC0-1.0",
+      "spdx": "CC0-1.0",
+      "copyright": "RenderLab, 2026",
+      "sha256": "b604c5be1bc5b3f648b8bff32613e57984885249f4153ef56d1b0ab751538319",
+      "files": [
+        {
+          "path": "fallback/boxes.gltf",
+          "sha256": "b604c5be1bc5b3f648b8bff32613e57984885249f4153ef56d1b0ab751538319",
+          "sizeBytes": 4093
+        },
+        {
+          "path": "fallback/boxes.bin",
+          "sha256": "bcd71edcc0ba70d6bb7e1c5d3ac2c8865b667e5c05f28593a9c2584bddceaccf",
+          "sizeBytes": 1944
+        },
+        {
+          "path": "fallback/LICENSE.md",
+          "sha256": "b87134a62df2fcc06e4ef3a6c4147cb2079a244f62e1f86668dc3d6cf3042126",
+          "sizeBytes": 267
+        }
+      ]
+    }
+  ]
+}
