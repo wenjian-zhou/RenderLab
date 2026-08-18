@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-08-18",
+  "purpose": "Exact upstream baseline selected by implementation step S0.1. Reviewable without an implicit clone.",
+  "acquisition": {
+    "method": "recursive-git-submodules",
+    "soleSourceBootstrapPath": "git submodule add of NVIDIA-RTX/Donut at the locked commit, then git submodule update --init --recursive",
+    "vcpkg": "not-used",
+    "notes": [
+      "Donut is designed to be consumed as a Git submodule. Recursive submodule init is the sole source bootstrap path.",
+      "Donut/NVRHI/ShaderMake CMake FetchContent is accepted only for the two pinned packages those projects already fetch: DirectX-Headers and the DXC release zip.",
+      "S0.2 must pass the exact DirectX-Headers commit below as NVRHI_DIRECTX_HEADERS_GIT_TAG. Do not leave the upstream default preview tag in place.",
+      "Optional Donut FetchContent packages (Streamline, DLSS, Agility SDK, Aftermath, RTXMU, Vulkan-Headers, Slang) are not part of this baseline."
+    ]
+  },
+  "intendedCMakeOptions": {
+    "DONUT_WITH_NVRHI": true,
+    "DONUT_WITH_DX12": true,
+    "DONUT_WITH_DX11": false,
+    "DONUT_WITH_VULKAN": false,
+    "DONUT_WITH_AFTERMATH": false,
+    "DONUT_WITH_STREAMLINE": false,
+    "DONUT_WITH_DLSS": false,
+    "DONUT_WITH_AUDIO": false,
+    "DONUT_WITH_UNIT_TESTS": false,
+    "DONUT_WITH_STATIC_SHADERS": false,
+    "NVRHI_WITH_DX12": true,
+    "NVRHI_WITH_DX11": false,
+    "NVRHI_WITH_VULKAN": false,
+    "NVRHI_WITH_VALIDATION": true,
+    "NVRHI_WITH_RTXMU": false,
+    "NVRHI_WITH_NVAPI": false,
+    "NVRHI_WITH_AFTERMATH": false,
+    "NVRHI_FETCH_DIRECTX_HEADERS": true,
+    "NVRHI_DIRECTX_HEADERS_GIT_TAG": "d873b344dc540898868697245f100c2a67fe68d9",
+    "SHADERMAKE_FIND_DXC": true,
+    "SHADERMAKE_FIND_FXC": false,
+    "SHADERMAKE_FIND_DXC_VK": false,
+    "SHADERMAKE_FIND_SLANG": false,
+    "SHADERMAKE_DXC_VERSION": "v1.9.2602",
+    "SHADERMAKE_DXC_DATE": "2026_02_20"
+  },
+  "dependencies": [
+    {
+      "name": "donut",
+      "role": "application, scene, shader, and D3D12 device/window ownership",
+      "owner": "NVIDIA-RTX",
+      "sourceUrl": "https://github.com/NVIDIA-RTX/Donut.git",
+      "commit": "bfdebdd7dd5455c503b2737a1967a4ef651c145b",
+      "commitDateUtc": "2026-07-31T00:32:34Z",
+      "subject": "Windows ARM64 build fix merge",
+      "license": "MIT",
+      "acquisition": "git-submodule",
+      "intendedPath": "external/donut",
+      "verifiedRecursiveCheckoutOnWindows": true
+    },
+    {
+      "name": "nvrhi",
+      "role": "D3D12 RHI, resource/binding/pipeline/command abstraction, DXR",
+      "owner": "NVIDIA-RTX",
+      "sourceUrl": "https://github.com/NVIDIA-RTX/NVRHI.git",
+      "commit": "8e8c36e37558acec333204619b95d9d2fcdc4a79",
+      "commitDateUtc": "2026-06-16T18:23:22Z",
+      "subject": "Added optional support for DX12 enhanced barriers (!89)",
+      "license": "MIT",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/nvrhi",
+      "relationship": "exact submodule commit recorded by Donut bfdebdd7dd5455c503b2737a1967a4ef651c145b",
+      "nestedGitSubmodules": false
+    },
+    {
+      "name": "ShaderMake",
+      "role": "HLSL compile driver used by donut_compile_shaders()",
+      "owner": "NVIDIA-RTX",
+      "sourceUrl": "https://github.com/NVIDIA-RTX/ShaderMake.git",
+      "commit": "5daebdbef45088fc2369d441391ecab0eba25e54",
+      "commitDateUtc": "2026-06-03T03:10:28Z",
+      "subject": "Pin ShaderMake DXC to v1.9.2602",
+      "license": "MIT",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/ShaderMake"
+    },
+    {
+      "name": "imgui",
+      "role": "Donut debug UI",
+      "owner": "ocornut",
+      "sourceUrl": "https://github.com/ocornut/imgui.git",
+      "commit": "45acd5e0e82f4c954432533ae9985ff0e1aad6d5",
+      "commitDateUtc": "2025-08-13T15:31:01Z",
+      "versionLabel": "1.92.2b",
+      "license": "MIT",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/thirdparty/imgui"
+    },
+    {
+      "name": "glfw",
+      "role": "window and input used by donut::app::DeviceManager",
+      "owner": "GLFW",
+      "sourceUrl": "https://github.com/glfw/glfw.git",
+      "commit": "7b6aead9fb88b3623e3b3725ebb42670cbe4c579",
+      "commitDateUtc": "2024-02-22T21:22:47Z",
+      "versionLabel": "3.4",
+      "license": "Zlib",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/thirdparty/glfw"
+    },
+    {
+      "name": "cgltf",
+      "role": "glTF 2.0 import used by donut::engine::GltfImporter",
+      "owner": "jkuhlmann",
+      "sourceUrl": "https://github.com/jkuhlmann/cgltf.git",
+      "commit": "fa3b80fa762790192c9532b63c441627416ff300",
+      "commitDateUtc": "2024-07-03T20:00:47Z",
+      "license": "MIT",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/thirdparty/cgltf"
+    },
+    {
+      "name": "stb",
+      "role": "image helpers used by Donut texture loading",
+      "owner": "nothings",
+      "sourceUrl": "https://github.com/nothings/stb.git",
+      "commit": "2e2bef463a5b53ddf8bb788e25da6b8506314c08",
+      "commitDateUtc": "2024-10-18T17:26:20Z",
+      "license": "MIT OR Unlicense",
+      "acquisition": "donut-git-submodule",
+      "intendedPath": "external/donut/thirdparty/stb"
+    },
+    {
+      "name": "jsoncpp",
+      "role": "JSON scene and configuration parsing, amalgamated inside Donut",
+      "owner": "open-source-parsers",
+      "sourceUrl": "https://github.com/open-source-parsers/jsoncpp",
+      "version": "1.9.6",
+      "license": "Public Domain OR MIT",
+      "acquisition": "vendored-amalgam-in-donut",
+      "intendedPath": "external/donut/thirdparty/jsoncpp-amalgam",
+      "notes": "Not a Git submodule. Version is recorded in Donut thirdparty/jsoncpp-amalgam/version.txt at the locked Donut commit."
+    },
+    {
+      "name": "DirectX-Headers",
+      "role": "D3D12 headers required by NVRHI when NVRHI_WITH_DX12 is on",
+      "owner": "Microsoft",
+      "sourceUrl": "https://github.com/microsoft/DirectX-Headers.git",
+      "commit": "d873b344dc540898868697245f100c2a67fe68d9",
+      "upstreamTagResolved": "v1.717.0-preview",
+      "license": "MIT",
+      "acquisition": "nvrhi-fetchcontent",
+      "notes": "NVRHI CMake defaults to tag v1.717.0-preview. RenderLab locks the resolved commit and S0.2 must set NVRHI_DIRECTX_HEADERS_GIT_TAG to that commit."
+    },
+    {
+      "name": "DirectXShaderCompiler",
+      "role": "DXC used by ShaderMake to emit DXIL for D3D12",
+      "owner": "Microsoft",
+      "sourceUrl": "https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2602",
+      "version": "v1.9.2602",
+      "releaseName": "DX Compiler Release for Feb 2026",
+      "publishedUtc": "2026-02-26T17:49:15Z",
+      "windowsAsset": {
+        "name": "dxc_2026_02_20.zip",
+        "url": "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602/dxc_2026_02_20.zip",
+        "sizeBytes": 27061312,
+        "sha256": "A1E89031421CF3C1FCA6627766AB3020CA4F962AC7E2CAA7FAB2B33A8436151E"
+      },
+      "license": "University of Illinois Open Source License",
+      "acquisition": "shadermake-fetchcontent"
+    }
+  ],
+  "explicitlyNotAcquired": [
+    {
+      "name": "Vulkan-Headers",
+      "reason": "DONUT_WITH_VULKAN and NVRHI_WITH_VULKAN will be off. NVRHI default tag v1.4.352 resolves to commit 015e25c3c91b70eb1a754d36fb14c4ba6ad9b0b9 and is unused.",
+      "defaultNvrhiTag": "v1.4.352",
+      "resolvedCommitIfEnabled": "015e25c3c91b70eb1a754d36fb14c4ba6ad9b0b9"
+    },
+    {
+      "name": "Microsoft.Direct3D.D3D12 Agility SDK",
+      "reason": "Donut does not fetch Agility SDK unless the parent project sets DONUT_D3D_AGILITY_SDK_URL. The installed Windows SDK 10.0.22621.0 meets NVRHI's documented DX12 requirement. Preview Agility packages are deferred until a later step proves they are required."
+    },
+    {
+      "name": "Streamline",
+      "reason": "DONUT_WITH_STREAMLINE will be off."
+    },
+    {
+      "name": "DLSS",
+      "reason": "DONUT_WITH_DLSS will be off. Donut's default DLSS fetch tag a8ed84e2d1cc1efa7bef63fb9394be6cb06c0d74 is unused."
+    },
+    {
+      "name": "RTXMU",
+      "reason": "NVRHI_WITH_RTXMU will be off. RenderLab owns BLAS/TLAS policy."
+    },
+    {
+      "name": "NVAPI",
+      "reason": "NVRHI_WITH_NVAPI will be off for the first raster and DXR slices."
+    },
+    {
+      "name": "Donut-Samples",
+      "reason": "Reference-only. Not a build dependency. Reviewed samples commit d766a7697b67 still pins older Donut commit 69082638b014e3dae85a42c44b63e4187857c2c9."
+    },
+    {
+      "name": "vcpkg packages",
+      "reason": "No RenderLab-owned dependency requires vcpkg at this baseline."
+    }
+  ],
+  "referenceApplication": {
+    "frameworkClasses": [
+      "donut::app::DeviceManager",
+      "donut::app::ApplicationBase"
+    ],
+    "primarySample": "NVIDIA-RTX/Donut-Samples examples/basic_triangle",
+    "secondarySamples": [
+      "examples/headless",
+      "examples/deferred_shading",
+      "examples/rt_triangle",
+      "examples/rt_shadows"
+    ],
+    "notUsedAsTemplate": "feature_demo/FeatureDemo.cpp"
+  }
+}

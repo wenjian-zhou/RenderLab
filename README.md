@@ -12,8 +12,9 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is now a planning baseline. It deliberately contains no application target and no
-unlocked Donut dependency. The next executable task is **S0.1: select and record the Donut/NVRHI
-baseline**.
+Donut submodule yet. **S0.1 is complete**: the Donut/NVRHI baseline is recorded in
+[`dependencies.lock.json`](dependencies.lock.json). The next executable task is **S0.2: add
+Donut as the pinned external dependency**.
 
 ## Plans
 
@@ -21,6 +22,10 @@ baseline**.
 - [Detailed implementation plan](IMPLEMENTATION_PLAN.md) is the authoritative English execution
   plan, including step order, deliverables, verification, and exit gates.
 - [Progress tracker](docs/PROGRESS.md) records the current step and evidence as work proceeds.
+- [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
+  and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
+- [Build environment](docs/build-environment.md) records the validated Windows toolchain.
+- [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 
 If these documents disagree, `IMPLEMENTATION_PLAN.md` controls execution scope, while
 `NEW_PLAN.md` controls high-level intent.
