@@ -5,7 +5,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S0.3 - Create the minimal RenderLab application**
+- Active step: **S0.4 - Load one fixed scene and camera**
 - State: **Not started**
 - Last updated: 2026-08-18
 - Current branch: `main`
@@ -97,6 +97,52 @@ Known limitations:
   Donut core/engine/render/app targets stay EXCLUDE_FROM_ALL until S0.3 links them.
   The RenderLab application target remains disabled.
 Next step: S0.3 - Create the minimal RenderLab application
+```
+
+### S0.3 - Create the minimal RenderLab application
+
+```text
+Step: S0.3
+State: Complete
+Date: 2026-08-18
+Commit: pending
+Commands:
+  cmake --fresh --preset windows-vs2022
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene dummy.gltf
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --output out.png
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --frames 30 --dx12
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --frames 30
+  60-second Debug windowed run, then WM_CLOSE
+Automated tests: CLI parse/help/unimplemented-option checks; --frames 30 Debug and Release smoke
+GPU validation/capture:
+  Debug 30-frame run: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, DXR 1.1, SM 6.7
+  Debug and Release --frames 30 resized 1280x720 -> 1344x784 and exited 0
+  Debug 60-second run printed the same capability report, resized to 1280x720, and closed with no NVRHI or D3D12 error
+Artifacts:
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/CMakeLists.txt
+  cmake/Donut.cmake
+  CMakeLists.txt
+  CMakePresets.json
+  build.bat
+  README.md
+  docs/PROGRESS.md
+  docs/build-environment.md
+  .github/workflows/windows.yml
+  .gitignore
+Known limitations:
+  --scene is parsed and rejected until S0.4
+  --headless and --output are parsed and rejected until S0.5
+  --frames is implemented so smoke and resize can exit without a second runtime
+  DXGI enumerated the NVIDIA adapter twice; software/WARP adapters are skipped
+  No scene, GBuffer, RDG, or DXR pass is implemented
+Next step: S0.4 - Load one fixed scene and camera
 ```
 
 Selected baseline:

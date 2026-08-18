@@ -80,9 +80,17 @@ The locked NVRHI D3D12 backend reports:
   `D3D12_RAYTRACING_TIER_1_0` is present.
 - `Feature::RayQuery` when `D3D12_RAYTRACING_TIER_1_1` is present.
 
-An RTX 4070 SUPER with driver 576.88 is expected to expose DXR 1.1. S0.3 must print the
-adapter name, driver version when available, NVRHI backend, DXR tier, and shader model.
-Unsupported DXR hardware must still start the raster path.
+An RTX 4070 SUPER with driver 576.88 is expected to expose DXR 1.1. S0.3 printed:
+
+- Adapter: `NVIDIA GeForce RTX 4070 SUPER`
+- Driver version: `32.0.15.7688`
+- NVRHI backend: `D3D12`
+- DXR tier: `1.1`
+- Shader model: `6.7`
+
+Unsupported DXR hardware must still start the raster path. The Microsoft Basic Render
+Driver is enumerated and skipped. DXGI listed the NVIDIA adapter twice on this host;
+RenderLab selects a non-software adapter and prefers NVIDIA.
 
 ## PIX
 

@@ -23,17 +23,18 @@ if(MSVC_VERSION LESS 1938)
     message(FATAL_ERROR "RenderLab requires MSVC 19.38 or newer.")
 endif()
 
-option(RENDERLAB_BUILD_APPLICATION "Build the Donut/NVRHI application" OFF)
+option(RENDERLAB_BUILD_APPLICATION "Build the Donut/NVRHI application" ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 include(cmake/ProjectOptions.cmake)
 include(cmake/Donut.cmake)
 
 if(RENDERLAB_BUILD_APPLICATION)
-    message(
-        FATAL_ERROR
-        "The application target is intentionally disabled until implementation step S0.3. "
-        "See IMPLEMENTATION_PLAN.md."
-    )
+    add_subdirectory(src)
+    message(STATUS "RenderLab application target: enabled")
+else()
+    message(STATUS "RenderLab application target: disabled")
 endif()
 
 message(STATUS "RenderLab Donut/NVRHI dependency configured successfully.")

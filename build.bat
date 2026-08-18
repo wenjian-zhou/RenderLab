@@ -24,7 +24,11 @@ echo.
 echo [RenderLab] Solution generated successfully:
 echo %RENDERLAB_SOLUTION%
 echo.
-echo The application target will be added during implementation step S0.3.
+echo Build the application with:
+echo   cmake --build --preset windows-debug
+echo   cmake --build --preset windows-release
+echo.
+echo The executable is written to out\build\windows-vs2022\bin\<Config>\RenderLab.exe
 exit /b 0
 
 :usage

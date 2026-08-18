@@ -11,10 +11,10 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.2 is complete**: Donut is pinned under
-[`external/donut`](external/donut) at the commit recorded in
-[`dependencies.lock.json`](dependencies.lock.json). The application target remains disabled.
-The next executable task is **S0.3: create the minimal RenderLab application**.
+This branch is a Donut/NVRHI planning baseline. **S0.3 is complete**: the application target
+subclasses `donut::app::ApplicationBase` and lets `donut::app::DeviceManager` own the window,
+D3D12 device, queues, fences, and swap chain. The next executable task is **S0.4: load one
+fixed scene and camera**.
 
 ## Plans
 
@@ -64,4 +64,29 @@ cmake --build --preset windows-release
 ```
 
 CMake enables only the D3D12 Donut/NVRHI backend. DX11, Vulkan, Streamline, DLSS, Aftermath,
-and RTXMU stay off. The application target remains disabled until S0.3.
+and RTXMU stay off.
+
+## Run
+
+After a Debug or Release build:
+
+```powershell
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe
+.\out\build\windows-vs2022\bin\Release\RenderLab.exe --frames 30
+```
+
+The process opens a window, clears the back buffer, draws the baseline ImGui panel, and
+presents through Donut. Startup prints the selected adapter, driver version when DXGI
+exposes it, NVRHI backend, DXR tier, and shader model. Hardware without DXR still starts
+the raster path.
+
+Command-line parsing is stable:
+
+| Option | S0.3 behavior |
+|---|---|
+| `--help` | print usage and exit |
+| `--frames <n>` | present `n` frames, then exit |
+| `--scene <path>` | parsed; reports `not implemented` until S0.4 |
+| `--headless` | parsed; reports `not implemented` until S0.5 |
+| `--output <path>` | parsed; reports `not implemented` until S0.5 |
+| `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |

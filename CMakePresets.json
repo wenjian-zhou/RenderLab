@@ -20,7 +20,7 @@
       },
       "binaryDir": "${sourceDir}/out/build/windows-vs2022",
       "cacheVariables": {
-        "RENDERLAB_BUILD_APPLICATION": "OFF"
+        "RENDERLAB_BUILD_APPLICATION": "ON"
       }
     }
   ],
