@@ -8,7 +8,7 @@
   "configurePresets": [
     {
       "name": "windows-vs2022",
-      "displayName": "Visual Studio 2022 x64",
+      "displayName": "Visual Studio 2022 x64 (planning baseline)",
       "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "x64",
@@ -19,21 +19,8 @@
         "strategy": "set"
       },
       "binaryDir": "${sourceDir}/out/build/windows-vs2022",
-      "environment": {
-        "VCPKG_BINARY_SOURCES": "clear;files,${sourceDir}/out/vcpkg-binary-cache,readwrite",
-        "VCPKG_DISABLE_METRICS": "1",
-        "VCPKG_DOWNLOADS": "${sourceDir}/out/vcpkg-downloads",
-        "VCPKG_ROOT": "${sourceDir}/external/vcpkg",
-        "X_VCPKG_REGISTRIES_CACHE": "${sourceDir}/out/vcpkg-registries"
-      },
       "cacheVariables": {
-        "BUILD_TESTING": "ON",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/external/vcpkg/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_HOST_TRIPLET": "x64-windows-static-md",
-        "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
-        "VCPKG_MANIFEST_INSTALL": "ON",
-        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+        "RENDERLAB_BUILD_APPLICATION": "OFF"
       }
     }
   ],
@@ -47,30 +34,6 @@
       "name": "windows-release",
       "configurePreset": "windows-vs2022",
       "configuration": "Release"
-    }
-  ],
-  "testPresets": [
-    {
-      "name": "windows-debug",
-      "configurePreset": "windows-vs2022",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "windows-release",
-      "configurePreset": "windows-vs2022",
-      "configuration": "Release",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
     }
   ]
 }

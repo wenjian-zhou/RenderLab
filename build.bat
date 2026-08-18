@@ -11,7 +11,7 @@ if not "%~1"=="" goto :usage_error
 where cmake.exe >nul 2>nul
 if errorlevel 1 goto :cmake_missing
 
-echo [RenderLab] Generating the Visual Studio 2022 x64 solution...
+echo [RenderLab] Generating the Visual Studio 2022 x64 planning baseline...
 cmake.exe --fresh --preset windows-vs2022
 if errorlevel 1 goto :generation_failed
 
@@ -21,12 +21,14 @@ if not exist "%RENDERLAB_SOLUTION%" goto :solution_missing
 echo.
 echo [RenderLab] Solution generated successfully:
 echo %RENDERLAB_SOLUTION%
+echo.
+echo The application target will be added during implementation step S0.3.
 exit /b 0
 
 :usage
 echo Usage: build.bat
 echo.
-echo Generates the Visual Studio 2022 x64 solution without building it.
+echo Generates the Visual Studio 2022 x64 planning-baseline solution.
 exit /b 0
 
 :usage_error

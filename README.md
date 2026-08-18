@@ -1,41 +1,52 @@
-# RenderLab
+# Donut NVRHI Rendering Lab
 
-RenderLab is a Windows rendering laboratory focused on D3D12, DXR, and reproducible graphics
-experiments.
+RenderLab is a Windows real-time rendering architecture project built on NVIDIA Donut and
+NVRHI. Its two primary learning deliverables are a small, explainable render dependency graph
+and a scene-level DXR architecture. The raster pipeline is built first so both systems evolve
+inside a working renderer instead of as isolated experiments.
 
-## Requirements
+## Repository State
 
+The repository was reset on 2026-08-18 after retiring the original from-scratch D3D12 route.
+The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
+`856b4c2`.
+
+This branch is now a planning baseline. It deliberately contains no application target and no
+unlocked Donut dependency. The next executable task is **S0.1: select and record the Donut/NVRHI
+baseline**.
+
+## Plans
+
+- [Revised project direction](NEW_PLAN.md) is the original Chinese design brief.
+- [Detailed implementation plan](IMPLEMENTATION_PLAN.md) is the authoritative English execution
+  plan, including step order, deliverables, verification, and exit gates.
+- [Progress tracker](docs/PROGRESS.md) records the current step and evidence as work proceeds.
+
+If these documents disagree, `IMPLEMENTATION_PLAN.md` controls execution scope, while
+`NEW_PLAN.md` controls high-level intent.
+
+## Planning-Baseline Build
+
+Requirements:
+
+- Windows 11
 - Visual Studio 2022 with **Desktop development with C++**
+- MSVC 19.38 or newer
 - CMake 3.25 or newer
-- Git for Windows
-- Windows PowerShell
-- Windows SDK 10.0.22621.0 or newer
 
-## Generate the Visual Studio Solution
-
-From PowerShell:
+Generate the placeholder solution:
 
 ```powershell
-.\scripts\bootstrap.ps1
 .\build.bat
 ```
 
-The script generates, but does not build, the solution at:
-
-```text
-out/build/windows-vs2022/RenderLab.sln
-```
-
-Open the solution in Visual Studio and use the Debug or Release x64 configuration. See
-[Build Environment](docs/build-environment.md) for command-line build and test instructions.
-
-Command-line verification is also available:
+Or configure and build it directly:
 
 ```powershell
+cmake --fresh --preset windows-vs2022
 cmake --build --preset windows-debug
-ctest --preset windows-debug
 cmake --build --preset windows-release
-ctest --preset windows-release
 ```
 
-The implementation roadmap is maintained in [PLAN.md](PLAN.md).
+The application remains disabled until Donut/NVRHI is pinned and integrated in Stage 0. This
+prevents the new branch from silently falling back to the retired D3D12 ownership model.

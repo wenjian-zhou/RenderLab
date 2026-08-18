@@ -1,4 +1,4 @@
-name: Windows build and CPU tests
+name: Windows planning baseline
 
 on:
   push:
@@ -9,34 +9,22 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  configure-and-build:
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 20
 
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Bootstrap locked dependencies
+      - name: Configure planning baseline
         shell: powershell
-        run: ./scripts/bootstrap.ps1
-
-      - name: Configure Visual Studio solution
-        shell: powershell
-        run: cmake --preset windows-vs2022
+        run: cmake --fresh --preset windows-vs2022
 
       - name: Build Debug
         shell: powershell
         run: cmake --build --preset windows-debug --parallel
 
-      - name: Test Debug CPU targets
-        shell: powershell
-        run: ctest --preset windows-debug --label-regex cpu
-
       - name: Build Release
         shell: powershell
         run: cmake --build --preset windows-release --parallel
-
-      - name: Test Release CPU targets
-        shell: powershell
-        run: ctest --preset windows-release --label-regex cpu

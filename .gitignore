@@ -1,8 +1,6 @@
 /out/
-/vcpkg_installed/
-/external/vcpkg/
-/external/nuget/
-/assets/downloaded/
+/scenes/downloaded/
+/results/
 /references/
 /CMakeUserPresets.json
 /.vs/
