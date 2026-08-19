@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneCatalog.h"
+#include "renderer/RendererData.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
@@ -37,6 +38,8 @@ namespace renderlab
         uint32_t meshCount = 0;
         uint32_t instanceCount = 0;
         uint32_t materialCount = 0;
+        uint32_t drawCount = 0;
+        uint32_t skippedDrawCount = 0;
         donut::math::float3 cameraPosition = 0.f;
         donut::math::float3 cameraDirection = 0.f;
         donut::math::float3 cameraTarget = 0.f;
@@ -102,6 +105,8 @@ namespace renderlab
         void ApplyCameraPreset();
         void UpdateSceneHud();
         void ClearBackBuffer(nvrhi::IFramebuffer* framebuffer);
+        void RebuildDrawList();
+        void UpdateFrameViewConstants();
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;
@@ -111,6 +116,9 @@ namespace renderlab
         nvrhi::CommandListHandle m_commandList;
         DeviceCapabilities m_capabilities;
         SceneHudState m_sceneHud;
+        SceneDrawList m_drawList;
+        FrameConstants m_frameConstants = {};
+        ViewConstants m_viewConstants = {};
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

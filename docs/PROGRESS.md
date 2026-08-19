@@ -5,13 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S1.2 - Define frame, view, instance, and material data**
+- Active step: **S1.3 - Create persistent GBuffer targets and resize handling**
 - State: **Not started**
 - Last updated: 2026-08-19
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
-- Stage 1: **S1.1 complete**; GBuffer textures and drawing remain S1.3 / S1.4
+- Stage 1: **S1.1 and S1.2 complete**; GBuffer textures and drawing remain S1.3 / S1.4
 
 ## Completed Repository Reset
 
@@ -287,6 +287,68 @@ Known limitations:
   Lighting units and HDR background color wait for S2.1
   Format probe is a local D3D12 tool, not a CMake target
 Next step: S1.2 - Define frame, view, instance, and material data
+```
+
+### S1.2 - Define frame, view, instance, and material data
+
+```text
+Step: S1.2
+State: Complete
+Date: 2026-08-19
+Commit: pending
+Commands:
+  cmake --preset windows-vs2022
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 8
+Automated tests: RenderLabDataContractTests Debug and Release
+  layout sizes/offsets for Frame/View/Instance/Material
+  GBuffer flag pack/unpack
+  two metal-rough materials (BlueDielectric vs GoldMetal) convert to distinct params
+  missing optional textures use documented fallbacks; AO = 1
+  conversion is deterministic
+  specular-gloss and alpha-tested domains are rejected and logged
+  two SceneGraph transforms produce distinct draw records
+  FirstPersonCamera view is mirrored; FOV 45 deg is converted to 0.78540 rad
+  world-clip-world row-vector round-trip
+GPU validation/capture:
+  Debug and Release --lock-camera --frames 8: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, DXR 1.1, SM 6.7, errors=0
+  Fallback boxes: meshes=3 instances=3 materials=3 opaqueDraws=3 skipped=0
+    GroundDielectric / BlueDielectric / GoldMetal are distinct factor-only materials
+  Cesium Milk Truck: meshes=2 instances=3 materials=4 opaqueDraws=5 skipped=0
+    truck (flags=0x1 textured) vs glass (0.000, 0.041, 0.021) vs window_trim vs wheels
+    wheel translations (0.000, 0.428, 1.433) and (0.000, 0.428, -1.352) are distinct
+  View: mirrored=true fov=0.78540 rad zNear=0.100 viewport=1280x720
+Artifacts:
+  src/shaders/renderer_cb.h
+  src/shaders/gbuffer_encoding.hlsli
+  src/renderer/GBufferContract.h
+  src/renderer/RendererData.h
+  src/renderer/RendererData.cpp
+  tests/test_renderer_data.cpp
+  tests/CMakeLists.txt
+  src/CMakeLists.txt
+  CMakeLists.txt
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  docs/renderer-data.md
+  docs/g-buffer.md
+  docs/renderer-conventions.md
+  README.md
+  .github/workflows/windows.yml
+  docs/PROGRESS.md
+Known limitations:
+  GBuffer textures are not created; S1.3 owns lifetime and resize
+  Meshes are still not drawn; S1.4 consumes these draw records
+  1x1 fallback GPU textures are documented, not uploaded, until S1.4 needs bound SRVs
+  Fallback-boxes bakes instance positions into vertices, so node transforms are identity
+  Emissive is ignored; it is not a Stage 1 GBuffer channel
+  Skinned, alpha-tested, transmissive, and spec-gloss geometry is logged and omitted
+Next step: S1.3 - Create persistent GBuffer targets and resize handling
 ```
 
 Selected baseline:

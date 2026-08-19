@@ -73,9 +73,17 @@ jobs:
         shell: powershell
         run: cmake --build --preset windows-debug --parallel
 
+      - name: Run S1.2 CPU data-contract tests (Debug)
+        shell: powershell
+        run: .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+
       - name: Build Release
         shell: powershell
         run: cmake --build --preset windows-release --parallel
+
+      - name: Run S1.2 CPU data-contract tests (Release)
+        shell: powershell
+        run: .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
 
       - name: Headless smoke when an NVIDIA GPU is present
         shell: powershell

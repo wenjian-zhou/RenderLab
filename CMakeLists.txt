@@ -32,6 +32,8 @@ include(cmake/Donut.cmake)
 
 if(RENDERLAB_BUILD_APPLICATION)
     add_subdirectory(src)
+    include(CTest)
+    add_subdirectory(tests)
     message(STATUS "RenderLab application target: enabled")
 else()
     message(STATUS "RenderLab application target: disabled")

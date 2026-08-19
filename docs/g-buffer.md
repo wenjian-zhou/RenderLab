@@ -176,8 +176,16 @@ Each S2 lighting input has **exactly one** source. No second copy exists in anot
 
 ## 5. CPU and HLSL Declarations
 
-These types are the implementation contract for S1.2 / S1.3 / S1.4. They are documentation
-until those steps add the real headers. Do not invent additional channels when coding them.
+Implemented in S1.2:
+
+- C++ flags, formats, and pack helpers: [`../src/renderer/GBufferContract.h`](../src/renderer/GBufferContract.h)
+- HLSL encode/decode: [`../src/shaders/gbuffer_encoding.hlsli`](../src/shaders/gbuffer_encoding.hlsli)
+- Frame/view/instance/material cbuffers: [`../src/shaders/renderer_cb.h`](../src/shaders/renderer_cb.h)
+- Donut → draw records: [`../src/renderer/RendererData.h`](../src/renderer/RendererData.h) and [`renderer-data.md`](renderer-data.md)
+
+Cbuffer alignment for view matrices is 16 bytes per `float4` / 64 bytes per `float4x4`,
+row-major, as in [`renderer-conventions.md`](renderer-conventions.md). S1.2 asserts CPU
+offsets in `RenderLabDataContractTests`.
 
 ```cpp
 namespace renderlab
@@ -320,6 +328,7 @@ contract.
 
 ## 8. Explicitly Deferred
 
+- Frame/view/instance/material CPU+HLSL contracts and draw records: S1.2 (complete)
 - Texture creation, resize, and debug UI byte counts: S1.3
 - Mesh drawing and material evaluation: S1.4
 - Channel debug views and screenshots: S1.5 / S1.6

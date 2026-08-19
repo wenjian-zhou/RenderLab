@@ -11,12 +11,13 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete** and **S1.1 is
-complete**: renderer conventions and the first GBuffer contract are frozen. The application
+This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, **S1.1 is
+complete**, and **S1.2 is complete**: frame/view/instance/material CPU+HLSL contracts
+exist, and Donut glTF meshes map to renderer-owned draw records. The application
 loads the fixed Cesium Milk Truck glTF scene through Donut, presents a stable clear + UI
-frame, emits stable CPU/GPU markers, and can be captured with PIX. Device, queue, fence, and
-swap-chain ownership stay in `donut::app::DeviceManager`. Geometry is loaded but not drawn.
-The next executable task is **S1.2: define frame, view, instance, and material data**.
+frame, and logs the mapped draws. Device, queue, fence, and swap-chain ownership stay
+in `donut::app::DeviceManager`. Geometry is loaded but not drawn. The next executable
+task is **S1.3: create persistent GBuffer targets and resize handling**.
 
 ## Plans
 
@@ -30,6 +31,7 @@ The next executable task is **S1.2: define frame, view, instance, and material d
 - [Capture guide](docs/capture-guide.md) is the M0 PIX checklist. Do not commit capture files.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
 - [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, and clears.
+- [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 
@@ -67,6 +69,7 @@ Or configure and build it directly:
 cmake --fresh --preset windows-vs2022
 cmake --build --preset windows-debug
 cmake --build --preset windows-release
+.\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
 ```
 
 CMake enables only the D3D12 Donut/NVRHI backend. DX11, Vulkan, Streamline, DLSS, Aftermath,

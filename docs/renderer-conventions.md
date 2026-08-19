@@ -56,8 +56,9 @@ not from a vertex-shader clip position.
 Do not use `mul(M, v)` for these matrices. Constant-buffer `float4x4` members are 64 bytes,
 16-byte aligned, and copied from `donut::math::float4x4` without transpose.
 
-Required view-constant names for S1.2 (exact C++/HLSL structs are specified there, but the
-transforms themselves are frozen here):
+Required view-constant names (C++/HLSL structs live in
+[`../src/shaders/renderer_cb.h`](../src/shaders/renderer_cb.h) and
+[`renderer-data.md`](renderer-data.md)):
 
 | Name | Meaning |
 |---|---|

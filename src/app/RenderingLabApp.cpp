@@ -1,5 +1,6 @@
 #include "RenderingLabApp.h"
 #include "FrameMarkers.h"
+#include "renderer/RendererData.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -170,7 +171,7 @@ namespace renderlab
             return;
         }
 
-        ImGui::TextUnformatted("S0.5 observability");
+        ImGui::TextUnformatted("S1.2 renderer data");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -185,6 +186,8 @@ namespace renderlab
         ImGui::Text("Meshes: %u", m_sceneHud.meshCount);
         ImGui::Text("Instances: %u", m_sceneHud.instanceCount);
         ImGui::Text("Materials: %u", m_sceneHud.materialCount);
+        ImGui::Text("Draws: %u", m_sceneHud.drawCount);
+        ImGui::Text("Skipped draws: %u", m_sceneHud.skippedDrawCount);
         ImGui::Text(
             "Camera: (%.3f, %.3f, %.3f)",
             m_sceneHud.cameraPosition.x,
@@ -249,6 +252,13 @@ namespace renderlab
             return false;
         }
 
+        std::string layoutError;
+        if (!ValidateRendererDataLayout(layoutError))
+        {
+            log::error("Renderer data layout is invalid: %s", layoutError.c_str());
+            return false;
+        }
+
         BeginLoadingScene(m_fileSystem, m_options.scene.virtualPath);
         if (!IsSceneLoaded() || !m_scene)
         {
@@ -298,6 +308,8 @@ namespace renderlab
                 if (m_scene)
                 {
                     m_scene->Refresh(m_commandList, GetFrameIndex());
+                    RebuildDrawList();
+                    UpdateFrameViewConstants();
                 }
             }
             {
@@ -322,6 +334,7 @@ namespace renderlab
         }
 
         UpdateSceneHud();
+        UpdateFrameViewConstants();
         GetDeviceManager()->SetInformativeWindowTitle("RenderLab");
     }
 
@@ -333,6 +346,7 @@ namespace renderlab
         (void)sampleCount;
         m_backBufferWidth = width;
         m_backBufferHeight = height;
+        UpdateFrameViewConstants();
         log::info("Back buffer resized to %u x %u", width, height);
     }
 
@@ -371,6 +385,8 @@ namespace renderlab
 
         m_scene->FinishedLoading(GetFrameIndex());
         ApplyCameraPreset();
+        RebuildDrawList();
+        UpdateFrameViewConstants();
         UpdateSceneHud();
 
         log::info(
@@ -381,11 +397,42 @@ namespace renderlab
         {
             log::info("Scene license: %s", m_options.scene.license.c_str());
         }
+        for (const DiagnosticMessage& message : m_drawList.messages)
+        {
+            log::warning("%s", message.text.c_str());
+        }
         log::info(
-            "Scene contents: meshes=%u instances=%u materials=%u",
+            "Scene contents: meshes=%u instances=%u materials=%u opaqueDraws=%u skipped=%u",
             m_sceneHud.meshCount,
             m_sceneHud.instanceCount,
-            m_sceneHud.materialCount);
+            m_sceneHud.materialCount,
+            m_sceneHud.drawCount,
+            m_sceneHud.skippedDrawCount);
+        for (const DrawRecord& draw : m_drawList.draws)
+        {
+            const donut::math::float3 translation(
+                draw.instance.matLocalToWorld[3][0],
+                draw.instance.matLocalToWorld[3][1],
+                draw.instance.matLocalToWorld[3][2]);
+            log::info(
+                "  draw[%u] mesh='%s' material='%s' baseColor=(%.3f, %.3f, %.3f) "
+                "roughness=%.3f metallic=%.3f aoStrength=%.3f flags=0x%x "
+                "translation=(%.3f, %.3f, %.3f) indices=%u",
+                draw.drawIndex,
+                draw.meshName.c_str(),
+                draw.materialName.c_str(),
+                draw.material.baseColorFactor.x,
+                draw.material.baseColorFactor.y,
+                draw.material.baseColorFactor.z,
+                draw.material.roughness,
+                draw.material.metallic,
+                draw.material.occlusionStrength,
+                draw.material.flags,
+                translation.x,
+                translation.y,
+                translation.z,
+                draw.geometry.indexCount);
+        }
         log::info(
             "Camera preset '%s': position=(%.3f, %.3f, %.3f) target=(%.3f, %.3f, %.3f) "
             "up=(%.3f, %.3f, %.3f) vfov=%.3f deg znear=%.3f locked=%s",
@@ -402,6 +449,13 @@ namespace renderlab
             m_options.camera.verticalFovDegrees,
             m_options.camera.zNear,
             m_options.lockCamera ? "true" : "false");
+        log::info(
+            "View constants: mirrored=%s fov=%.5f rad zNear=%.3f viewport=%.0fx%.0f",
+            (m_viewConstants.flags & RendererViewFlag_Mirrored) ? "true" : "false",
+            m_viewConstants.verticalFovRadians,
+            m_viewConstants.zNear,
+            m_viewConstants.viewportSize.x,
+            m_viewConstants.viewportSize.y);
     }
 
     bool RenderingLabApp::ShouldRenderUnfocused()
@@ -451,6 +505,44 @@ namespace renderlab
         m_camera.LookAt(m_options.camera.position, m_options.camera.target, m_options.camera.up);
     }
 
+    void RenderingLabApp::RebuildDrawList()
+    {
+        if (!m_scene || !m_scene->GetSceneGraph())
+        {
+            m_drawList = {};
+            return;
+        }
+        m_drawList = BuildSceneDrawList(*m_scene->GetSceneGraph());
+    }
+
+    void RenderingLabApp::UpdateFrameViewConstants()
+    {
+        m_frameConstants = MakeFrameConstants(GetFrameIndex());
+
+        uint32_t width = m_backBufferWidth;
+        uint32_t height = m_backBufferHeight;
+        if (width == 0 || height == 0)
+        {
+            int windowWidth = 0;
+            int windowHeight = 0;
+            GetDeviceManager()->GetWindowDimensions(windowWidth, windowHeight);
+            if (windowWidth > 0 && windowHeight > 0)
+            {
+                width = static_cast<uint32_t>(windowWidth);
+                height = static_cast<uint32_t>(windowHeight);
+            }
+        }
+
+        ViewFillDesc desc;
+        desc.worldToView = m_camera.GetWorldToViewMatrix();
+        desc.cameraPosition = m_camera.GetPosition();
+        desc.verticalFovDegrees = m_options.camera.verticalFovDegrees;
+        desc.zNear = m_options.camera.zNear;
+        desc.viewportWidth = static_cast<float>(width);
+        desc.viewportHeight = static_cast<float>(height);
+        m_viewConstants = MakeViewConstants(desc);
+    }
+
     void RenderingLabApp::UpdateSceneHud()
     {
         m_sceneHud.sceneId = m_options.scene.id;
@@ -468,6 +560,8 @@ namespace renderlab
             m_sceneHud.meshCount = 0;
             m_sceneHud.instanceCount = 0;
             m_sceneHud.materialCount = 0;
+            m_sceneHud.drawCount = 0;
+            m_sceneHud.skippedDrawCount = 0;
             return;
         }
 
@@ -475,6 +569,8 @@ namespace renderlab
         m_sceneHud.meshCount = static_cast<uint32_t>(graph->GetMeshes().size());
         m_sceneHud.instanceCount = static_cast<uint32_t>(graph->GetMeshInstances().size());
         m_sceneHud.materialCount = static_cast<uint32_t>(graph->GetMaterials().size());
+        m_sceneHud.drawCount = static_cast<uint32_t>(m_drawList.draws.size());
+        m_sceneHud.skippedDrawCount = m_drawList.skippedCount;
     }
 
     void RenderingLabApp::QueryCapabilities()
