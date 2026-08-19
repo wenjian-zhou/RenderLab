@@ -357,7 +357,7 @@ Next step: S1.3 - Create persistent GBuffer targets and resize handling
 Step: S1.3
 State: Complete
 Date: 2026-08-19
-Commit: pending
+Commit: a2eb470073020ce3373f2f5fcdef0cd0eb328b2e
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
