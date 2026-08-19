@@ -71,7 +71,7 @@ flip the normal as specified in [`renderer-conventions.md`](renderer-conventions
 | Channel | Value | Range | Encoding |
 |---|---|---|---|
 | R | Metallic | `[0, 1]` | glTF `metallicFactor * metallicRoughnessTexture.b` |
-| G | Ambient occlusion | `[0, 1]` | glTF `occlusionTexture.r` scaled by `occlusionStrength`. Default `1` when no occlusion texture exists. |
+| G | Ambient occlusion | `[0, 1]` | glTF `occlusionTexture.r`, then `lerp(1, occlusion, occlusionStrength)`. Missing texture or strength `0` yields `1`. |
 | B | Material flags | `uint8` packed as UNORM | See below. |
 | A | Unused | Write `1` | Reserved. |
 
@@ -117,7 +117,8 @@ Stored value is device depth in `[0, 1]` with **clear = 0** (infinity). Near pla
 
 - `format = nvrhi::Format::D32`
 - `isTypeless = true`
-- `isRenderTarget` is not required; depth-stencil + shader resource
+- `isRenderTarget = true` (required: NVRHI only sets `ALLOW_DEPTH_STENCIL` when this flag is on)
+- `isShaderResource = true` (default; needed for the lighting SRV)
 - `useClearValue = true`, `clearValue = nvrhi::Color(0.f)`
 - `initialState = nvrhi::ResourceStates::DepthWrite`
 

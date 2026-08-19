@@ -44,9 +44,14 @@ HLSL must match:
 ```hlsl
 #pragma pack_matrix(row_major)
 
+// Homogeneous round-trip. Do not replace clip.w with 1; that is NDC, not clip.
 float4 clipPos = mul(float4(worldPos, 1.0), matWorldToClip);
-float3 worldPos = mul(float4(clipPos.xyz, 1.0), matClipToWorld).xyz; // after divide
+float4 worldPosH = mul(clipPos, matClipToWorld);
+float3 worldPos = worldPosH.xyz / worldPosH.w;
 ```
+
+GBuffer lighting reconstructs from device depth and pixel UV using the formula in section 5,
+not from a vertex-shader clip position.
 
 Do not use `mul(M, v)` for these matrices. Constant-buffer `float4x4` members are 64 bytes,
 16-byte aligned, and copied from `donut::math::float4x4` without transpose.
@@ -69,19 +74,37 @@ No temporal jitter. Pixel-offset / TAA matrices are out of scope before M4.
 
 glTF 2.0 declares **counter-clockwise** triangles as front-facing in object/world space.
 
-The right-handed world to left-handed view transform flips winding. After that transform,
-front faces are **clockwise** in D3D clip space (NDC Y up).
+`FirstPersonCamera::GetWorldToViewMatrix()` always has `determinant(linear) < 0` because
+view is left-handed in a right-handed world (`right = cross(forward, up)`). Donut treats
+that as a mirrored view:
 
-Rasterizer state for the opaque GBuffer pass:
+```text
+PlanarView::m_IsMirrored = determinant(m_ViewMatrix.m_linear) < 0
+GBufferFillPass frontCounterClockwise = view->IsMirrored()
+```
+
+The S0.4 camera is therefore mirrored in Donut's sense. D3D12 tests winding **on the render
+target** (after the viewport Y-flip). Match Donut: counter-clockwise vertices on the render
+target are front-facing.
+
+Rasterizer and depth state for the opaque GBuffer pass:
 
 | State | Value |
 |---|---|
-| `frontCounterClockwise` | `false` (D3D12 default; clockwise is front) |
+| `frontCounterClockwise` | `true` when `det(worldToView.linear) < 0` (always for `FirstPersonCamera`) |
 | `cullMode` | `Back` for opaque single-sided materials |
 | `cullMode` | `None` when the glTF material is `doubleSided` |
+| `depthClipEnable` | `true` (override the NVRHI default of `false`) |
+| `depthFunc` | `GreaterOrEqual` (reversed-Z; NVRHI default is `Less`) |
+| `depthWriteEnable` | `true` |
 
-Do not set `frontCounterClockwise` from `IView::IsMirrored()` unless a later step introduces
-mirrored views. The S0.4 camera preset is not mirrored.
+Do not use the NVRHI/D3D default `frontCounterClockwise = false` with this camera. That
+inverts culling relative to Donut and glTF. If a later view adds another reflection,
+recompute from the determinant instead of hard-coding.
+
+NVRHI also defaults `depthFunc` to `Less` and `depthClipEnable` to `false`. Both are wrong
+for this projection. Donut's own GBuffer pass uses `GreaterOrEqual` when `IsReverseDepth()`
+is true.
 
 Pixel shaders that apply a normal map must still honor `SV_IsFrontFace`: if the fragment is
 back-facing on a two-sided material, flip the world-space shading normal.
@@ -121,8 +144,8 @@ deviceDepth = zNear / viewZ
 | Infinity | `+inf` | `0` |
 | Background (cleared) | n/a | `0` |
 
-Depth test: `Greater`. Depth write: on for the opaque GBuffer pass. Hardware depth is the
-authority; do not output `SV_Depth` unless a later pass has a documented reason.
+Depth test: `GreaterOrEqual`. Depth write: on for the opaque GBuffer pass. Hardware depth is
+the authority; do not output `SV_Depth` unless a later pass has a documented reason.
 
 The depth texture is `nvrhi::Format::D32`. NVRHI maps that to a `R32_TYPELESS` allocation,
 a `D32_FLOAT` DSV, and an `R32_FLOAT` SRV. Lighting reconstructs from the SRV. See
