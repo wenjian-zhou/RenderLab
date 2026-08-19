@@ -420,7 +420,7 @@ Next step: S1.4 - Implement the opaque GBuffer pass
 Step: S1.4
 State: Complete
 Date: 2026-08-19
-Commit: (recorded after commit)
+Commit: bae4bc60d196cd68aa12b6afad4b5007c57a6a55
 Commands:
   cmake --preset windows-vs2022
   cmake --build --preset windows-debug --parallel
