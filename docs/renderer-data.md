@@ -113,4 +113,4 @@ Emissive is ignored: it is not a Stage 1 GBuffer channel.
 ## 7. What this step does not do
 
 No GBuffer textures, lighting, RDG, or DXR. Draw records are CPU data. S1.4
-consumes them in `GBufferPass`.
+consumes them in `GBufferPass` (complete).

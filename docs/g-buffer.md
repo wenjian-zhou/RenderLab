@@ -5,7 +5,7 @@ Status: **frozen for Stage 1**
 Step: S1.1
 
 This file is the first-version GBuffer layout. S1.3 created the textures and resize
-path. S1.4 writes them. S1.5 visualizes them. S2 lighting reads them. Do not add targets,
+path. S1.4 writes them (complete). S1.5 visualizes them. S2 lighting reads them. Do not add targets,
 channels, or encodings without updating this file and
 [`adr/ADR-002-gbuffer-layout.md`](adr/ADR-002-gbuffer-layout.md).
 

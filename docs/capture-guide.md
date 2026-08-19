@@ -1,7 +1,7 @@
 # Capture Guide
 
 This file is the Stage 0 / M0 capture checklist, plus the S1.3 GBuffer resource
-names to look for in PIX. Do not commit capture files.
+names and S1.4 opaque MRT writes to look for in PIX. Do not commit capture files.
 
 S0.5 does not capture screenshots or compare images. `--output` remains
 unimplemented until S1.6.

@@ -6,6 +6,11 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
+Current progress (2026-08-19): **S0.1 through S1.4 complete**; Stage 0 / M0 is satisfied.
+The active step is **S1.5 — Add GBuffer debug visualization** (not started).
+Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
+S1.4 implementation commit: `bae4bc60d196cd68aa12b6afad4b5007c57a6a55`.
+
 ## 1. Purpose and Success Definition
 
 This plan turns the revised project direction into small, verifiable implementation steps. The
@@ -214,6 +219,9 @@ and Release; validation produces no error/corruption messages.
 D3D12 frame, and can be captured without modifying upstream code.
 
 ## 5. Stage 1 - GBuffer Rasterization
+
+S1.1 through S1.4 are complete. Remaining Stage 1 work is debug visualization (S1.5)
+and the first image-regression baseline (S1.6).
 
 ### S1.1 - Freeze renderer conventions and the GBuffer contract
 
