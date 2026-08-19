@@ -261,7 +261,7 @@ Next step: S1.1 - Freeze renderer conventions and the GBuffer contract
 Step: S1.1
 State: Complete
 Date: 2026-08-19
-Commit: (recorded after this commit)
+Commit: 265c47ae63a341d38bc5bca6ecc221f03bcf3cca
 Commands:
   git status; git log --oneline -20
   Read IMPLEMENTATION_PLAN.md S1.1, NEW_PLAN.md 5.1, ADR-001, Donut GBuffer/camera/projection, NVRHI dxgi-format.cpp
