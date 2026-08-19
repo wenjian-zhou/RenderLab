@@ -5,12 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S1.1 - Freeze renderer conventions and the GBuffer contract**
+- Active step: **S1.2 - Define frame, view, instance, and material data**
 - State: **Not started**
-- Last updated: 2026-08-18
+- Last updated: 2026-08-19
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
+- Stage 1: **S1.1 complete**; GBuffer textures and drawing remain S1.3 / S1.4
 
 ## Completed Repository Reset
 
@@ -252,6 +253,40 @@ Known limitations:
   PIX prefixes Windows SDK pix.h events with a deprecation note; the stable names after the prefix are unchanged
   WinPixEventRuntime / pix3.h was not added as a dependency
 Next step: S1.1 - Freeze renderer conventions and the GBuffer contract
+```
+
+### S1.1 - Freeze renderer conventions and the GBuffer contract
+
+```text
+Step: S1.1
+State: Complete
+Date: 2026-08-19
+Commit: (recorded after this commit)
+Commands:
+  git status; git log --oneline -20
+  Read IMPLEMENTATION_PLAN.md S1.1, NEW_PLAN.md 5.1, ADR-001, Donut GBuffer/camera/projection, NVRHI dxgi-format.cpp
+  $vcvars = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+  cmd /c "`"$vcvars`" && cl.exe /nologo /EHsc /std:c++20 /O2 /Fo.\out\tmp-s11\ /Fe:.\out\tmp-s11\check-gbuffer-formats.exe scripts\check-gbuffer-formats.cpp /link /nologo && .\out\tmp-s11\check-gbuffer-formats.exe"
+Automated tests: D3D12 format-support probe for SRGBA8_UNORM, RGBA16_FLOAT, RGBA8_UNORM, D32_FLOAT DSV, R32_FLOAT SRV, and typeless depth+SRV creation
+GPU validation/capture:
+  NVIDIA GeForce RTX 4070 SUPER, feature level 12_2, driver 32.0.15.7688
+  All required RTV/SRV/DSV bits present; R32_TYPELESS depth with D32_FLOAT DSV + R32_FLOAT SRV created
+  No GBuffer textures, shaders, or mesh drawing were added
+Artifacts:
+  docs/renderer-conventions.md
+  docs/g-buffer.md
+  docs/adr/ADR-002-gbuffer-layout.md
+  scripts/check-gbuffer-formats.cpp
+  README.md
+  docs/PROGRESS.md
+Known limitations:
+  CPU/HLSL structs are specified in docs; S1.2 adds the real headers and layout asserts
+  GBuffer textures are not created; S1.3 owns lifetime and resize
+  Meshes are still not drawn; S1.4 writes the GBuffer
+  Velocity, emissive, MSAA, and octahedral normals are intentionally absent
+  Lighting units and HDR background color wait for S2.1
+  Format probe is a local D3D12 tool, not a CMake target
+Next step: S1.2 - Define frame, view, instance, and material data
 ```
 
 Selected baseline:
