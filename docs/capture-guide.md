@@ -1,7 +1,7 @@
 # Capture Guide
 
-This file is the Stage 0 / M0 capture checklist. It records how to inspect a
-stable Donut/NVRHI D3D12 frame without committing a capture file.
+This file is the Stage 0 / M0 capture checklist, plus the S1.3 GBuffer resource
+names to look for in PIX. Do not commit capture files.
 
 S0.5 does not capture screenshots or compare images. `--output` remains
 unimplemented until S1.6.
@@ -19,6 +19,8 @@ RenderLab emits the same five names in Debug and Release:
 | `Present` | around DXGI present | standalone named range submitted just before present |
 
 Do not rename these strings. Later passes add nested markers under `Render`.
+S1.3 adds `GBuffer` under `Render` for the target clears. S1.4 will write meshes
+inside that same marker.
 
 A PIX 2603 GPU capture of this revision shows this hierarchy (Debug and Release
 are identical):
@@ -29,7 +31,8 @@ Frame
   Render
     Frame
       SceneUpdate
-      Render          (ClearRenderTargetView)
+      Render
+        GBuffer           (ClearRenderTargetView / ClearDepthStencilView)
   UI
     ImGUI             (Donut ImGui draws)
   Present
@@ -95,7 +98,32 @@ A fresh clone satisfies M0 when all of the following are true:
 - [ ] No Donut or NVRHI source was modified
 
 "Render" at M0 still means clear + UI + present. Mesh rasterization starts in
-S1.4.
+S1.4. S1.3 adds persistent `GBufferA`, `GBufferB`, `GBufferC`, and `GBufferDepth`
+resources that PIX should list at back-buffer width × height with formats
+`R8G8B8A8_UNORM_SRGB`, `R16G16B16A16_FLOAT`, `R8G8B8A8_UNORM`, and
+`R32_TYPELESS` (`D32_FLOAT` DSV / `R32_FLOAT` SRV).
+
+## S1.3 GBuffer Resource Capture
+
+After a GPU capture, inspect the resource list for the four debug names above.
+A `--frames 30` windowed run also resizes 1280×720 → 1344×784 at frame 8, then
+minimizes and restores around frame 12. Confirm the capture taken after resize
+shows 1344×784, and that validation printed no use-after-free or state error.
+
+```powershell
+$pix = "C:\Program Files\Microsoft PIX\2603.25\pixtool.exe"
+$exe = ".\out\build\windows-vs2022\bin\Debug\RenderLab.exe"
+New-Item -ItemType Directory -Force captures | Out-Null
+
+& $pix launch $exe --command-line="--lock-camera --frames 16" `
+  take-capture --frames=1 `
+  save-capture captures\s13-gbuffer.wpix
+
+& $pix open-capture captures\s13-gbuffer.wpix `
+  save-event-list captures\s13-gbuffer-events.csv
+```
+
+Do not commit the capture files.
 
 ## Smoke And CI
 

@@ -12,12 +12,11 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, **S1.1 is
-complete**, and **S1.2 is complete**: frame/view/instance/material CPU+HLSL contracts
-exist, and Donut glTF meshes map to renderer-owned draw records. The application
-loads the fixed Cesium Milk Truck glTF scene through Donut, presents a stable clear + UI
-frame, and logs the mapped draws. Device, queue, fence, and swap-chain ownership stay
-in `donut::app::DeviceManager`. Geometry is loaded but not drawn. The next executable
-task is **S1.3: create persistent GBuffer targets and resize handling**.
+complete**, **S1.2 is complete**, and **S1.3 is complete**: persistent GBuffer and depth
+targets exist, clear to the documented values, and recreate on resize using the
+Donut/NVRHI lifetime model. Device, queue, fence, and swap-chain ownership stay in
+`donut::app::DeviceManager`. Geometry is loaded but not drawn. The next executable
+task is **S1.4: implement the opaque GBuffer pass**.
 
 ## Plans
 
@@ -28,9 +27,9 @@ task is **S1.3: create persistent GBuffer targets and resize handling**.
 - [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
   and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
-- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist. Do not commit capture files.
+- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names. Do not commit capture files.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
-- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, and clears.
+- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, and S1.3 lifetime.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.

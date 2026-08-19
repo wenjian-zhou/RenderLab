@@ -4,9 +4,10 @@ Status: **frozen for Stage 1**
 
 Step: S1.1
 
-This file is the first-version GBuffer layout. S1.3 creates the textures. S1.4 writes them.
-S1.5 visualizes them. S2 lighting reads them. Do not add targets, channels, or encodings
-without updating this file and [`adr/ADR-002-gbuffer-layout.md`](adr/ADR-002-gbuffer-layout.md).
+This file is the first-version GBuffer layout. S1.3 created the textures and resize
+path. S1.4 writes them. S1.5 visualizes them. S2 lighting reads them. Do not add targets,
+channels, or encodings without updating this file and
+[`adr/ADR-002-gbuffer-layout.md`](adr/ADR-002-gbuffer-layout.md).
 
 Coordinate, matrix, reversed-Z, and color-space rules live in
 [`renderer-conventions.md`](renderer-conventions.md). This file only describes the GBuffer
@@ -121,17 +122,27 @@ Stored value is device depth in `[0, 1]` with **clear = 0** (infinity). Near pla
 - `isShaderResource = true` (default; needed for the lighting SRV)
 - `useClearValue = true`, `clearValue = nvrhi::Color(0.f)`
 - `initialState = nvrhi::ResourceStates::DepthWrite`
+- `keepInitialState = true` (NVRHI automatic tracking; do not add a second state tracker)
 
 Color targets:
 
 - `isRenderTarget = true`
+- `isShaderResource = true`
 - `useClearValue = true`
 - `initialState = nvrhi::ResourceStates::RenderTarget`
+- `keepInitialState = true`
 - `clearValue` matching section 3
+
+S1.3 implements these descriptors in `MakeGBufferTextureDesc` and owns the textures in
+[`../src/renderer/GBufferTargets.h`](../src/renderer/GBufferTargets.h). Later passes bind
+`GetShaderResource(target)`; that is the NVRHI `ITexture*` SRV handle. For depth, NVRHI
+creates a `R32_FLOAT` SRV on the typeless allocation. Do not create a second typed texture.
 
 ## 3. Clear Values and Background Semantics
 
-Clear every target at the start of the GBuffer pass, before drawing.
+Clear every target at the start of the GBuffer pass, before drawing. S1.3 already
+issues these clears each frame so the resources are defined independent of mesh
+drawing. S1.4 keeps the same clears and then writes geometry.
 
 | Resource | `nvrhi::Color` / depth | Background meaning |
 |---|---|---|
@@ -326,10 +337,45 @@ All five queries returned the required view support. Feature Level 11_0 already 
 these typed 2D views; the probe exists so a different adapter cannot silently change the
 contract.
 
-## 8. Explicitly Deferred
+## 8. Resource Lifetime (S1.3)
+
+GBuffer targets are persistent, size-dependent NVRHI textures. They are not RDG transients
+and they are not Donut `GBufferRenderTargets`.
+
+Ownership:
+
+- `GBufferTargets` holds four `nvrhi::TextureHandle` values named `GBufferA`, `GBufferB`,
+  `GBufferC`, and `GBufferDepth`.
+- Debug names, formats, clear values, and view flags come from `kGBufferFormats`.
+- Size is the back-buffer width × height. Sample count is 1. Mip count is 1.
+- `GetShaderResource` returns the same `ITexture*` later passes bind as an SRV.
+
+Resize follows the Donut `DeviceManager` sequence. Do not add a RenderLab fence wait:
+
+```text
+IRenderPass::BackBufferResizing
+  -> GBufferTargets::Release()          // drop app handles
+DeviceManager_DX12::ResizeSwapChain
+  -> nvrhi::IDevice::waitForIdle()
+  -> nvrhi::IDevice::runGarbageCollection()
+IRenderPass::BackBufferResized(width, height)
+  -> GBufferTargets::Create(device, width, height)
+```
+
+NVRHI command lists keep `referencedResources` until garbage collection. Releasing app
+handles in `BackBufferResizing` is therefore safe: the D3D12 allocations stay alive until
+idle + GC. Minimize (`width == 0` or `height == 0`) does not recreate or destroy targets;
+`DeviceManager` skips the resize path while the window is iconified.
+
+Each frame, under the nested `GBuffer` GPU marker, S1.3 clears all four targets to the
+section 3 values. Mesh writes start in S1.4. Approximate allocation is
+`width * height * bytesPerPixel` per target (20 bytes/pixel total) and is shown in the
+diagnostics UI.
+
+## 9. Explicitly Deferred
 
 - Frame/view/instance/material CPU+HLSL contracts and draw records: S1.2 (complete)
-- Texture creation, resize, and debug UI byte counts: S1.3
+- Texture creation, resize, and debug UI byte counts: S1.3 (complete)
 - Mesh drawing and material evaluation: S1.4
 - Channel debug views and screenshots: S1.5 / S1.6
 - Position reconstruction in a live pass: S2.2

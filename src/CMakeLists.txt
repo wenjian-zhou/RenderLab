@@ -5,6 +5,8 @@ set(RENDERLAB_SHADER_HEADERS
 
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
+    renderer/GBufferTargets.h
+    renderer/GBufferTargets.cpp
     renderer/RendererData.h
     renderer/RendererData.cpp
     ${RENDERLAB_SHADER_HEADERS}

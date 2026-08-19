@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneCatalog.h"
+#include "renderer/GBufferTargets.h"
 #include "renderer/RendererData.h"
 
 #include <donut/app/ApplicationBase.h>
@@ -61,7 +62,8 @@ namespace renderlab
         RenderingLabUserInterface(
             donut::app::DeviceManager* deviceManager,
             const DeviceCapabilities& capabilities,
-            const SceneHudState& sceneHud);
+            const SceneHudState& sceneHud,
+            const GBufferTargets& gbuffer);
 
     protected:
         void buildUI() override;
@@ -70,6 +72,7 @@ namespace renderlab
     private:
         DeviceCapabilities m_capabilities;
         const SceneHudState& m_sceneHud;
+        const GBufferTargets& m_gbuffer;
     };
 
     int SelectPreferredAdapterIndex(const std::vector<donut::app::AdapterInfo>& adapters);
@@ -87,10 +90,12 @@ namespace renderlab
         bool Init();
         const DeviceCapabilities& GetCapabilities() const;
         const SceneHudState& GetSceneHud() const;
+        const GBufferTargets& GetGBufferTargets() const;
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
         void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;
         void Animate(float elapsedTimeSeconds) override;
+        void BackBufferResizing() override;
         void BackBufferResized(const uint32_t width, const uint32_t height, const uint32_t sampleCount) override;
         bool LoadScene(std::shared_ptr<donut::vfs::IFileSystem> fs, const std::filesystem::path& sceneFileName) override;
         void SceneLoaded() override;
@@ -119,6 +124,7 @@ namespace renderlab
         SceneDrawList m_drawList;
         FrameConstants m_frameConstants = {};
         ViewConstants m_viewConstants = {};
+        GBufferTargets m_gbuffer;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

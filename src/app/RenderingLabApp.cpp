@@ -1,5 +1,6 @@
 #include "RenderingLabApp.h"
 #include "FrameMarkers.h"
+#include "renderer/GBufferTargets.h"
 #include "renderer/RendererData.h"
 
 #include <donut/app/DeviceManager.h>
@@ -148,10 +149,12 @@ namespace renderlab
     RenderingLabUserInterface::RenderingLabUserInterface(
         app::DeviceManager* deviceManager,
         const DeviceCapabilities& capabilities,
-        const SceneHudState& sceneHud)
+        const SceneHudState& sceneHud,
+        const GBufferTargets& gbuffer)
         : ImGui_Renderer(deviceManager)
         , m_capabilities(capabilities)
         , m_sceneHud(sceneHud)
+        , m_gbuffer(gbuffer)
     {
         ImGui::GetIO().IniFilename = nullptr;
     }
@@ -164,14 +167,14 @@ namespace renderlab
         deviceManager->GetWindowDimensions(width, height);
 
         ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(440.0f, 0.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(460.0f, 0.0f), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("RenderLab Diagnostics"))
         {
             ImGui::End();
             return;
         }
 
-        ImGui::TextUnformatted("S1.2 renderer data");
+        ImGui::TextUnformatted("S1.3 GBuffer targets");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -181,6 +184,33 @@ namespace renderlab
         ImGui::Text("Frame: %u", deviceManager->GetFrameIndex());
         ImGui::Text("DXR tier: %s", m_capabilities.dxrTier.c_str());
         ImGui::Text("Shader model: %s", m_capabilities.shaderModel.c_str());
+        ImGui::Separator();
+
+        const GBufferTargetsHud gbufferHud = m_gbuffer.GetHud();
+        ImGui::TextUnformatted("GBuffer");
+        if (!gbufferHud.valid)
+        {
+            ImGui::TextUnformatted("  not created");
+        }
+        else
+        {
+            ImGui::Text("  %u x %u, samples=%u, mips=1", gbufferHud.width, gbufferHud.height, gbufferHud.sampleCount);
+            for (const GBufferTargetHud& target : gbufferHud.targets)
+            {
+                ImGui::Text(
+                    "  %s  %s  %u B/px  %llu bytes",
+                    target.debugName,
+                    target.formatName,
+                    target.bytesPerPixel,
+                    static_cast<unsigned long long>(target.approximateBytes));
+            }
+            ImGui::Text(
+                "  total ~%llu bytes  creates=%u releases=%u",
+                static_cast<unsigned long long>(gbufferHud.approximateBytes),
+                gbufferHud.createCount,
+                gbufferHud.releaseCount);
+        }
+
         ImGui::Separator();
         ImGui::Text("Scene: %s", m_sceneHud.sceneLabel.c_str());
         ImGui::Text("Meshes: %u", m_sceneHud.meshCount);
@@ -279,6 +309,11 @@ namespace renderlab
         return m_sceneHud;
     }
 
+    const GBufferTargets& RenderingLabApp::GetGBufferTargets() const
+    {
+        return m_gbuffer;
+    }
+
     void RenderingLabApp::ClearBackBuffer(nvrhi::IFramebuffer* framebuffer)
     {
         markers::CpuMarker renderMarker(GetDevice(), markers::kRender);
@@ -314,6 +349,10 @@ namespace renderlab
             }
             {
                 markers::GpuMarker renderGpuMarker(m_commandList, markers::kRender);
+                {
+                    markers::GpuMarker gbufferMarker(m_commandList, markers::kGBuffer);
+                    m_gbuffer.Clear(m_commandList);
+                }
                 nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
             }
         }
@@ -338,15 +377,43 @@ namespace renderlab
         GetDeviceManager()->SetInformativeWindowTitle("RenderLab");
     }
 
+    void RenderingLabApp::BackBufferResizing()
+    {
+        // Drop size-dependent handles before DeviceManager_DX12::ResizeSwapChain waits for idle
+        // and runs NVRHI garbage collection. Command-list referencedResources keep the D3D12
+        // allocations alive until that collection completes.
+        m_gbuffer.Release();
+    }
+
     void RenderingLabApp::BackBufferResized(
         const uint32_t width,
         const uint32_t height,
         const uint32_t sampleCount)
     {
-        (void)sampleCount;
         m_backBufferWidth = width;
         m_backBufferHeight = height;
         UpdateFrameViewConstants();
+
+        if (width == 0 || height == 0)
+        {
+            log::info("Back buffer minimized or zero-sized (%u x %u); GBuffer not recreated.", width, height);
+            return;
+        }
+
+        if (sampleCount != kGBufferSampleCount)
+        {
+            log::warning(
+                "Swap-chain sample count is %u; GBuffer stays at sample count %u (no MSAA).",
+                sampleCount,
+                kGBufferSampleCount);
+        }
+
+        if (!m_gbuffer.Create(GetDevice(), width, height))
+        {
+            log::error("Failed to create GBuffer targets at %u x %u.", width, height);
+            return;
+        }
+
         log::info("Back buffer resized to %u x %u", width, height);
     }
 

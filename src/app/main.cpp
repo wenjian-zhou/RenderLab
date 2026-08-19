@@ -382,7 +382,8 @@ int main(int argc, char** argv)
         renderlab::RenderingLabUserInterface ui(
             deviceManager.get(),
             app.GetCapabilities(),
-            app.GetSceneHud());
+            app.GetSceneHud(),
+            app.GetGBufferTargets());
         if (!ui.Init(shaderFactory))
         {
             log::error("Failed to initialize the ImGui renderer.");
@@ -394,11 +395,25 @@ int main(int argc, char** argv)
         std::unique_ptr<renderlab::markers::CpuMarker> presentCpuMarker;
         nvrhi::CommandListHandle presentMarkerList = deviceManager->GetDevice()->createCommandList();
 
+        const bool probeResize = !options.headless && limitedFrames && frameLimit > 16;
+        int minimizedPolls = 0;
+        bool restoreAfterMinimize = false;
         deviceManager->m_callbacks.beforeFrame =
-            [&frameCpuMarker](app::DeviceManager& manager, uint32_t) {
+            [&frameCpuMarker, &restoreAfterMinimize, &minimizedPolls](app::DeviceManager& manager, uint32_t) {
                 frameCpuMarker = std::make_unique<renderlab::markers::CpuMarker>(
                     manager.GetDevice(),
                     renderlab::markers::kFrame);
+                if (restoreAfterMinimize)
+                {
+                    ++minimizedPolls;
+                    if (minimizedPolls >= 4)
+                    {
+                        log::info("Smoke probe: restore window after minimize");
+                        glfwRestoreWindow(manager.GetWindow());
+                        restoreAfterMinimize = false;
+                        minimizedPolls = 0;
+                    }
+                }
             };
 
         deviceManager->m_callbacks.beforePresent =
@@ -412,9 +427,8 @@ int main(int argc, char** argv)
                     renderlab::markers::kPresent);
             };
 
-        const bool probeResize = !options.headless && limitedFrames && frameLimit > 16;
         deviceManager->m_callbacks.afterPresent =
-            [&frameCpuMarker, &presentCpuMarker, limitedFrames, frameLimit, probeResize](
+            [&frameCpuMarker, &presentCpuMarker, limitedFrames, frameLimit, probeResize, &restoreAfterMinimize](
                 app::DeviceManager& manager,
                 uint32_t frameIndex) {
                 presentCpuMarker.reset();
@@ -431,6 +445,13 @@ int main(int argc, char** argv)
                     int height = 0;
                     manager.GetWindowDimensions(width, height);
                     glfwSetWindowSize(manager.GetWindow(), width + 64, height + 64);
+                }
+
+                if (probeResize && frameIndex == 12)
+                {
+                    log::info("Smoke probe: minimize window");
+                    glfwIconifyWindow(manager.GetWindow());
+                    restoreAfterMinimize = true;
                 }
 
                 if (frameIndex + 1 >= frameLimit)

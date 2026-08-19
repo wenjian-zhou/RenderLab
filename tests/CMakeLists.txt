@@ -1,4 +1,8 @@
-add_executable(RenderLabDataContractTests test_renderer_data.cpp)
+add_executable(
+    RenderLabDataContractTests
+    test_renderer_data.cpp
+    test_gbuffer_targets.cpp
+)
 
 target_link_libraries(
     RenderLabDataContractTests

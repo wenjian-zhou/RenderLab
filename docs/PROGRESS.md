@@ -5,13 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S1.3 - Create persistent GBuffer targets and resize handling**
+- Active step: **S1.4 - Implement the opaque GBuffer pass**
 - State: **Not started**
 - Last updated: 2026-08-19
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
-- Stage 1: **S1.1 and S1.2 complete**; GBuffer textures and drawing remain S1.3 / S1.4
+- Stage 1: **S1.1, S1.2, and S1.3 complete**; mesh drawing remains S1.4
 
 ## Completed Repository Reset
 
@@ -349,6 +349,69 @@ Known limitations:
   Emissive is ignored; it is not a Stage 1 GBuffer channel
   Skinned, alpha-tested, transmissive, and spec-gloss geometry is logged and omitted
 Next step: S1.3 - Create persistent GBuffer targets and resize handling
+```
+
+### S1.3 - Create persistent GBuffer targets and resize handling
+
+```text
+Step: S1.3
+State: Complete
+Date: 2026-08-19
+Commit: pending
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+  powershell -NoProfile -File scripts\smoke.ps1
+  pixtool launch Debug\RenderLab.exe --command-line="--lock-camera --frames 20" take-capture save-capture captures\s13-gbuffer-debug.wpix
+  pixtool open-capture captures\s13-gbuffer-debug.wpix save-event-list captures\s13-gbuffer-debug-events.csv
+  pixtool open-capture captures\s13-gbuffer-debug.wpix export-to-cpp out\tmp-s13-pix
+  pixtool launch Release\RenderLab.exe --command-line="--lock-camera --frames 20" take-capture save-capture captures\s13-gbuffer-release.wpix
+Automated tests: RenderLabDataContractTests Debug and Release
+  existing S1.2 layout/material/draw-record checks
+  GBuffer debug names, formats, clears, bytes/pixel
+  1280x720 allocation is 18,432,000 bytes
+  MakeGBufferTextureDesc matches the frozen contract, including typeless D32 and keepInitialState
+  uncreated GBufferTargets exposes null SRV handles
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
+  Release: same adapter/driver, validation=NVRHI, errors=0
+  GBuffer created 1280x720 sampleCount=1 mipLevels=1 approxBytes=18432000 A=SRGBA8_UNORM B=RGBA16_FLOAT C=RGBA8_UNORM Depth=D32
+  --frames 30 resized 1280x720 -> 1344x784 (approxBytes=21073920, createCount=2) then minimize/restore with no extra recreate and errors=0
+  PIX Debug and Release event lists: Render / GBuffer / 3x ClearRenderTargetView / ClearDepthStencilView
+  PIX C++ export names and formats at 1280x720, mips=1, samples=1:
+    GBufferA R8G8B8A8_UNORM_SRGB ALLOW_RENDER_TARGET clear (0,0,0,1)
+    GBufferB R16G16B16A16_FLOAT ALLOW_RENDER_TARGET clear (0,0,0,0)
+    GBufferC R8G8B8A8_UNORM ALLOW_RENDER_TARGET clear (0,0,0,1)
+    GBufferDepth R32_TYPELESS ALLOW_DEPTH_STENCIL DSV D32_FLOAT clear depth 0
+  Capture files were not committed
+Artifacts:
+  src/renderer/GBufferTargets.h
+  src/renderer/GBufferTargets.cpp
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/app/FrameMarkers.h
+  src/CMakeLists.txt
+  tests/test_gbuffer_targets.cpp
+  tests/CMakeLists.txt
+  docs/g-buffer.md
+  docs/capture-guide.md
+  README.md
+  .github/workflows/windows.yml
+  docs/PROGRESS.md
+Known limitations:
+  Meshes are still not drawn; S1.4 writes the GBuffer
+  SRV handles are the NVRHI ITexture* objects; lighting bind sets wait for S1.4 / S2
+  DeviceManager skip-render while minimized; GBuffer is retained, not destroyed
+  --output remains unimplemented until S1.6
+  Velocity, emissive, MSAA, and extra targets remain absent
+Next step: S1.4 - Implement the opaque GBuffer pass
 ```
 
 Selected baseline:
