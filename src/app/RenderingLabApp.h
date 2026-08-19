@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneCatalog.h"
+#include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
 #include "renderer/RendererData.h"
 
@@ -63,7 +64,8 @@ namespace renderlab
             donut::app::DeviceManager* deviceManager,
             const DeviceCapabilities& capabilities,
             const SceneHudState& sceneHud,
-            const GBufferTargets& gbuffer);
+            const GBufferTargets& gbuffer,
+            const GBufferPassHud& gbufferPassHud);
 
     protected:
         void buildUI() override;
@@ -73,6 +75,7 @@ namespace renderlab
         DeviceCapabilities m_capabilities;
         const SceneHudState& m_sceneHud;
         const GBufferTargets& m_gbuffer;
+        const GBufferPassHud& m_gbufferPassHud;
     };
 
     int SelectPreferredAdapterIndex(const std::vector<donut::app::AdapterInfo>& adapters);
@@ -91,6 +94,7 @@ namespace renderlab
         const DeviceCapabilities& GetCapabilities() const;
         const SceneHudState& GetSceneHud() const;
         const GBufferTargets& GetGBufferTargets() const;
+        const GBufferPassHud& GetGBufferPassHud() const;
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
         void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;
@@ -125,6 +129,7 @@ namespace renderlab
         FrameConstants m_frameConstants = {};
         ViewConstants m_viewConstants = {};
         GBufferTargets m_gbuffer;
+        GBufferPass m_gbufferPass;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

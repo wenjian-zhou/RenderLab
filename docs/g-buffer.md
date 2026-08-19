@@ -292,22 +292,35 @@ HLSL sizes.
 
 ## 6. Pass Parameters (S1.4)
 
-`GBufferPass` inputs and outputs, named for later RDG migration:
+`GBufferPass` is implemented in
+[`../src/renderer/GBufferPass.h`](../src/renderer/GBufferPass.h). Inputs and
+outputs are named for later RDG migration:
 
 **Inputs**
 
-- Scene mesh draws (renderer-facing records from S1.2, not Donut internals in the shader)
-- Frame/view constants
-- Material parameters and optional fallback textures
-- Instance world transforms
+- `sceneDraws`: renderer-facing `SceneDrawList` / `DrawRecord` from S1.2
+- `frameConstants` / `viewConstants`: `renderer_cb.h` payloads
+- Material parameters and instance transforms: fields on each `DrawRecord`
 
 **Outputs**
 
-- `GBufferA`, `GBufferB`, `GBufferC` (color writes)
-- `GBufferDepth` (depth write)
+- `gbufferA`, `gbufferB`, `gbufferC` (color writes)
+- `gbufferDepth` (depth write)
 
-The GPU marker name is `GBuffer`, nested under the existing `Render` marker. Do not rename
-`Frame`, `SceneUpdate`, `Render`, `UI`, or `Present`.
+The GPU marker name is `GBuffer`, nested under the existing `Render` marker.
+A timestamp query brackets the same scope. Do not rename `Frame`, `SceneUpdate`,
+`Render`, `UI`, or `Present`.
+
+Shaders are `src/shaders/gbuffer_vs.hlsl` and `src/shaders/gbuffer_ps.hlsl`.
+They include `renderer_cb.h` and `gbuffer_encoding.hlsli`. They do not include
+Donut `gbuffer_cb.h`, `PlanarViewConstants`, or `MaterialConstants`.
+
+Missing optional textures bind the documented 1x1 GPU fallbacks (sRGB white
+base color, linear white metal-rough, flat normal, occlusion white). Sampler
+state is linear wrap.
+
+Each frame, under `GBuffer`, the pass clears the four targets then issues
+indexed draws for every opaque `DrawRecord`.
 
 ## 7. Format Support
 
@@ -367,16 +380,16 @@ handles in `BackBufferResizing` is therefore safe: the D3D12 allocations stay al
 idle + GC. Minimize (`width == 0` or `height == 0`) does not recreate or destroy targets;
 `DeviceManager` skips the resize path while the window is iconified.
 
-Each frame, under the nested `GBuffer` GPU marker, S1.3 clears all four targets to the
-section 3 values. Mesh writes start in S1.4. Approximate allocation is
-`width * height * bytesPerPixel` per target (20 bytes/pixel total) and is shown in the
-diagnostics UI.
+Each frame, under the nested `GBuffer` GPU marker, S1.4 clears all four targets
+to the section 3 values and then rasterizes opaque meshes. Approximate allocation
+is `width * height * bytesPerPixel` per target (20 bytes/pixel total) and is shown
+in the diagnostics UI.
 
 ## 9. Explicitly Deferred
 
 - Frame/view/instance/material CPU+HLSL contracts and draw records: S1.2 (complete)
 - Texture creation, resize, and debug UI byte counts: S1.3 (complete)
-- Mesh drawing and material evaluation: S1.4
+- Mesh drawing and material evaluation: S1.4 (complete)
 - Channel debug views and screenshots: S1.5 / S1.6
 - Position reconstruction in a live pass: S2.2
 - HDR scene color, lights, and background fill color: S2

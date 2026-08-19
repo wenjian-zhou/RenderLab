@@ -19,8 +19,8 @@ RenderLab emits the same five names in Debug and Release:
 | `Present` | around DXGI present | standalone named range submitted just before present |
 
 Do not rename these strings. Later passes add nested markers under `Render`.
-S1.3 adds `GBuffer` under `Render` for the target clears. S1.4 will write meshes
-inside that same marker.
+S1.3 adds `GBuffer` under `Render` for the target clears. S1.4 writes meshes
+inside that same marker and adds a timestamp query around the clears and draws.
 
 A PIX 2603 GPU capture of this revision shows this hierarchy (Debug and Release
 are identical):
@@ -32,7 +32,7 @@ Frame
     Frame
       SceneUpdate
       Render
-        GBuffer           (ClearRenderTargetView / ClearDepthStencilView)
+        GBuffer           (ClearRenderTargetView / ClearDepthStencilView, then DrawIndexed)
   UI
     ImGUI             (Donut ImGui draws)
   Present
@@ -97,9 +97,10 @@ A fresh clone satisfies M0 when all of the following are true:
 - [ ] NVRHI/D3D12 validation produces no error or corruption messages
 - [ ] No Donut or NVRHI source was modified
 
-"Render" at M0 still means clear + UI + present. Mesh rasterization starts in
-S1.4. S1.3 adds persistent `GBufferA`, `GBufferB`, `GBufferC`, and `GBufferDepth`
-resources that PIX should list at back-buffer width × height with formats
+"Render" at M0 still meant clear + UI + present. S1.4 rasterizes opaque meshes into
+the GBuffer under the nested `GBuffer` marker. The back buffer remains the clear + UI
+until S1.5 visualizes GBuffer channels. S1.3 persistent resources that PIX should list
+at back-buffer width × height are `GBufferA`/`B`/`C`/`GBufferDepth` with formats
 `R8G8B8A8_UNORM_SRGB`, `R16G16B16A16_FLOAT`, `R8G8B8A8_UNORM`, and
 `R32_TYPELESS` (`D32_FLOAT` DSV / `R32_FLOAT` SRV).
 
@@ -121,6 +122,32 @@ New-Item -ItemType Directory -Force captures | Out-Null
 
 & $pix open-capture captures\s13-gbuffer.wpix `
   save-event-list captures\s13-gbuffer-events.csv
+```
+
+Do not commit the capture files.
+
+## S1.4 Opaque GBuffer Writes
+
+After a GPU capture of `--lock-camera`, confirm:
+
+- Event list: `Render / GBuffer` contains the four clears and at least one `DrawIndexed`
+- Pixel History / resource viewer: `GBufferA`, `GBufferB`, `GBufferC` are bound as RTVs
+  together with `GBufferDepth` as the DSV
+- Background pixels keep the S1.3 clears; opaque foreground writes `ShadingValid` and
+  reversed-Z depth greater than 0
+- Camera matches the S0.4 preset; instance transforms match S1.2 draw records
+
+```powershell
+$pix = "C:\Program Files\Microsoft PIX\2603.25\pixtool.exe"
+$exe = ".\out\build\windows-vs2022\bin\Debug\RenderLab.exe"
+New-Item -ItemType Directory -Force captures | Out-Null
+
+& $pix launch $exe --command-line="--lock-camera --frames 16" `
+  take-capture --frames=1 `
+  save-capture captures\s14-gbuffer.wpix
+
+& $pix open-capture captures\s14-gbuffer.wpix `
+  save-event-list captures\s14-gbuffer-events.csv
 ```
 
 Do not commit the capture files.

@@ -1,5 +1,6 @@
 #include "RenderingLabApp.h"
 #include "FrameMarkers.h"
+#include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
 #include "renderer/RendererData.h"
 
@@ -150,11 +151,13 @@ namespace renderlab
         app::DeviceManager* deviceManager,
         const DeviceCapabilities& capabilities,
         const SceneHudState& sceneHud,
-        const GBufferTargets& gbuffer)
+        const GBufferTargets& gbuffer,
+        const GBufferPassHud& gbufferPassHud)
         : ImGui_Renderer(deviceManager)
         , m_capabilities(capabilities)
         , m_sceneHud(sceneHud)
         , m_gbuffer(gbuffer)
+        , m_gbufferPassHud(gbufferPassHud)
     {
         ImGui::GetIO().IniFilename = nullptr;
     }
@@ -174,7 +177,7 @@ namespace renderlab
             return;
         }
 
-        ImGui::TextUnformatted("S1.3 GBuffer targets");
+        ImGui::TextUnformatted("S1.4 opaque GBuffer pass");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -209,6 +212,15 @@ namespace renderlab
                 static_cast<unsigned long long>(gbufferHud.approximateBytes),
                 gbufferHud.createCount,
                 gbufferHud.releaseCount);
+            ImGui::Text("  opaque draws=%u skippedBuffers=%u", m_gbufferPassHud.drawCount, m_gbufferPassHud.skippedMissingBufferCount);
+            if (m_gbufferPassHud.timestampValid)
+            {
+                ImGui::Text("  GPU time=%.3f ms", m_gbufferPassHud.gpuTimeMilliseconds);
+            }
+            else
+            {
+                ImGui::TextUnformatted("  GPU time=pending");
+            }
         }
 
         ImGui::Separator();
@@ -289,6 +301,12 @@ namespace renderlab
             return false;
         }
 
+        if (!m_gbufferPass.Init(GetDevice(), *m_shaderFactory))
+        {
+            log::error("Failed to initialize the opaque GBuffer pass.");
+            return false;
+        }
+
         BeginLoadingScene(m_fileSystem, m_options.scene.virtualPath);
         if (!IsSceneLoaded() || !m_scene)
         {
@@ -312,6 +330,11 @@ namespace renderlab
     const GBufferTargets& RenderingLabApp::GetGBufferTargets() const
     {
         return m_gbuffer;
+    }
+
+    const GBufferPassHud& RenderingLabApp::GetGBufferPassHud() const
+    {
+        return m_gbufferPass.GetHud();
     }
 
     void RenderingLabApp::ClearBackBuffer(nvrhi::IFramebuffer* framebuffer)
@@ -349,10 +372,12 @@ namespace renderlab
             }
             {
                 markers::GpuMarker renderGpuMarker(m_commandList, markers::kRender);
-                {
-                    markers::GpuMarker gbufferMarker(m_commandList, markers::kGBuffer);
-                    m_gbuffer.Clear(m_commandList);
-                }
+                GBufferPassInputs gbufferInputs;
+                gbufferInputs.sceneDraws = &m_drawList;
+                gbufferInputs.frameConstants = &m_frameConstants;
+                gbufferInputs.viewConstants = &m_viewConstants;
+                const GBufferPassOutputs gbufferOutputs = MakeGBufferPassOutputs(m_gbuffer);
+                m_gbufferPass.Execute(m_commandList, gbufferInputs, gbufferOutputs);
                 nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
             }
         }
@@ -379,9 +404,9 @@ namespace renderlab
 
     void RenderingLabApp::BackBufferResizing()
     {
-        // Drop size-dependent handles before DeviceManager_DX12::ResizeSwapChain waits for idle
-        // and runs NVRHI garbage collection. Command-list referencedResources keep the D3D12
-        // allocations alive until that collection completes.
+        // Drop the GBuffer framebuffer first, then size-dependent texture handles, before
+        // DeviceManager_DX12::ResizeSwapChain waits for idle and runs NVRHI garbage collection.
+        m_gbufferPass.ReleaseSizeDependentResources();
         m_gbuffer.Release();
     }
 

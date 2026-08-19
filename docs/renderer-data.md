@@ -94,7 +94,8 @@ Missing optional textures do not invent a second BRDF.
 | `occlusionTexture` | AO = 1; `occlusionStrength` forced to 0 | `OcclusionWhite` |
 
 S1.2 does not create GPU 1x1 textures. S1.4 binds the scene texture or uploads the
-documented pixel.
+documented pixel as a 1x1 SRV (`GBufferFallbackWhiteSrgb`, `GBufferFallbackWhite`,
+`GBufferFallbackFlatNormal`, `GBufferFallbackOcclusion`).
 
 The following are **unsupported required data** for this renderer. They are logged
 and omitted from the opaque draw list; they are not silently converted:
@@ -111,5 +112,5 @@ Emissive is ignored: it is not a Stage 1 GBuffer channel.
 
 ## 7. What this step does not do
 
-No GBuffer textures, GBuffer pass, mesh drawing, lighting, RDG, or DXR. Draw
-records are CPU data for S1.4 to consume.
+No GBuffer textures, lighting, RDG, or DXR. Draw records are CPU data. S1.4
+consumes them in `GBufferPass`.

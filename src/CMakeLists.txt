@@ -1,12 +1,39 @@
+include("${PROJECT_SOURCE_DIR}/external/donut/compileshaders.cmake")
+
 set(RENDERLAB_SHADER_HEADERS
     shaders/renderer_cb.h
     shaders/gbuffer_encoding.hlsli
+    shaders/gbuffer_pass.hlsli
+)
+
+set(RENDERLAB_SHADER_SOURCES
+    ${RENDERLAB_SHADER_HEADERS}
+    shaders/gbuffer_vs.hlsl
+    shaders/gbuffer_ps.hlsl
+    shaders/Shaders.cfg
+)
+
+donut_compile_shaders(
+    TARGET renderlab_shaders
+    PROJECT_NAME RenderLab
+    CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/shaders/Shaders.cfg"
+    FOLDER RenderLab
+    DXIL "${CMAKE_BINARY_DIR}/shaders/dxil"
+    OUTPUT_FORMAT BINARY
+    SHADER_MODEL 6_5
+    SOURCES ${RENDERLAB_SHADER_SOURCES}
+    INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+    IGNORE_INCLUDES
+        donut/core/math/math.h
+        cstdint
 )
 
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
     renderer/GBufferTargets.h
     renderer/GBufferTargets.cpp
+    renderer/GBufferPass.h
+    renderer/GBufferPass.cpp
     renderer/RendererData.h
     renderer/RendererData.cpp
     ${RENDERLAB_SHADER_HEADERS}
@@ -71,7 +98,7 @@ if(MSVC)
     target_compile_options(RenderLab PRIVATE /wd4100)
 endif()
 
-add_dependencies(RenderLab donut_shaders)
+add_dependencies(RenderLab donut_shaders renderlab_shaders)
 
 set_target_properties(
     RenderLab

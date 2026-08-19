@@ -119,8 +119,8 @@ Normal maps are tangent-space, linear UNORM, decoded as `n.xy = n.xy * 2 - 1` wi
 the surface. Metallic-roughness and occlusion maps are linear. Base-color textures are sRGB;
 see section 6.
 
-Sampler state is not a GBuffer encoding concern. S1.4 chooses wrap/filter; it must not change
-UV orientation.
+Sampler state is not a GBuffer encoding concern. S1.4 uses linear wrap (repeat)
+filtering and does not flip V.
 
 ## 5. Projection, NDC Depth, and Reversed-Z
 

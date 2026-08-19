@@ -5,13 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S1.4 - Implement the opaque GBuffer pass**
+- Active step: **S1.5 - Add GBuffer debug visualization**
 - State: **Not started**
 - Last updated: 2026-08-19
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
-- Stage 1: **S1.1, S1.2, and S1.3 complete**; mesh drawing remains S1.4
+- Stage 1: **S1.1, S1.2, S1.3, and S1.4 complete**; debug views remain S1.5
 
 ## Completed Repository Reset
 
@@ -412,6 +412,80 @@ Known limitations:
   --output remains unimplemented until S1.6
   Velocity, emissive, MSAA, and extra targets remain absent
 Next step: S1.4 - Implement the opaque GBuffer pass
+```
+
+### S1.4 - Implement the opaque GBuffer pass
+
+```text
+Step: S1.4
+State: Complete
+Date: 2026-08-19
+Commit: (recorded after commit)
+Commands:
+  cmake --preset windows-vs2022
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+  powershell -NoProfile -File scripts\smoke.ps1
+  pixtool launch Debug\RenderLab.exe --command-line="--lock-camera --frames 16" take-capture save-capture captures\s14-gbuffer-debug.wpix
+  pixtool open-capture captures\s14-gbuffer-debug.wpix save-event-list captures\s14-gbuffer-debug-events.csv
+  pixtool open-capture captures\s14-gbuffer-debug.wpix export-to-cpp out\tmp-s14-pix
+  pixtool launch Release\RenderLab.exe --command-line="--lock-camera --frames 16" take-capture save-capture captures\s14-gbuffer-release.wpix
+Automated tests: RenderLabDataContractTests Debug and Release
+  existing S1.2 layout/material/draw-record checks
+  existing S1.3 GBuffer target contract checks
+  mirrored view frontCounterClockwise
+  opaque cull Back; glTF doubleSided cull None
+  reversed-Z GreaterOrEqual, depthWrite, depthClipEnable
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
+  Release: same adapter/driver, validation=NVRHI, errors=0
+  Cesium Milk Truck: opaqueDraws=5 skipped=0; wheels at (0.000, 0.428, 1.433) and (0.000, 0.428, -1.352)
+  Fallback boxes: opaqueDraws=3 skipped=0, dummy TEXCOORD/TANGENT streams
+  View: mirrored=true fov=0.78540 rad zNear=0.100 camera preset s04-default
+  --frames 30 resized 1280x720 -> 1344x784 then minimize/restore, errors=0
+  PIX Debug and Release event lists under Render / GBuffer:
+    3x ClearRenderTargetView, ClearDepthStencilView, OMSetRenderTargets(3)+DSV, 5x DrawIndexedInstanced
+  PIX C++ export at 1280x720:
+    GBufferA R8G8B8A8_UNORM_SRGB clear (0,0,0,1)
+    GBufferB R16G16B16A16_FLOAT clear (0,0,0,0)
+    GBufferC R8G8B8A8_UNORM clear (0,0,0,1)
+    GBufferDepth D32_FLOAT DSV clear depth 0
+    DrawIndexedInstanced 5232 / 168 / 864 / 2304 / 2304 matching milk-truck draw records
+    EndQuery + ResolveQueryData timestamp scope
+  Capture files were not committed
+Artifacts:
+  src/renderer/GBufferPass.h
+  src/renderer/GBufferPass.cpp
+  src/shaders/gbuffer_vs.hlsl
+  src/shaders/gbuffer_ps.hlsl
+  src/shaders/gbuffer_pass.hlsli
+  src/shaders/Shaders.cfg
+  src/CMakeLists.txt
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  tests/test_gbuffer_pass.cpp
+  tests/CMakeLists.txt
+  docs/g-buffer.md
+  docs/capture-guide.md
+  docs/renderer-data.md
+  docs/renderer-conventions.md
+  README.md
+  docs/PROGRESS.md
+Known limitations:
+  Back buffer still presents the existing clear + UI; GBuffer channel views are S1.5
+  Image regression is S1.6
+  Lighting, tone mapping, RDG, and DXR are not implemented
+  Fallback-boxes has no TEXCOORD/TANGENT; dummy zero-UV and (1,0,0,1) tangent streams are bound
+  Visual confirmation of camera/instance alignment waits on S1.5 debug views; PIX draw counts and transforms match S1.2 records
+Next step: S1.5 - Add GBuffer debug visualization
 ```
 
 Selected baseline:

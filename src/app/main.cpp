@@ -330,6 +330,7 @@ int main(int argc, char** argv)
 
     auto rootFS = std::make_shared<vfs::RootFileSystem>();
     rootFS->mount("/donut", shaderDirectory);
+    rootFS->mount("/renderlab", shaderDirectory);
     rootFS->mount("/scenes", scenesDirectory);
 
     renderlab::SceneCatalog catalog;
@@ -383,7 +384,8 @@ int main(int argc, char** argv)
             deviceManager.get(),
             app.GetCapabilities(),
             app.GetSceneHud(),
-            app.GetGBufferTargets());
+            app.GetGBufferTargets(),
+            app.GetGBufferPassHud());
         if (!ui.Init(shaderFactory))
         {
             log::error("Failed to initialize the ImGui renderer.");

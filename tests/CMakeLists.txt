@@ -2,6 +2,7 @@ add_executable(
     RenderLabDataContractTests
     test_renderer_data.cpp
     test_gbuffer_targets.cpp
+    test_gbuffer_pass.cpp
 )
 
 target_link_libraries(

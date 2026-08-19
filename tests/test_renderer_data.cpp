@@ -17,6 +17,7 @@ using namespace donut::math;
 using namespace renderlab;
 
 int RunGBufferTargetContractTests();
+int RunGBufferPassContractTests();
 
 namespace
 {
@@ -245,6 +246,7 @@ int main()
     Check(frame.frameIndex == 12, "FrameConstants stores the frame index");
 
     g_failures += RunGBufferTargetContractTests();
+    g_failures += RunGBufferPassContractTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;
