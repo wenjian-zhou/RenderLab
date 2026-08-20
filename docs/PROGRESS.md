@@ -572,7 +572,7 @@ Next step: S1.6 - Create the first image-regression baseline
 Step: S1.6
 State: Complete
 Date: 2026-08-20
-Commit: pending
+Commit: afecd9a7440b45c6c8620af12be8b8fbfc74c672
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel

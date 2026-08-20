@@ -10,7 +10,7 @@ Current progress (2026-08-20): **S0.1 through S1.6 complete**; Stage 0 / M0 is s
 Stage 1 is satisfied. The next step is **S2.1 — Define the lighting contract**.
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 S1.5 implementation commit: `5664f3f124a50ed4f7259acaef1fa40c90922255`.
-S1.6 implementation commit is recorded in `docs/PROGRESS.md`.
+S1.6 implementation commit: `afecd9a7440b45c6c8620af12be8b8fbfc74c672`.
 
 ## 1. Purpose and Success Definition
 
