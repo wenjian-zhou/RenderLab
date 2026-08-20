@@ -4,12 +4,23 @@ add_executable(
     test_gbuffer_targets.cpp
     test_gbuffer_pass.cpp
     test_gbuffer_debug.cpp
+    test_image_compare.cpp
+    image_compare.cpp
+    image_compare.h
 )
 
 target_link_libraries(
     RenderLabDataContractTests
     PRIVATE
         RenderLab::Renderer
+        stb
+)
+
+file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}" RENDERLAB_SOURCE_DIR_CMAKE)
+target_compile_definitions(
+    RenderLabDataContractTests
+    PRIVATE
+        RENDERLAB_SOURCE_DIR="${RENDERLAB_SOURCE_DIR_CMAKE}"
 )
 
 if(MSVC)
@@ -26,3 +37,30 @@ set_target_properties(
 )
 
 add_test(NAME RenderLabDataContractTests COMMAND RenderLabDataContractTests)
+
+add_executable(
+    RenderLabGoldenCompare
+    golden_compare_main.cpp
+    image_compare.cpp
+    image_compare.h
+    stb_image_impl.cpp
+)
+
+target_link_libraries(
+    RenderLabGoldenCompare
+    PRIVATE
+        stb
+)
+
+if(MSVC)
+    target_compile_options(RenderLabGoldenCompare PRIVATE /wd4100)
+endif()
+
+set_target_properties(
+    RenderLabGoldenCompare
+    PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+        FOLDER RenderLab
+)

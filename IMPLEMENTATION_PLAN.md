@@ -6,10 +6,11 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-08-20): **S0.1 through S1.5 complete**; Stage 0 / M0 is satisfied.
-The active step is **S1.6 — Create the first image-regression baseline** (not started).
+Current progress (2026-08-20): **S0.1 through S1.6 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied. The next step is **S2.1 — Define the lighting contract**.
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 S1.5 implementation commit: `5664f3f124a50ed4f7259acaef1fa40c90922255`.
+S1.6 implementation commit is recorded in `docs/PROGRESS.md`.
 
 ## 1. Purpose and Success Definition
 
@@ -220,8 +221,9 @@ D3D12 frame, and can be captured without modifying upstream code.
 
 ## 5. Stage 1 - GBuffer Rasterization
 
-S1.1 through S1.5 are complete. Remaining Stage 1 work is the first image-regression
-baseline (S1.6).
+S1.1 through S1.6 are complete. Stage 1 is satisfied: GBuffer channels are
+inspectable, timed, documented, and protected by a repeatable capture. Next is
+S2.1.
 
 ### S1.1 - Freeze renderer conventions and the GBuffer contract
 

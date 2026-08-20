@@ -1,0 +1,84 @@
+{
+  "schema": "renderlab-golden-manifest/v1",
+  "step": "S1.6",
+  "sceneId": "cesium-milk-truck",
+  "cameraPreset": "s04-default",
+  "lockCamera": true,
+  "width": 1280,
+  "height": 720,
+  "frameIndex": 1,
+  "sampleCount": 1,
+  "relativeDirectory": "cesium-milk-truck/s04-default/1280x720",
+  "dumpReuse": "--dump-gbuffer-views / DecodeGBuffer; --output adds capture-metadata.json",
+  "byteEquality": false,
+  "metallicOracle": "weak",
+  "metallicOracleReason": "Cesium Milk Truck metallic is 0. Do not change the S0.4 camera.",
+  "views": [
+    {
+      "cliName": "base-color",
+      "fileName": "gbuffer-base-color.png",
+      "pixelThreshold": 2,
+      "maxMae": 1.0,
+      "maxMismatchFraction": 0.002,
+      "portabilityPixelThreshold": 8,
+      "portabilityMaxMae": 8.0,
+      "portabilityMaxMismatchFraction": 0.05,
+      "weakOracle": false
+    },
+    {
+      "cliName": "world-normal",
+      "fileName": "gbuffer-world-normal.png",
+      "pixelThreshold": 3,
+      "maxMae": 1.5,
+      "maxMismatchFraction": 0.005,
+      "portabilityPixelThreshold": 10,
+      "portabilityMaxMae": 10.0,
+      "portabilityMaxMismatchFraction": 0.08,
+      "weakOracle": false
+    },
+    {
+      "cliName": "roughness",
+      "fileName": "gbuffer-roughness.png",
+      "pixelThreshold": 2,
+      "maxMae": 1.0,
+      "maxMismatchFraction": 0.002,
+      "portabilityPixelThreshold": 8,
+      "portabilityMaxMae": 8.0,
+      "portabilityMaxMismatchFraction": 0.05,
+      "weakOracle": false
+    },
+    {
+      "cliName": "metallic",
+      "fileName": "gbuffer-metallic.png",
+      "pixelThreshold": 2,
+      "maxMae": 1.0,
+      "maxMismatchFraction": 0.002,
+      "portabilityPixelThreshold": 8,
+      "portabilityMaxMae": 8.0,
+      "portabilityMaxMismatchFraction": 0.05,
+      "weakOracle": true
+    },
+    {
+      "cliName": "ao-flags",
+      "fileName": "gbuffer-ao-flags.png",
+      "pixelThreshold": 2,
+      "maxMae": 1.0,
+      "maxMismatchFraction": 0.002,
+      "portabilityPixelThreshold": 8,
+      "portabilityMaxMae": 8.0,
+      "portabilityMaxMismatchFraction": 0.05,
+      "weakOracle": false
+    },
+    {
+      "cliName": "linear-depth",
+      "fileName": "gbuffer-linear-depth.png",
+      "pixelThreshold": 4,
+      "maxMae": 2.0,
+      "maxMismatchFraction": 0.01,
+      "portabilityPixelThreshold": 12,
+      "portabilityMaxMae": 12.0,
+      "portabilityMaxMismatchFraction": 0.10,
+      "weakOracle": false
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "renderlab-capture-metadata/v1",
+  "step": "S1.6",
+  "sceneId": "cesium-milk-truck",
+  "sceneRelativePath": "cesium-milk-truck/CesiumMilkTruck.glb",
+  "cameraPreset": "s04-default",
+  "cameraLocked": true,
+  "camera": {
+    "position": [4.800, 2.400, 5.600],
+    "target": [0.000, 0.850, 0.000],
+    "up": [0.000, 1.000, 0.000],
+    "verticalFovDegrees": 45.000,
+    "zNear": 0.100
+  },
+  "resolution": {
+    "width": 1280,
+    "height": 720
+  },
+  "width": 1280,
+  "height": 720,
+  "frameIndex": 1,
+  "sampleCount": 1,
+  "views": [
+    "gbuffer-base-color.png",
+    "gbuffer-world-normal.png",
+    "gbuffer-roughness.png",
+    "gbuffer-metallic.png",
+    "gbuffer-ao-flags.png",
+    "gbuffer-linear-depth.png"
+  ],
+  "adapterName": "NVIDIA GeForce RTX 4070 SUPER",
+  "driverVersion": "32.0.15.7688",
+  "adapter": {
+    "name": "NVIDIA GeForce RTX 4070 SUPER",
+    "driverVersion": "32.0.15.7688",
+    "nvrhiBackend": "D3D12",
+    "dxrTier": "1.1",
+    "shaderModel": "6.7",
+    "validationMode": "NVRHI + D3D12 debug runtime"
+  },
+  "decode": {
+    "path": "src/shaders/gbuffer_encoding.hlsli DecodeGBuffer",
+    "note": "PNG dumps are visualized ADR-002 channels, not HDR lighting or the S3 tone map."
+  }
+}

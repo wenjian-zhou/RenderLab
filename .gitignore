@@ -3,6 +3,7 @@
 /results/
 /references/
 /captures/
+/tests/golden/**/compare-report.json
 *.wpix
 pixtool.log
 /CMakeUserPresets.json

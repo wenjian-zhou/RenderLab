@@ -60,12 +60,14 @@ namespace
             "                      metallic, ao-flags, linear-depth (default: base-color)\n"
             "  --dump-gbuffer-views <dir>\n"
             "                      Dump every mandatory GBuffer debug view as PNG under <dir>\n"
-            "                      (visualization dump, not the S1.6 golden-image harness).\n"
-            "                      Implies --lock-camera.\n"
+            "                      (visualization dump). Implies --lock-camera.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
-            "  --output <path>     Golden-image output path (not implemented; scheduled for S1.6)\n"
+            "  --output <dir>      S1.6 golden capture: dump every mandatory view plus\n"
+            "                      capture-metadata.json under <dir>. Implies --lock-camera\n"
+            "                      and disables the windowed --frames resize/minimize probe.\n"
+            "                      Locked defaults: cesium-milk-truck, s04-default, 1280x720, frame 1.\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -203,16 +205,6 @@ namespace
         return true;
     }
 
-    bool RejectUnimplementedOptions(const CommandLineOptions& options, std::string& error)
-    {
-        if (options.output.has_value())
-        {
-            error = "--output is not implemented (screenshot capture is scheduled for S1.6).";
-            return false;
-        }
-        return true;
-    }
-
     std::filesystem::path FindFrameworkShaderDirectory(nvrhi::GraphicsAPI api)
     {
         auto nativeFS = std::make_shared<vfs::NativeFileSystem>();
@@ -260,12 +252,6 @@ int main(int argc, char** argv)
     {
         PrintUsage("RenderLab");
         return 0;
-    }
-
-    if (!RejectUnimplementedOptions(options, parseError))
-    {
-        std::fprintf(stderr, "error: %s\n", parseError.c_str());
-        return 2;
     }
 
     renderlab::GBufferDebugMode gbufferView = renderlab::GBufferDebugMode::BaseColor;
@@ -404,20 +390,38 @@ int main(int argc, char** argv)
 
     const uint32_t defaultHeadlessFrames = 8;
     const uint32_t defaultDumpFrames = 4;
-    const bool dumpViews = options.dumpGBufferViews.has_value();
+    const bool goldenOutput = options.output.has_value();
+    const bool dumpViews = options.dumpGBufferViews.has_value() || goldenOutput;
     const bool limitedFrames = options.frames.has_value() || options.headless || dumpViews;
-    const uint32_t frameLimit = options.frames.value_or(
+    const uint32_t dumpFrameIndex = 1;
+    uint32_t frameLimit = options.frames.value_or(
         dumpViews && !options.headless ? defaultDumpFrames : defaultHeadlessFrames);
+    if (dumpViews && frameLimit <= dumpFrameIndex)
+    {
+        frameLimit = dumpFrameIndex + 1;
+    }
 
     renderlab::AppLaunchOptions launchOptions;
     launchOptions.scene = std::move(resolvedScene);
     launchOptions.camera = catalog.GetCameraPreset();
     launchOptions.lockCamera = options.lockCamera || options.headless || dumpViews;
     launchOptions.gbufferView = gbufferView;
-    if (dumpViews)
+    launchOptions.writeCaptureMetadata = goldenOutput;
+    if (options.dumpGBufferViews.has_value())
     {
         launchOptions.dumpGBufferViewsDirectory = *options.dumpGBufferViews;
     }
+    else if (goldenOutput)
+    {
+        launchOptions.dumpGBufferViewsDirectory = *options.output;
+    }
+    if (goldenOutput)
+    {
+        launchOptions.goldenOutputDirectory = *options.output;
+    }
+
+    const std::string goldenDirectory = launchOptions.goldenOutputDirectory;
+    const bool writeMetadata = launchOptions.writeCaptureMetadata;
 
     int exitCode = 0;
     {
@@ -479,7 +483,6 @@ int main(int argc, char** argv)
             };
 
         bool dumpFailed = false;
-        const uint32_t dumpFrameIndex = 1;
         deviceManager->m_callbacks.afterPresent =
             [&frameCpuMarker,
              &presentCpuMarker,
@@ -490,17 +493,40 @@ int main(int argc, char** argv)
              &app,
              dumpViews,
              dumpFrameIndex,
+             writeMetadata,
+             &goldenDirectory,
              &dumpFailed](app::DeviceManager& manager, uint32_t frameIndex) {
                 presentCpuMarker.reset();
                 frameCpuMarker.reset();
 
                 if (dumpViews && !app.GetGBufferDebugHud().dumpCompleted && frameIndex >= dumpFrameIndex)
                 {
-                    if (!app.DumpGBufferDebugViews(app.GetGBufferDebugHud().dumpDirectory))
+                    const std::string primaryDump = app.GetGBufferDebugHud().dumpDirectory;
+                    if (!app.DumpGBufferDebugViews(primaryDump))
                     {
                         dumpFailed = true;
                         glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
                         return;
+                    }
+                    if (!goldenDirectory.empty() && goldenDirectory != primaryDump)
+                    {
+                        if (!app.DumpGBufferDebugViews(goldenDirectory))
+                        {
+                            dumpFailed = true;
+                            glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                            return;
+                        }
+                    }
+                    if (writeMetadata)
+                    {
+                        const std::string metadataDir =
+                            goldenDirectory.empty() ? primaryDump : goldenDirectory;
+                        if (!app.WriteCaptureMetadata(metadataDir, frameIndex))
+                        {
+                            dumpFailed = true;
+                            glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                            return;
+                        }
                     }
                 }
 
@@ -529,6 +555,16 @@ int main(int argc, char** argv)
                     glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
                 }
             };
+
+        if (goldenOutput)
+        {
+            log::info(
+                "Golden capture: scene=%s camera=%s resolution=1280x720 frame=%u output=%s",
+                app.GetSceneHud().sceneId.c_str(),
+                catalog.GetCameraPreset().name.c_str(),
+                dumpFrameIndex,
+                goldenDirectory.c_str());
+        }
 
         if (options.headless)
         {

@@ -3,8 +3,9 @@
 This file is the Stage 0 / M0 capture checklist, plus the S1.3 GBuffer resource
 names and S1.4 opaque MRT writes to look for in PIX. Do not commit capture files.
 
-S1.5 can dump visualized GBuffer channels with `--dump-gbuffer-views`. That is a
-channel dump, not image regression. `--output` remains unimplemented until S1.6.
+S1.5 can dump visualized GBuffer channels with `--dump-gbuffer-views`. S1.6
+`--output` reuses that dump, adds `capture-metadata.json`, and compares against
+`tests/golden/`. Do not commit capture files or `results/`.
 
 ## Marker Names
 
@@ -178,7 +179,7 @@ New-Item -ItemType Directory -Force captures | Out-Null
   save-event-list captures\s15-gbuffer-debug-events.csv
 ```
 
-Dump every mandatory visualized channel (not S1.6 golden images):
+Dump every mandatory visualized channel:
 
 ```powershell
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
@@ -193,7 +194,25 @@ That writes:
 - `gbuffer-ao-flags.png`
 - `gbuffer-linear-depth.png`
 
-Do not commit the PNG files or the PIX capture.
+Do not commit the PNG files or the PIX capture. Approved S1.6 goldens of the
+same names live under `tests/golden/` and are compared with tolerances, not
+byte equality. See [`image-regression.md`](image-regression.md).
+
+## S1.6 Golden Capture
+
+Image tests must keep a fixed 1280×720 window. `--output` implies `--lock-camera`
+and disables the `--frames 30` resize/minimize probe.
+
+```powershell
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output results\s16-run1
+.\out\build\windows-vs2022\bin\Debug\RenderLabGoldenCompare.exe --candidate results\s16-run1 --reference tests\golden\cesium-milk-truck\s04-default\1280x720
+powershell -NoProfile -File scripts\golden.ps1
+```
+
+`--output` writes the six debug PNGs plus `capture-metadata.json` (adapter,
+driver, scene, camera, resolution, frame). Generated files under `results/`
+are gitignored. GitHub-hosted `windows-2022` has no NVIDIA GPU, so GPU image
+comparison stays a local or self-hosted test, same as smoke.
 
 ## Smoke And CI
 

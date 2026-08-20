@@ -11,13 +11,12 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, **S1.1 is
-complete**, **S1.2 is complete**, **S1.3 is complete**, **S1.4 is complete**, and
-**S1.5 is complete**: the back buffer presents a selectable GBuffer debug view
-decoded from `gbuffer_encoding.hlsli`. Device, queue, fence, and swap-chain
-ownership stay in `donut::app::DeviceManager`. Lighting, tone mapping, and image
-regression are not implemented. The next executable task is **S1.6: create the
-first image-regression baseline**.
+This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, and
+**S1.1 through S1.6 are complete**: GBuffer channels are inspectable, timed,
+documented, and protected by a repeatable `--output` capture under
+`tests/golden/`. Device, queue, fence, and swap-chain ownership stay in
+`donut::app::DeviceManager`. Lighting, tone mapping, RDG, and DXR are not
+implemented. The next executable task is **S2.1: define the lighting contract**.
 
 ## Plans
 
@@ -28,9 +27,10 @@ first image-regression baseline**.
 - [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
   and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
-- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names, S1.4 MRT writes, and S1.5 debug-view dumps. Do not commit capture files.
+- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names, S1.4 MRT writes, S1.5 debug-view dumps, and S1.6 golden capture. Do not commit capture files or `results/`.
+- [Image regression](docs/image-regression.md) is the S1.6 locked capture, comparison rules, and portability policy.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
-- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, S1.3 lifetime, S1.4 opaque pass, and S1.5 debug views.
+- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, S1.3 lifetime, S1.4 opaque pass, S1.5 debug views, and S1.6 golden dump.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
@@ -70,6 +70,7 @@ cmake --fresh --preset windows-vs2022
 cmake --build --preset windows-debug
 cmake --build --preset windows-release
 .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+.\out\build\windows-vs2022\bin\Debug\RenderLabGoldenCompare.exe --help
 ```
 
 CMake enables only the D3D12 Donut/NVRHI backend. DX11, Vulkan, Streamline, DLSS, Aftermath,
@@ -84,9 +85,11 @@ After a Debug or Release build:
 .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --gbuffer-view world-normal
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output results\s16-run1
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 powershell -NoProfile -File scripts\smoke.ps1
+powershell -NoProfile -File scripts\golden.ps1
 ```
 
 The process opens a window, loads the default scene from `scenes/`, applies the S0.4 camera
@@ -104,7 +107,7 @@ GPU, so CI stays configure + build and smoke is a documented local test. See
 
 Command-line parsing is stable:
 
-| Option | S1.5 behavior |
+| Option | S1.6 behavior |
 |---|---|
 | `--help` | print usage and exit |
 | `--frames <n>` | present `n` frames, then exit |
@@ -113,9 +116,14 @@ Command-line parsing is stable:
 | `--gbuffer-view <mode>` | `base-color`, `world-normal`, `roughness`, `metallic`, `ao-flags`, `linear-depth` |
 | `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory debug view; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
-| `--output <path>` | parsed; reports `not implemented` until S1.6 |
+| `--output <dir>` | golden capture: six debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with
 `--scene fallback-boxes`. Scene URLs, licenses, and SHA-256 hashes are recorded in
 [`scenes/manifest.json`](scenes/manifest.json). Absolute developer-machine paths are rejected.
+
+Image regression locks that default scene, camera `s04-default`, 1280×720, and
+frame 1. `--output` reuses the S1.5 debug dump. Comparison rules live in
+[`docs/image-regression.md`](docs/image-regression.md). GPU capture is a local
+test (`scripts\golden.ps1`); GitHub-hosted CI runs the CPU comparison tests only.

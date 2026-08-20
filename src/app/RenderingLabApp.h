@@ -70,6 +70,8 @@ namespace renderlab
         bool lockCamera = false;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
         std::string dumpGBufferViewsDirectory;
+        std::string goldenOutputDirectory;
+        bool writeCaptureMetadata = false;
     };
 
     class RenderingLabUserInterface final : public donut::app::ImGui_Renderer
@@ -115,6 +117,7 @@ namespace renderlab
         GBufferDebugHud& GetGBufferDebugHud();
         const GBufferDebugHud& GetGBufferDebugHud() const;
         bool DumpGBufferDebugViews(const std::string& directory);
+        bool WriteCaptureMetadata(const std::string& directory, uint32_t frameIndex) const;
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
         void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;

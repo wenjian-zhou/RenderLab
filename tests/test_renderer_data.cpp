@@ -19,6 +19,7 @@ using namespace renderlab;
 int RunGBufferTargetContractTests();
 int RunGBufferPassContractTests();
 int RunGBufferDebugPassTests();
+int RunImageCompareTests();
 
 namespace
 {
@@ -249,6 +250,7 @@ int main()
     g_failures += RunGBufferTargetContractTests();
     g_failures += RunGBufferPassContractTests();
     g_failures += RunGBufferDebugPassTests();
+    g_failures += RunImageCompareTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

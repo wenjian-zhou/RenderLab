@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <string_view>
 
 #if DONUT_WITH_DX12
 #include <dxgi.h>
@@ -500,6 +502,147 @@ namespace renderlab
         m_debugHud.dumpCount = dumped;
         log::info("Dumped %u GBuffer debug views under '%s'.", dumped, directory.c_str());
         return m_debugHud.dumpSucceeded;
+    }
+
+    namespace
+    {
+        std::string JsonEscape(std::string_view text)
+        {
+            std::string out;
+            out.reserve(text.size());
+            for (const char ch : text)
+            {
+                switch (ch)
+                {
+                case '\\':
+                    out += "\\\\";
+                    break;
+                case '"':
+                    out += "\\\"";
+                    break;
+                case '\n':
+                    out += "\\n";
+                    break;
+                case '\r':
+                    out += "\\r";
+                    break;
+                case '\t':
+                    out += "\\t";
+                    break;
+                default:
+                    out.push_back(ch);
+                    break;
+                }
+            }
+            return out;
+        }
+    }
+
+    bool RenderingLabApp::WriteCaptureMetadata(const std::string& directory, uint32_t frameIndex) const
+    {
+        if (directory.empty())
+        {
+            log::error("--output requires a directory path.");
+            return false;
+        }
+
+        const std::filesystem::path outputDir(directory);
+        std::error_code createError;
+        std::filesystem::create_directories(outputDir, createError);
+        if (createError)
+        {
+            log::error(
+                "Failed to create --output directory '%s': %s",
+                directory.c_str(),
+                createError.message().c_str());
+            return false;
+        }
+
+        const std::filesystem::path metadataPath = outputDir / "capture-metadata.json";
+        std::ofstream output(metadataPath, std::ios::binary | std::ios::trunc);
+        if (!output)
+        {
+            log::error("Failed to write '%s'.", metadataPath.generic_string().c_str());
+            return false;
+        }
+
+        const uint32_t width = m_gbuffer.IsValid() ? m_gbuffer.GetWidth() : m_backBufferWidth;
+        const uint32_t height = m_gbuffer.IsValid() ? m_gbuffer.GetHeight() : m_backBufferHeight;
+
+        output << "{\n";
+        output << "  \"schema\": \"renderlab-capture-metadata/v1\",\n";
+        output << "  \"step\": \"S1.6\",\n";
+        output << "  \"sceneId\": \"" << JsonEscape(m_options.scene.id) << "\",\n";
+        output << "  \"sceneRelativePath\": \"" << JsonEscape(m_options.scene.relativePath) << "\",\n";
+        output << "  \"cameraPreset\": \"" << JsonEscape(m_options.camera.name) << "\",\n";
+        output << "  \"cameraLocked\": " << (m_options.lockCamera ? "true" : "false") << ",\n";
+        output << "  \"camera\": {\n";
+        char number[64] = {};
+        auto writeVec3 = [&output, &number](const char* name, const donut::math::float3& value, bool last) {
+            std::snprintf(number, sizeof(number), "[%.3f, %.3f, %.3f]", value.x, value.y, value.z);
+            output << "    \"" << name << "\": " << number << (last ? "\n" : ",\n");
+        };
+        writeVec3("position", m_options.camera.position, false);
+        writeVec3("target", m_options.camera.target, false);
+        writeVec3("up", m_options.camera.up, false);
+        std::snprintf(number, sizeof(number), "%.3f", m_options.camera.verticalFovDegrees);
+        output << "    \"verticalFovDegrees\": " << number << ",\n";
+        std::snprintf(number, sizeof(number), "%.3f", m_options.camera.zNear);
+        output << "    \"zNear\": " << number << "\n";
+        output << "  },\n";
+        output << "  \"resolution\": {\n";
+        output << "    \"width\": " << width << ",\n";
+        output << "    \"height\": " << height << "\n";
+        output << "  },\n";
+        output << "  \"width\": " << width << ",\n";
+        output << "  \"height\": " << height << ",\n";
+        output << "  \"frameIndex\": " << frameIndex << ",\n";
+        output << "  \"sampleCount\": 1,\n";
+        output << "  \"views\": [\n";
+        for (uint32_t index = 0; index < static_cast<uint32_t>(GBufferDebugMode::Count); ++index)
+        {
+            const GBufferDebugModeInfo& info = GetGBufferDebugModeInfo(static_cast<GBufferDebugMode>(index));
+            output << "    \"" << JsonEscape(info.dumpFileName) << "\"";
+            if (index + 1 < static_cast<uint32_t>(GBufferDebugMode::Count))
+            {
+                output << ",";
+            }
+            output << "\n";
+        }
+        output << "  ],\n";
+        output << "  \"adapterName\": \"" << JsonEscape(m_capabilities.adapterName) << "\",\n";
+        output << "  \"driverVersion\": \"" << JsonEscape(m_capabilities.driverVersion) << "\",\n";
+        output << "  \"adapter\": {\n";
+        output << "    \"name\": \"" << JsonEscape(m_capabilities.adapterName) << "\",\n";
+        output << "    \"driverVersion\": \"" << JsonEscape(m_capabilities.driverVersion) << "\",\n";
+        output << "    \"nvrhiBackend\": \"" << JsonEscape(m_capabilities.nvrhiBackend) << "\",\n";
+        output << "    \"dxrTier\": \"" << JsonEscape(m_capabilities.dxrTier) << "\",\n";
+        output << "    \"shaderModel\": \"" << JsonEscape(m_capabilities.shaderModel) << "\",\n";
+        output << "    \"validationMode\": \"" << JsonEscape(m_capabilities.validationMode) << "\"\n";
+        output << "  },\n";
+        output << "  \"decode\": {\n";
+        output << "    \"path\": \"src/shaders/gbuffer_encoding.hlsli DecodeGBuffer\",\n";
+        output << "    \"note\": \"PNG dumps are visualized ADR-002 channels, not HDR lighting or the S3 tone map.\"\n";
+        output << "  }\n";
+        output << "}\n";
+
+        if (!output)
+        {
+            log::error("Failed while writing '%s'.", metadataPath.generic_string().c_str());
+            return false;
+        }
+
+        log::info(
+            "Wrote capture metadata %s (scene=%s camera=%s %ux%u frame=%u adapter=%s driver=%s)",
+            metadataPath.generic_string().c_str(),
+            m_options.scene.id.c_str(),
+            m_options.camera.name.c_str(),
+            width,
+            height,
+            frameIndex,
+            m_capabilities.adapterName.c_str(),
+            m_capabilities.driverVersion.c_str());
+        return true;
     }
 
     void RenderingLabApp::ClearBackBuffer(nvrhi::IFramebuffer* framebuffer)

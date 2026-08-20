@@ -73,7 +73,7 @@ jobs:
         shell: powershell
         run: cmake --build --preset windows-debug --parallel
 
-      - name: Run CPU data-contract tests (Debug)
+      - name: Run CPU data-contract and image-compare tests (Debug)
         shell: powershell
         run: .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
 
@@ -81,7 +81,7 @@ jobs:
         shell: powershell
         run: cmake --build --preset windows-release --parallel
 
-      - name: Run CPU data-contract tests (Release)
+      - name: Run CPU data-contract and image-compare tests (Release)
         shell: powershell
         run: .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
 
