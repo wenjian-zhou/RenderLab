@@ -6,8 +6,8 @@ Step: S1.1
 
 This file is the first-version GBuffer layout. S1.3 created the textures and resize
 path. S1.4 writes them (complete). S1.5 visualizes them (complete). S1.6 protects
-them with a golden capture (complete). S2 lighting reads them. Do not add targets,
-channels, or encodings without updating this file and
+them with [image regression](image-regression.md) (complete). S2 lighting reads
+them. Do not add targets, channels, or encodings without updating this file and
 [`adr/ADR-002-gbuffer-layout.md`](adr/ADR-002-gbuffer-layout.md).
 
 Coordinate, matrix, reversed-Z, and color-space rules live in
@@ -434,6 +434,5 @@ ADR-002 modes:
 | `linear-depth` | Linearized depth | `viewZ = zNear / deviceDepth`, rejected when `deviceDepth == 0`. Displayed as `viewZ / (viewZ + 1)`. Background is magenta `(1,0,1)` and is not reconstructed. |
 
 Dump every view with `--lock-camera --dump-gbuffer-views <dir>`. That writes PNGs of
-the visualized channels. `--output <dir>` reuses the same dump, adds
-`capture-metadata.json`, locks 1280×720 / frame 1 / `s04-default`, and is the
-S1.6 golden harness. Comparison rules are in [`image-regression.md`](image-regression.md).
+the visualized channels. For regression capture and comparison, see
+[`image-regression.md`](image-regression.md).

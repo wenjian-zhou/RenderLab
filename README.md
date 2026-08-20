@@ -13,8 +13,8 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, and
 **S1.1 through S1.6 are complete**: GBuffer channels are inspectable, timed,
-documented, and protected by a repeatable `--output` capture under
-`tests/golden/`. Device, queue, fence, and swap-chain ownership stay in
+documented, and protected by a committed image-regression baseline. Device,
+queue, fence, and swap-chain ownership stay in
 `donut::app::DeviceManager`. Lighting, tone mapping, RDG, and DXR are not
 implemented. The next executable task is **S2.1: define the lighting contract**.
 
@@ -27,10 +27,10 @@ implemented. The next executable task is **S2.1: define the lighting contract**.
 - [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
   and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
-- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names, S1.4 MRT writes, S1.5 debug-view dumps, and S1.6 golden capture. Do not commit capture files or `results/`.
-- [Image regression](docs/image-regression.md) is the S1.6 locked capture, comparison rules, and portability policy.
+- [Capture guide](docs/capture-guide.md) covers PIX inspection and local capture workflows.
+- [Image regression](docs/image-regression.md) is the canonical S1.6 capture and comparison contract.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
-- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, S1.3 lifetime, S1.4 opaque pass, S1.5 debug views, and S1.6 golden dump.
+- [GBuffer contract](docs/g-buffer.md) defines the first-version targets, encodings, lifetime, raster writes, and debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
@@ -85,7 +85,6 @@ After a Debug or Release build:
 .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --gbuffer-view world-normal
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
-.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output results\s16-run1
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 powershell -NoProfile -File scripts\smoke.ps1
@@ -123,7 +122,6 @@ The default scene is `cesium-milk-truck`. A tiny committed fallback is available
 `--scene fallback-boxes`. Scene URLs, licenses, and SHA-256 hashes are recorded in
 [`scenes/manifest.json`](scenes/manifest.json). Absolute developer-machine paths are rejected.
 
-Image regression locks that default scene, camera `s04-default`, 1280×720, and
-frame 1. `--output` reuses the S1.5 debug dump. Comparison rules live in
-[`docs/image-regression.md`](docs/image-regression.md). GPU capture is a local
-test (`scripts\golden.ps1`); GitHub-hosted CI runs the CPU comparison tests only.
+For the locked capture, thresholds, verdicts, portability policy, and approval
+workflow, see [`docs/image-regression.md`](docs/image-regression.md). GPU capture
+is local; hosted CI runs the CPU comparison tests.

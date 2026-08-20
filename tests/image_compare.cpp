@@ -145,7 +145,7 @@ namespace renderlab::golden
             }
 
             const Json::Value& node = root[key];
-            if (node.type() == Json::uintValue)
+            if (node.type() == Json::uintValue && node.isUInt())
             {
                 value = node.asUInt();
                 return true;

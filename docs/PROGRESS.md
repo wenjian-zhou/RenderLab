@@ -573,66 +573,26 @@ Step: S1.6
 State: Complete
 Date: 2026-08-20
 Commit: afecd9a7440b45c6c8620af12be8b8fbfc74c672
+Follow-up fixes: a5da94a (required identity fields), bacfb77 (strict JSON parsing)
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
-  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
   .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output results\s16-approve
   .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
   .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
   powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
   powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Release
-  powershell -NoProfile -File scripts\smoke.ps1
-Automated tests: RenderLabDataContractTests Debug and Release
-  existing S1.2 / S1.3 / S1.4 / S1.5 checks
-  six ADR-002 golden file names reuse S1.5 dump names
-  comparison is not exact byte equality
-  synthetic identical images pass; 1-count noise is inside threshold
-  synthetic R/B channel swap fails
-  self-compare of committed goldens passes
-  roughness-as-base-color and metallic-as-base-color fail
-  Milk Truck metallic golden stays near-black (weak oracle)
-  capture-metadata.json records scene, camera, 1280x720, frame 1, adapter, driver
-GPU validation/capture:
+Evidence:
+  Debug and Release CPU comparison tests passed, including malformed metadata and channel-swap failures
+  Committed goldens self-compared successfully; identical Debug and Release recaptures had mae=0
   Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
   Release: same adapter/driver, validation=NVRHI, errors=0
-  Locked capture: scene=cesium-milk-truck camera=s04-default 1280x720 frame=1
-  --output writes the six S1.5 PNG names plus capture-metadata.json
-  Unchanged Debug capture passed twice (all views mae=0 maxAbs=0)
-  Unchanged Release capture passed twice against the Debug-approved goldens (mae=0)
   Channel swap (roughness vs base-color): mae=15.4302 mismatch=0.113758 maxAbs=255, failed as expected
-  Output paths are deterministic: gbuffer-*.png and capture-metadata.json under --output
-  results/ is gitignored; generated captures did not dirty Git
-Artifacts:
-  src/app/main.cpp
-  src/app/RenderingLabApp.h
-  src/app/RenderingLabApp.cpp
-  tests/image_compare.h
-  tests/image_compare.cpp
-  tests/test_image_compare.cpp
-  tests/golden_compare_main.cpp
-  tests/stb_image_impl.cpp
-  tests/CMakeLists.txt
-  tests/test_renderer_data.cpp
-  tests/golden/README.md
-  tests/golden/manifest.json
-  tests/golden/cesium-milk-truck/s04-default/1280x720/
-  scripts/golden.ps1
-  docs/image-regression.md
-  docs/g-buffer.md
-  docs/capture-guide.md
-  README.md
-  IMPLEMENTATION_PLAN.md
-  .github/workflows/windows.yml
-  .gitignore
-  docs/PROGRESS.md
+Contract: docs/image-regression.md
 Known limitations:
   Milk Truck metallic is 0, so that golden is a weak oracle. The S0.4 camera was not changed.
-  Numeric pixel inspection remains deferred.
   GitHub-hosted windows-2022 has no NVIDIA GPU; CI runs CPU comparison of committed goldens. GPU capture stays a local/self-hosted test.
   The portability band is implemented and classified separately from regressions; it was not exercised on a second GPU.
-  Observed mae=0 on this host is not a promise of bit-identical PNGs; comparison still uses tolerances.
-  Lighting, tone mapping, RDG, and DXR are not implemented.
 Next step: S2.1 - Define the lighting contract
 ```
 
