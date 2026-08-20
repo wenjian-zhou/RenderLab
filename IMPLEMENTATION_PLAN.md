@@ -9,7 +9,7 @@ Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 Current progress (2026-08-20): **S0.1 through S1.5 complete**; Stage 0 / M0 is satisfied.
 The active step is **S1.6 — Create the first image-regression baseline** (not started).
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
-S1.5 implementation commit: `1dc6c1ad422fb0ea05a785d265a41d068c2823a4`.
+S1.5 implementation commit: `5664f3f124a50ed4f7259acaef1fa40c90922255`.
 
 ## 1. Purpose and Success Definition
 

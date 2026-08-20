@@ -494,7 +494,7 @@ Next step: S1.5 - Add GBuffer debug visualization
 Step: S1.5
 State: Complete
 Date: 2026-08-20
-Commit: 1dc6c1ad422fb0ea05a785d265a41d068c2823a4
+Commit: 5664f3f124a50ed4f7259acaef1fa40c90922255
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
