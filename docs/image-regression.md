@@ -81,14 +81,21 @@ mirrors them for humans.
 
 ## 5. Adapter / driver metadata and portability
 
-`--output` writes `capture-metadata.json` beside the PNGs. Flattened fields used
-by the comparator:
+`--output` writes `capture-metadata.json` beside the PNGs. Required identity
+fields:
 
-- `sceneId`, `cameraPreset`, `width`, `height`, `frameIndex`
+- `schema` (`renderlab-capture-metadata/v1`)
+- `sceneId`, `cameraPreset`
+- `width`, `height`, `frameIndex`, `sampleCount`
 - `adapterName`, `driverVersion`
 
-Wrong scene, camera, resolution, or frame is always a **regression**. Missing
-metadata is an **error**.
+The comparator must extract every required field. Empty or malformed metadata
+is not treated as a wildcard. Identity is then checked against the locked
+S1.6 constants, not only pairwise against whichever fields happen to be present.
+
+Missing, empty, or malformed `capture-metadata.json` is an **error**. Present
+identity fields that do not match the locked scene, camera, resolution, frame,
+schema, or sample count are a **regression**, even if the PNGs match.
 
 Pixel failures are classified as:
 

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 namespace renderlab::golden
 {
@@ -332,58 +333,104 @@ namespace renderlab::golden
         const std::string json = ReadTextFile(path, error);
         if (json.empty())
         {
+            if (error.empty())
+            {
+                error = "capture-metadata.json under '" + directory.generic_string() + "' is empty.";
+            }
             return false;
         }
 
-        identity.hasMetadata = true;
-        ExtractJsonString(json, "sceneId", identity.sceneId);
-        ExtractJsonString(json, "cameraPreset", identity.cameraPreset);
-        ExtractJsonString(json, "adapterName", identity.adapterName);
-        ExtractJsonString(json, "driverVersion", identity.driverVersion);
-        ExtractJsonUint(json, "width", identity.width);
-        ExtractJsonUint(json, "height", identity.height);
-        ExtractJsonUint(json, "frameIndex", identity.frameIndex);
+        CaptureIdentity loaded;
+        const auto requireString = [&](const char* key, std::string& field) -> bool {
+            if (!ExtractJsonString(json, key, field) || field.empty())
+            {
+                error = std::string("capture-metadata.json is missing or empty '") + key + "'.";
+                return false;
+            }
+            return true;
+        };
+        const auto requireUint = [&](const char* key, uint32_t& field) -> bool {
+            if (!ExtractJsonUint(json, key, field))
+            {
+                error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
+                return false;
+            }
+            return true;
+        };
+
+        if (!requireString("schema", loaded.schema) ||
+            !requireString("sceneId", loaded.sceneId) ||
+            !requireString("cameraPreset", loaded.cameraPreset) ||
+            !requireString("adapterName", loaded.adapterName) ||
+            !requireString("driverVersion", loaded.driverVersion) ||
+            !requireUint("width", loaded.width) ||
+            !requireUint("height", loaded.height) ||
+            !requireUint("frameIndex", loaded.frameIndex) ||
+            !requireUint("sampleCount", loaded.sampleCount))
+        {
+            return false;
+        }
+        if (loaded.width == 0 || loaded.height == 0)
+        {
+            error = "capture-metadata.json has invalid width/height.";
+            return false;
+        }
+
+        loaded.hasMetadata = true;
+        identity = std::move(loaded);
+        return true;
+    }
+
+    bool IdentityMatchesLockedCapture(const CaptureIdentity& identity, std::string& error)
+    {
+        if (!identity.hasMetadata)
+        {
+            error = "Capture identity metadata is missing.";
+            return false;
+        }
+        if (identity.schema != kSchema)
+        {
+            error = "Schema mismatch: '" + identity.schema + "' vs '" + kSchema + "'.";
+            return false;
+        }
+        if (identity.sceneId != kSceneId)
+        {
+            error = "Scene mismatch: '" + identity.sceneId + "' vs '" + kSceneId + "'.";
+            return false;
+        }
+        if (identity.cameraPreset != kCameraPreset)
+        {
+            error = "Camera preset mismatch: '" + identity.cameraPreset + "' vs '" + kCameraPreset + "'.";
+            return false;
+        }
+        if (identity.width != kWidth || identity.height != kHeight)
+        {
+            error = "Resolution mismatch: expected 1280x720.";
+            return false;
+        }
+        if (identity.frameIndex != kFrameIndex)
+        {
+            error = "Frame index mismatch: expected 1.";
+            return false;
+        }
+        if (identity.sampleCount != kSampleCount)
+        {
+            error = "Sample count mismatch: expected 1.";
+            return false;
+        }
         return true;
     }
 
     bool IdentitiesCompatible(const CaptureIdentity& candidate, const CaptureIdentity& reference, std::string& error)
     {
-        if (!candidate.hasMetadata)
+        if (!IdentityMatchesLockedCapture(reference, error))
         {
-            error = "Candidate capture-metadata.json is missing.";
+            error = "Reference " + error;
             return false;
         }
-        if (!reference.hasMetadata)
+        if (!IdentityMatchesLockedCapture(candidate, error))
         {
-            error = "Reference capture-metadata.json is missing.";
-            return false;
-        }
-        if (!candidate.sceneId.empty() && !reference.sceneId.empty() && candidate.sceneId != reference.sceneId)
-        {
-            error = "Scene mismatch: candidate '" + candidate.sceneId + "' vs reference '" + reference.sceneId + "'.";
-            return false;
-        }
-        if (!candidate.cameraPreset.empty() && !reference.cameraPreset.empty() &&
-            candidate.cameraPreset != reference.cameraPreset)
-        {
-            error = "Camera preset mismatch: candidate '" + candidate.cameraPreset +
-                "' vs reference '" + reference.cameraPreset + "'.";
-            return false;
-        }
-        if (candidate.width != 0 && reference.width != 0 && candidate.width != reference.width)
-        {
-            error = "Width mismatch.";
-            return false;
-        }
-        if (candidate.height != 0 && reference.height != 0 && candidate.height != reference.height)
-        {
-            error = "Height mismatch.";
-            return false;
-        }
-        if (candidate.frameIndex != 0 && reference.frameIndex != 0 &&
-            candidate.frameIndex != reference.frameIndex)
-        {
-            error = "Frame index mismatch.";
+            error = "Candidate " + error;
             return false;
         }
         return true;

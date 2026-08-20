@@ -11,6 +11,7 @@ namespace renderlab::golden
     inline constexpr uint32_t kWidth = 1280;
     inline constexpr uint32_t kHeight = 720;
     inline constexpr uint32_t kFrameIndex = 1;
+    inline constexpr uint32_t kSampleCount = 1;
     inline constexpr uint32_t kViewCount = 6;
     inline constexpr const char* kSceneId = "cesium-milk-truck";
     inline constexpr const char* kCameraPreset = "s04-default";
@@ -77,6 +78,7 @@ namespace renderlab::golden
 
     struct CaptureIdentity
     {
+        std::string schema;
         std::string sceneId;
         std::string cameraPreset;
         std::string adapterName;
@@ -84,6 +86,7 @@ namespace renderlab::golden
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t frameIndex = 0;
+        uint32_t sampleCount = 0;
         bool hasMetadata = false;
     };
 
@@ -116,6 +119,7 @@ namespace renderlab::golden
     bool StatsPass(const CompareStats& stats, double maxMae, double maxMismatchFraction);
 
     bool LoadCaptureIdentity(const std::filesystem::path& directory, CaptureIdentity& identity, std::string& error);
+    bool IdentityMatchesLockedCapture(const CaptureIdentity& identity, std::string& error);
     bool IdentitiesCompatible(const CaptureIdentity& candidate, const CaptureIdentity& reference, std::string& error);
     bool AdaptersMatch(const CaptureIdentity& candidate, const CaptureIdentity& reference);
 

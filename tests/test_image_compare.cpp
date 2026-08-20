@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -78,6 +79,42 @@ namespace
         }
         return {};
     }
+
+    bool WriteTextFile(const std::filesystem::path& path, const std::string& text)
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        if (!output)
+        {
+            return false;
+        }
+        output << text;
+        return static_cast<bool>(output);
+    }
+
+    std::filesystem::path MakeTempMetadataDir(const std::string& json)
+    {
+        const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "renderlab-s16-identity-meta";
+        std::filesystem::create_directories(dir);
+        WriteTextFile(dir / kMetadataFileName, json);
+        return dir;
+    }
+
+    std::filesystem::path MakeTempCaptureDir(const std::filesystem::path& goldenDir, const std::string& json)
+    {
+        const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "renderlab-s16-identity-capture";
+        std::error_code ignored;
+        std::filesystem::remove_all(dir, ignored);
+        std::filesystem::create_directories(dir);
+        for (uint32_t index = 0; index < kViewCount; ++index)
+        {
+            const char* fileName = GetViewRule(static_cast<ViewId>(index)).fileName;
+            std::filesystem::copy_file(goldenDir / fileName, dir / fileName);
+        }
+        WriteTextFile(dir / kMetadataFileName, json);
+        return dir;
+    }
 }
 
 int RunImageCompareTests()
@@ -87,8 +124,10 @@ int RunImageCompareTests()
     Check(kViewCount == 6u, "Golden harness covers the six ADR-002 views");
     Check(kWidth == 1280u && kHeight == 720u, "Locked golden resolution is 1280x720");
     Check(kFrameIndex == 1u, "Locked golden frame index is 1");
+    Check(kSampleCount == 1u, "Locked golden sample count is 1");
     Check(std::string(kSceneId) == "cesium-milk-truck", "Locked golden scene is cesium-milk-truck");
     Check(std::string(kCameraPreset) == "s04-default", "Locked golden camera is s04-default");
+    Check(std::string(kSchema) == "renderlab-capture-metadata/v1", "Locked golden schema is v1");
 
     for (uint32_t index = 0; index < kViewCount; ++index)
     {
@@ -184,12 +223,77 @@ int RunImageCompareTests()
     CaptureIdentity identity;
     std::string identityError;
     Check(LoadCaptureIdentity(goldenDir, identity, identityError), "Load approved capture metadata");
+    Check(identity.schema == kSchema, "Approved metadata schema is v1");
     Check(identity.sceneId == kSceneId, "Approved metadata scene is cesium-milk-truck");
     Check(identity.cameraPreset == kCameraPreset, "Approved metadata camera is s04-default");
     Check(identity.width == kWidth && identity.height == kHeight, "Approved metadata resolution is 1280x720");
     Check(identity.frameIndex == kFrameIndex, "Approved metadata frame is 1");
+    Check(identity.sampleCount == kSampleCount, "Approved metadata sample count is 1");
     Check(!identity.adapterName.empty() && !identity.driverVersion.empty(),
           "Approved metadata records adapter and driver");
+    Check(IdentityMatchesLockedCapture(identity, identityError), "Approved metadata matches the locked capture");
+
+    CaptureIdentity emptyIdentity;
+    Check(!IdentityMatchesLockedCapture(emptyIdentity, identityError),
+          "Empty identity does not match the locked capture");
+    Check(!IdentitiesCompatible(emptyIdentity, identity, identityError),
+          "Empty candidate identity is incompatible with the approved golden");
+
+    const std::filesystem::path emptyMetaDir = MakeTempMetadataDir("{}\n");
+    CaptureIdentity emptyLoaded;
+    Check(!LoadCaptureIdentity(emptyMetaDir, emptyLoaded, identityError),
+          "Empty metadata object fails to load");
+    Check(!emptyLoaded.hasMetadata, "Failed load does not report hasMetadata");
+
+    const std::filesystem::path missingFieldsDir = MakeTempMetadataDir(
+        "{\n  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n  \"driverVersion\": \"32.0.15.7688\"\n}\n");
+    CaptureIdentity missingFields;
+    Check(!LoadCaptureIdentity(missingFieldsDir, missingFields, identityError),
+          "Metadata missing scene/camera/schema/frame fails to load");
+
+    const std::filesystem::path wrongSceneDir = MakeTempMetadataDir(
+        "{\n"
+        "  \"schema\": \"renderlab-capture-metadata/v1\",\n"
+        "  \"sceneId\": \"fallback-boxes\",\n"
+        "  \"cameraPreset\": \"s04-default\",\n"
+        "  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n"
+        "  \"driverVersion\": \"32.0.15.7688\",\n"
+        "  \"width\": 1280,\n"
+        "  \"height\": 720,\n"
+        "  \"frameIndex\": 1,\n"
+        "  \"sampleCount\": 1\n"
+        "}\n");
+    CaptureIdentity wrongScene;
+    Check(LoadCaptureIdentity(wrongSceneDir, wrongScene, identityError),
+          "Well-formed metadata with the wrong scene still loads");
+    Check(!IdentityMatchesLockedCapture(wrongScene, identityError),
+          "Wrong scene is rejected against the locked capture");
+    Check(!IdentitiesCompatible(wrongScene, identity, identityError),
+          "Wrong scene is incompatible with the approved golden");
+
+    const std::filesystem::path emptyCaptureDir = MakeTempCaptureDir(goldenDir, "{}\n");
+    const DirectoryCompareResult emptyCompare = CompareDirectories(emptyCaptureDir, goldenDir);
+    Check(emptyCompare.verdict == Verdict::Error,
+          "Matching PNGs with empty metadata are an error, not a pass");
+    std::filesystem::remove_all(emptyCaptureDir);
+
+    const std::filesystem::path wrongSceneCaptureDir = MakeTempCaptureDir(
+        goldenDir,
+        "{\n"
+        "  \"schema\": \"renderlab-capture-metadata/v1\",\n"
+        "  \"sceneId\": \"fallback-boxes\",\n"
+        "  \"cameraPreset\": \"s04-default\",\n"
+        "  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n"
+        "  \"driverVersion\": \"32.0.15.7688\",\n"
+        "  \"width\": 1280,\n"
+        "  \"height\": 720,\n"
+        "  \"frameIndex\": 1,\n"
+        "  \"sampleCount\": 1\n"
+        "}\n");
+    const DirectoryCompareResult wrongSceneCompare = CompareDirectories(wrongSceneCaptureDir, goldenDir);
+    Check(wrongSceneCompare.verdict == Verdict::Regression,
+          "Well-formed metadata with the wrong scene is a regression");
+    std::filesystem::remove_all(wrongSceneCaptureDir);
 
     return g_failures;
 }
