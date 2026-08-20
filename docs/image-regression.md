@@ -89,13 +89,15 @@ fields:
 - `width`, `height`, `frameIndex`, `sampleCount`
 - `adapterName`, `driverVersion`
 
-The comparator must extract every required field. Empty or malformed metadata
-is not treated as a wildcard. Identity is then checked against the locked
-S1.6 constants, not only pairwise against whichever fields happen to be present.
+The comparator parses the complete document with Donut's jsoncpp. It does not
+scan for keys or stop at the first digit run. A file that is not valid JSON —
+including trailing garbage or a token such as `1280oops` — is an **error**.
+Required fields must be present with the correct JSON types (strings or
+non-negative integers). Empty metadata is not a wildcard.
 
-Missing, empty, or malformed `capture-metadata.json` is an **error**. Present
-identity fields that do not match the locked scene, camera, resolution, frame,
-schema, or sample count are a **regression**, even if the PNGs match.
+Identity is then checked against the locked S1.6 constants. Present identity
+fields that do not match the locked scene, camera, resolution, frame, schema,
+or sample count are a **regression**, even if the PNGs match.
 
 Pixel failures are classified as:
 

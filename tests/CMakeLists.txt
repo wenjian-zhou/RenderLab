@@ -14,6 +14,7 @@ target_link_libraries(
     PRIVATE
         RenderLab::Renderer
         stb
+        jsoncpp_static
 )
 
 file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}" RENDERLAB_SOURCE_DIR_CMAKE)
@@ -50,6 +51,7 @@ target_link_libraries(
     RenderLabGoldenCompare
     PRIVATE
         stb
+        jsoncpp_static
 )
 
 if(MSVC)

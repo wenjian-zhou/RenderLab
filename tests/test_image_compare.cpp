@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -89,6 +90,27 @@ namespace
         }
         output << text;
         return static_cast<bool>(output);
+    }
+
+    std::string MakeIdentityJson(
+        const char* sceneId = kSceneId,
+        const char* widthLiteral = "1280",
+        const char* suffix = "")
+    {
+        std::ostringstream json;
+        json << "{\n"
+             << "  \"schema\": \"renderlab-capture-metadata/v1\",\n"
+             << "  \"sceneId\": \"" << sceneId << "\",\n"
+             << "  \"cameraPreset\": \"s04-default\",\n"
+             << "  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n"
+             << "  \"driverVersion\": \"32.0.15.7688\",\n"
+             << "  \"width\": " << widthLiteral << ",\n"
+             << "  \"height\": 720,\n"
+             << "  \"frameIndex\": 1,\n"
+             << "  \"sampleCount\": 1\n"
+             << "}\n"
+             << suffix;
+        return json.str();
     }
 
     std::filesystem::path MakeTempMetadataDir(const std::string& json)
@@ -251,18 +273,19 @@ int RunImageCompareTests()
     Check(!LoadCaptureIdentity(missingFieldsDir, missingFields, identityError),
           "Metadata missing scene/camera/schema/frame fails to load");
 
-    const std::filesystem::path wrongSceneDir = MakeTempMetadataDir(
-        "{\n"
-        "  \"schema\": \"renderlab-capture-metadata/v1\",\n"
-        "  \"sceneId\": \"fallback-boxes\",\n"
-        "  \"cameraPreset\": \"s04-default\",\n"
-        "  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n"
-        "  \"driverVersion\": \"32.0.15.7688\",\n"
-        "  \"width\": 1280,\n"
-        "  \"height\": 720,\n"
-        "  \"frameIndex\": 1,\n"
-        "  \"sampleCount\": 1\n"
-        "}\n");
+    CaptureIdentity malformedNumber;
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1280oops")), malformedNumber, identityError),
+          "Malformed number 1280oops is not accepted as 1280");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1280", "oops\n")), malformedNumber, identityError),
+          "Trailing garbage after a JSON object is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "\"1280\"")), malformedNumber, identityError),
+          "Width as a JSON string is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1280.5")), malformedNumber, identityError),
+          "Width as a JSON real is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir("{ \"schema\": "), malformedNumber, identityError),
+          "Truncated JSON document is an error");
+
+    const std::filesystem::path wrongSceneDir = MakeTempMetadataDir(MakeIdentityJson("fallback-boxes"));
     CaptureIdentity wrongScene;
     Check(LoadCaptureIdentity(wrongSceneDir, wrongScene, identityError),
           "Well-formed metadata with the wrong scene still loads");
@@ -277,19 +300,8 @@ int RunImageCompareTests()
           "Matching PNGs with empty metadata are an error, not a pass");
     std::filesystem::remove_all(emptyCaptureDir);
 
-    const std::filesystem::path wrongSceneCaptureDir = MakeTempCaptureDir(
-        goldenDir,
-        "{\n"
-        "  \"schema\": \"renderlab-capture-metadata/v1\",\n"
-        "  \"sceneId\": \"fallback-boxes\",\n"
-        "  \"cameraPreset\": \"s04-default\",\n"
-        "  \"adapterName\": \"NVIDIA GeForce RTX 4070 SUPER\",\n"
-        "  \"driverVersion\": \"32.0.15.7688\",\n"
-        "  \"width\": 1280,\n"
-        "  \"height\": 720,\n"
-        "  \"frameIndex\": 1,\n"
-        "  \"sampleCount\": 1\n"
-        "}\n");
+    const std::filesystem::path wrongSceneCaptureDir =
+        MakeTempCaptureDir(goldenDir, MakeIdentityJson("fallback-boxes"));
     const DirectoryCompareResult wrongSceneCompare = CompareDirectories(wrongSceneCaptureDir, goldenDir);
     Check(wrongSceneCompare.verdict == Verdict::Regression,
           "Well-formed metadata with the wrong scene is a regression");

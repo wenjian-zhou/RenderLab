@@ -1,5 +1,6 @@
 #include "image_compare.h"
 
+#include <json/json.h>
 #include <stb_image.h>
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <utility>
 
@@ -99,78 +101,63 @@ namespace renderlab::golden
             return buffer.str();
         }
 
-        bool ExtractJsonString(const std::string& json, const char* key, std::string& value)
+        bool ParseJsonObject(const std::string& text, Json::Value& root, std::string& error)
         {
-            const std::string pattern = std::string("\"") + key + "\"";
-            const std::size_t keyPos = json.find(pattern);
-            if (keyPos == std::string::npos)
+            Json::CharReaderBuilder builder;
+            builder["collectComments"] = false;
+            builder["failIfExtra"] = true;
+            builder["rejectDupKeys"] = true;
+            const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+            std::string parseErrors;
+            if (!reader->parse(text.data(), text.data() + text.size(), &root, &parseErrors) || !root.isObject())
             {
-                return false;
-            }
-            const std::size_t colon = json.find(':', keyPos + pattern.size());
-            if (colon == std::string::npos)
-            {
-                return false;
-            }
-            const std::size_t firstQuote = json.find('"', colon + 1);
-            if (firstQuote == std::string::npos)
-            {
-                return false;
-            }
-            std::string extracted;
-            for (std::size_t i = firstQuote + 1; i < json.size(); ++i)
-            {
-                const char ch = json[i];
-                if (ch == '\\' && i + 1 < json.size())
+                error = "capture-metadata.json is not valid JSON";
+                if (!parseErrors.empty())
                 {
-                    extracted.push_back(json[i + 1]);
-                    ++i;
-                    continue;
+                    error += ": " + parseErrors;
                 }
-                if (ch == '"')
+                else
                 {
-                    value = extracted;
-                    return true;
+                    error += ".";
                 }
-                extracted.push_back(ch);
+                return false;
             }
-            return false;
+            return true;
         }
 
-        bool ExtractJsonUint(const std::string& json, const char* key, uint32_t& value)
+        bool RequireJsonString(const Json::Value& root, const char* key, std::string& value, std::string& error)
         {
-            const std::string pattern = std::string("\"") + key + "\"";
-            const std::size_t keyPos = json.find(pattern);
-            if (keyPos == std::string::npos)
+            if (!root.isMember(key) || !root[key].isString() || root[key].asString().empty())
             {
+                error = std::string("capture-metadata.json is missing or empty '") + key + "'.";
                 return false;
             }
-            const std::size_t colon = json.find(':', keyPos + pattern.size());
-            if (colon == std::string::npos)
-            {
-                return false;
-            }
-            std::size_t i = colon + 1;
-            while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' || json[i] == '\r'))
-            {
-                ++i;
-            }
-            if (i >= json.size() || json[i] < '0' || json[i] > '9')
-            {
-                return false;
-            }
-            unsigned long parsed = 0;
-            while (i < json.size() && json[i] >= '0' && json[i] <= '9')
-            {
-                parsed = parsed * 10ul + static_cast<unsigned long>(json[i] - '0');
-                ++i;
-            }
-            if (parsed > UINT32_MAX)
-            {
-                return false;
-            }
-            value = static_cast<uint32_t>(parsed);
+            value = root[key].asString();
             return true;
+        }
+
+        bool RequireJsonUint(const Json::Value& root, const char* key, uint32_t& value, std::string& error)
+        {
+            if (!root.isMember(key))
+            {
+                error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
+                return false;
+            }
+
+            const Json::Value& node = root[key];
+            if (node.type() == Json::uintValue)
+            {
+                value = node.asUInt();
+                return true;
+            }
+            if (node.type() == Json::intValue && node.asInt() >= 0)
+            {
+                value = static_cast<uint32_t>(node.asInt());
+                return true;
+            }
+
+            error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
+            return false;
         }
 
         std::string JsonEscape(std::string_view text)
@@ -340,33 +327,22 @@ namespace renderlab::golden
             return false;
         }
 
-        CaptureIdentity loaded;
-        const auto requireString = [&](const char* key, std::string& field) -> bool {
-            if (!ExtractJsonString(json, key, field) || field.empty())
-            {
-                error = std::string("capture-metadata.json is missing or empty '") + key + "'.";
-                return false;
-            }
-            return true;
-        };
-        const auto requireUint = [&](const char* key, uint32_t& field) -> bool {
-            if (!ExtractJsonUint(json, key, field))
-            {
-                error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
-                return false;
-            }
-            return true;
-        };
+        Json::Value root;
+        if (!ParseJsonObject(json, root, error))
+        {
+            return false;
+        }
 
-        if (!requireString("schema", loaded.schema) ||
-            !requireString("sceneId", loaded.sceneId) ||
-            !requireString("cameraPreset", loaded.cameraPreset) ||
-            !requireString("adapterName", loaded.adapterName) ||
-            !requireString("driverVersion", loaded.driverVersion) ||
-            !requireUint("width", loaded.width) ||
-            !requireUint("height", loaded.height) ||
-            !requireUint("frameIndex", loaded.frameIndex) ||
-            !requireUint("sampleCount", loaded.sampleCount))
+        CaptureIdentity loaded;
+        if (!RequireJsonString(root, "schema", loaded.schema, error) ||
+            !RequireJsonString(root, "sceneId", loaded.sceneId, error) ||
+            !RequireJsonString(root, "cameraPreset", loaded.cameraPreset, error) ||
+            !RequireJsonString(root, "adapterName", loaded.adapterName, error) ||
+            !RequireJsonString(root, "driverVersion", loaded.driverVersion, error) ||
+            !RequireJsonUint(root, "width", loaded.width, error) ||
+            !RequireJsonUint(root, "height", loaded.height, error) ||
+            !RequireJsonUint(root, "frameIndex", loaded.frameIndex, error) ||
+            !RequireJsonUint(root, "sampleCount", loaded.sampleCount, error))
         {
             return false;
         }
