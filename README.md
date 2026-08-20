@@ -12,11 +12,12 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, **S1.1 is
-complete**, **S1.2 is complete**, **S1.3 is complete**, and **S1.4 is complete**: the
-opaque GBuffer pass rasterizes scene meshes into the four persistent targets.
-Device, queue, fence, and swap-chain ownership stay in
-`donut::app::DeviceManager`. Lighting, tone mapping, and GBuffer debug views are
-not implemented. The next executable task is **S1.5: add GBuffer debug visualization**.
+complete**, **S1.2 is complete**, **S1.3 is complete**, **S1.4 is complete**, and
+**S1.5 is complete**: the back buffer presents a selectable GBuffer debug view
+decoded from `gbuffer_encoding.hlsli`. Device, queue, fence, and swap-chain
+ownership stay in `donut::app::DeviceManager`. Lighting, tone mapping, and image
+regression are not implemented. The next executable task is **S1.6: create the
+first image-regression baseline**.
 
 ## Plans
 
@@ -27,9 +28,9 @@ not implemented. The next executable task is **S1.5: add GBuffer debug visualiza
 - [Upstream lock file](dependencies.lock.json) pins Donut `bfdebdd7dd5455c503b2737a1967a4ef651c145b`
   and NVRHI `8e8c36e37558acec333204619b95d9d2fcdc4a79`.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
-- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names and S1.4 MRT writes. Do not commit capture files.
+- [Capture guide](docs/capture-guide.md) is the M0 PIX checklist plus S1.3 GBuffer resource names, S1.4 MRT writes, and S1.5 debug-view dumps. Do not commit capture files.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
-- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, S1.3 lifetime, and S1.4 opaque pass.
+- [GBuffer contract](docs/g-buffer.md) is the first-version target list, formats, clears, S1.3 lifetime, S1.4 opaque pass, and S1.5 debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
@@ -81,6 +82,8 @@ After a Debug or Release build:
 ```powershell
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera
 .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --gbuffer-view world-normal
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 powershell -NoProfile -File scripts\smoke.ps1
@@ -88,8 +91,8 @@ powershell -NoProfile -File scripts\smoke.ps1
 
 The process opens a window, loads the default scene from `scenes/`, applies the S0.4 camera
 preset, clears the GBuffer, rasterizes opaque meshes into `GBufferA`/`B`/`C`/`GBufferDepth`,
-clears the back buffer, draws the diagnostics panel, and presents through Donut. The back
-buffer is still the S0.5 clear plus UI; GBuffer channel views are S1.5.
+visualizes the selected GBuffer channel on the back buffer, draws the diagnostics panel,
+and presents through Donut. Default debug view is base color (`--gbuffer-view`).
 Startup prints the selected adapter, driver version when DXGI exposes it, NVRHI backend,
 validation mode, DXR tier, shader model, stable marker names, scene inventory, and camera
 preset. Hardware without DXR still starts the raster path.
@@ -101,12 +104,14 @@ GPU, so CI stays configure + build and smoke is a documented local test. See
 
 Command-line parsing is stable:
 
-| Option | S0.5 behavior |
+| Option | S1.5 behavior |
 |---|---|
 | `--help` | print usage and exit |
 | `--frames <n>` | present `n` frames, then exit |
 | `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
 | `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
+| `--gbuffer-view <mode>` | `base-color`, `world-normal`, `roughness`, `metallic`, `ao-flags`, `linear-depth` |
+| `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory debug view; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
 | `--output <path>` | parsed; reports `not implemented` until S1.6 |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |

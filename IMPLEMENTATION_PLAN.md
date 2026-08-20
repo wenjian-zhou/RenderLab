@@ -6,10 +6,10 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-08-19): **S0.1 through S1.4 complete**; Stage 0 / M0 is satisfied.
-The active step is **S1.5 — Add GBuffer debug visualization** (not started).
+Current progress (2026-08-20): **S0.1 through S1.5 complete**; Stage 0 / M0 is satisfied.
+The active step is **S1.6 — Create the first image-regression baseline** (not started).
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
-S1.4 implementation commit: `bae4bc60d196cd68aa12b6afad4b5007c57a6a55`.
+S1.5 implementation commit: `1dc6c1ad422fb0ea05a785d265a41d068c2823a4`.
 
 ## 1. Purpose and Success Definition
 
@@ -220,8 +220,8 @@ D3D12 frame, and can be captured without modifying upstream code.
 
 ## 5. Stage 1 - GBuffer Rasterization
 
-S1.1 through S1.4 are complete. Remaining Stage 1 work is debug visualization (S1.5)
-and the first image-regression baseline (S1.6).
+S1.1 through S1.5 are complete. Remaining Stage 1 work is the first image-regression
+baseline (S1.6).
 
 ### S1.1 - Freeze renderer conventions and the GBuffer contract
 

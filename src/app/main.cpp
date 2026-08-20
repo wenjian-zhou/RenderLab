@@ -34,6 +34,8 @@ namespace
         std::optional<std::string> output;
         bool lockCamera = false;
         bool help = false;
+        std::optional<std::string> gbufferView;
+        std::optional<std::string> dumpGBufferViews;
     };
 
     struct ValidationLog
@@ -54,10 +56,16 @@ namespace
             "                      Default: cesium-milk-truck\n"
             "                      Fallback: fallback-boxes\n"
             "  --lock-camera       Disable free-camera motion and keep the S0.4 preset\n"
+            "  --gbuffer-view <m>  Debug channel: base-color, world-normal, roughness,\n"
+            "                      metallic, ao-flags, linear-depth (default: base-color)\n"
+            "  --dump-gbuffer-views <dir>\n"
+            "                      Dump every mandatory GBuffer debug view as PNG under <dir>\n"
+            "                      (visualization dump, not the S1.6 golden-image harness).\n"
+            "                      Implies --lock-camera.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
-            "  --output <path>     Capture output path (not implemented; scheduled for S1.6)\n"
+            "  --output <path>     Golden-image output path (not implemented; scheduled for S1.6)\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -151,6 +159,28 @@ namespace
                 continue;
             }
 
+            if (EqualsOption(argument, "--gbuffer-view"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--gbuffer-view requires a channel name.";
+                    return false;
+                }
+                options.gbufferView = argv[++index];
+                continue;
+            }
+
+            if (EqualsOption(argument, "--dump-gbuffer-views"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--dump-gbuffer-views requires a directory path.";
+                    return false;
+                }
+                options.dumpGBufferViews = argv[++index];
+                continue;
+            }
+
             if (EqualsOption(argument, "--dx12") || EqualsOption(argument, "-dx12") ||
                 EqualsOption(argument, "--d3d12") || EqualsOption(argument, "-d3d12"))
             {
@@ -236,6 +266,16 @@ int main(int argc, char** argv)
     {
         std::fprintf(stderr, "error: %s\n", parseError.c_str());
         return 2;
+    }
+
+    renderlab::GBufferDebugMode gbufferView = renderlab::GBufferDebugMode::BaseColor;
+    if (options.gbufferView.has_value())
+    {
+        if (!renderlab::ParseGBufferDebugMode(*options.gbufferView, gbufferView, parseError))
+        {
+            std::fprintf(stderr, "error: %s\n", parseError.c_str());
+            return 2;
+        }
     }
 
     ValidationLog validationLog;
@@ -363,13 +403,21 @@ int main(int argc, char** argv)
         "/");
 
     const uint32_t defaultHeadlessFrames = 8;
-    const bool limitedFrames = options.frames.has_value() || options.headless;
-    const uint32_t frameLimit = options.frames.value_or(defaultHeadlessFrames);
+    const uint32_t defaultDumpFrames = 4;
+    const bool dumpViews = options.dumpGBufferViews.has_value();
+    const bool limitedFrames = options.frames.has_value() || options.headless || dumpViews;
+    const uint32_t frameLimit = options.frames.value_or(
+        dumpViews && !options.headless ? defaultDumpFrames : defaultHeadlessFrames);
 
     renderlab::AppLaunchOptions launchOptions;
     launchOptions.scene = std::move(resolvedScene);
     launchOptions.camera = catalog.GetCameraPreset();
-    launchOptions.lockCamera = options.lockCamera || options.headless;
+    launchOptions.lockCamera = options.lockCamera || options.headless || dumpViews;
+    launchOptions.gbufferView = gbufferView;
+    if (dumpViews)
+    {
+        launchOptions.dumpGBufferViewsDirectory = *options.dumpGBufferViews;
+    }
 
     int exitCode = 0;
     {
@@ -385,7 +433,8 @@ int main(int argc, char** argv)
             app.GetCapabilities(),
             app.GetSceneHud(),
             app.GetGBufferTargets(),
-            app.GetGBufferPassHud());
+            app.GetGBufferPassHud(),
+            app.GetGBufferDebugHud());
         if (!ui.Init(shaderFactory))
         {
             log::error("Failed to initialize the ImGui renderer.");
@@ -397,7 +446,7 @@ int main(int argc, char** argv)
         std::unique_ptr<renderlab::markers::CpuMarker> presentCpuMarker;
         nvrhi::CommandListHandle presentMarkerList = deviceManager->GetDevice()->createCommandList();
 
-        const bool probeResize = !options.headless && limitedFrames && frameLimit > 16;
+        const bool probeResize = !options.headless && !dumpViews && limitedFrames && frameLimit > 16;
         int minimizedPolls = 0;
         bool restoreAfterMinimize = false;
         deviceManager->m_callbacks.beforeFrame =
@@ -429,12 +478,31 @@ int main(int argc, char** argv)
                     renderlab::markers::kPresent);
             };
 
+        bool dumpFailed = false;
+        const uint32_t dumpFrameIndex = 1;
         deviceManager->m_callbacks.afterPresent =
-            [&frameCpuMarker, &presentCpuMarker, limitedFrames, frameLimit, probeResize, &restoreAfterMinimize](
-                app::DeviceManager& manager,
-                uint32_t frameIndex) {
+            [&frameCpuMarker,
+             &presentCpuMarker,
+             limitedFrames,
+             frameLimit,
+             probeResize,
+             &restoreAfterMinimize,
+             &app,
+             dumpViews,
+             dumpFrameIndex,
+             &dumpFailed](app::DeviceManager& manager, uint32_t frameIndex) {
                 presentCpuMarker.reset();
                 frameCpuMarker.reset();
+
+                if (dumpViews && !app.GetGBufferDebugHud().dumpCompleted && frameIndex >= dumpFrameIndex)
+                {
+                    if (!app.DumpGBufferDebugViews(app.GetGBufferDebugHud().dumpDirectory))
+                    {
+                        dumpFailed = true;
+                        glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                        return;
+                    }
+                }
 
                 if (!limitedFrames)
                 {
@@ -484,6 +552,12 @@ int main(int argc, char** argv)
                 app.GetCapabilities().adapterName.c_str(),
                 app.GetCapabilities().validationMode.c_str(),
                 validationLog.errorCount.load());
+        }
+
+        if (dumpViews && (dumpFailed || !app.GetGBufferDebugHud().dumpSucceeded))
+        {
+            log::error("GBuffer debug view dump did not complete successfully.");
+            exitCode = 1;
         }
 
         if (validationLog.errorCount.load() > 0)

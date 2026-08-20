@@ -3,8 +3,8 @@
 This file is the Stage 0 / M0 capture checklist, plus the S1.3 GBuffer resource
 names and S1.4 opaque MRT writes to look for in PIX. Do not commit capture files.
 
-S0.5 does not capture screenshots or compare images. `--output` remains
-unimplemented until S1.6.
+S1.5 can dump visualized GBuffer channels with `--dump-gbuffer-views`. That is a
+channel dump, not image regression. `--output` remains unimplemented until S1.6.
 
 ## Marker Names
 
@@ -21,6 +21,8 @@ RenderLab emits the same five names in Debug and Release:
 Do not rename these strings. Later passes add nested markers under `Render`.
 S1.3 adds `GBuffer` under `Render` for the target clears. S1.4 writes meshes
 inside that same marker and adds a timestamp query around the clears and draws.
+S1.5 adds `GBufferDebug` under `Render`, after `GBuffer`. Do not rename
+`Frame`, `SceneUpdate`, `Render`, `GBuffer`, `UI`, or `Present`.
 
 A PIX 2603 GPU capture of this revision shows this hierarchy (Debug and Release
 are identical):
@@ -33,6 +35,7 @@ Frame
       SceneUpdate
       Render
         GBuffer           (ClearRenderTargetView / ClearDepthStencilView, then DrawIndexed)
+        GBufferDebug      (fullscreen DecodeGBuffer draw to the back buffer)
   UI
     ImGUI             (Donut ImGui draws)
   Present
@@ -98,11 +101,12 @@ A fresh clone satisfies M0 when all of the following are true:
 - [ ] No Donut or NVRHI source was modified
 
 "Render" at M0 still meant clear + UI + present. S1.4 rasterizes opaque meshes into
-the GBuffer under the nested `GBuffer` marker. The back buffer remains the clear + UI
-until S1.5 visualizes GBuffer channels. S1.3 persistent resources that PIX should list
-at back-buffer width × height are `GBufferA`/`B`/`C`/`GBufferDepth` with formats
-`R8G8B8A8_UNORM_SRGB`, `R16G16B16A16_FLOAT`, `R8G8B8A8_UNORM`, and
-`R32_TYPELESS` (`D32_FLOAT` DSV / `R32_FLOAT` SRV).
+the GBuffer under the nested `GBuffer` marker. S1.5 presents the selected GBuffer
+debug view on the back buffer (plus UI) under `GBufferDebug`. S1.3 persistent
+resources that PIX should list at back-buffer width × height are
+`GBufferA`/`B`/`C`/`GBufferDepth` with formats `R8G8B8A8_UNORM_SRGB`,
+`R16G16B16A16_FLOAT`, `R8G8B8A8_UNORM`, and `R32_TYPELESS` (`D32_FLOAT` DSV /
+`R32_FLOAT` SRV).
 
 ## S1.3 GBuffer Resource Capture
 
@@ -151,6 +155,45 @@ New-Item -ItemType Directory -Force captures | Out-Null
 ```
 
 Do not commit the capture files.
+
+## S1.5 GBuffer Debug Visualization
+
+After a GPU capture of `--lock-camera`, confirm:
+
+- Event list: `Render / GBuffer` still has the four clears and `DrawIndexed`
+- Event list: `Render / GBufferDebug` has a fullscreen `Draw` (3 vertices) after `GBuffer`
+- The back buffer is the selected debug view, not the S0.5 clear color
+- `GBufferDepth` is sampled as an `R32_FLOAT` SRV; no second depth texture is created
+
+```powershell
+$pix = "C:\Program Files\Microsoft PIX\2603.25\pixtool.exe"
+$exe = ".\out\build\windows-vs2022\bin\Debug\RenderLab.exe"
+New-Item -ItemType Directory -Force captures | Out-Null
+
+& $pix launch $exe --command-line="--lock-camera --frames 16" `
+  take-capture --frames=1 `
+  save-capture captures\s15-gbuffer-debug.wpix
+
+& $pix open-capture captures\s15-gbuffer-debug.wpix `
+  save-event-list captures\s15-gbuffer-debug-events.csv
+```
+
+Dump every mandatory visualized channel (not S1.6 golden images):
+
+```powershell
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
+```
+
+That writes:
+
+- `gbuffer-base-color.png`
+- `gbuffer-world-normal.png`
+- `gbuffer-roughness.png`
+- `gbuffer-metallic.png`
+- `gbuffer-ao-flags.png`
+- `gbuffer-linear-depth.png`
+
+Do not commit the PNG files or the PIX capture.
 
 ## Smoke And CI
 

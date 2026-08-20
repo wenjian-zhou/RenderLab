@@ -9,6 +9,7 @@ namespace renderlab::markers
     inline constexpr const char* kSceneUpdate = "SceneUpdate";
     inline constexpr const char* kRender = "Render";
     inline constexpr const char* kGBuffer = "GBuffer";
+    inline constexpr const char* kGBufferDebug = "GBufferDebug";
     inline constexpr const char* kUI = "UI";
     inline constexpr const char* kPresent = "Present";
 

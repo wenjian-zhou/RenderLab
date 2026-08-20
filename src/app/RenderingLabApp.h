@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneCatalog.h"
+#include "renderer/GBufferDebugPass.h"
 #include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
 #include "renderer/RendererData.h"
@@ -50,11 +51,25 @@ namespace renderlab
         bool sceneLoaded = false;
     };
 
+    struct GBufferDebugHud
+    {
+        GBufferDebugMode mode = GBufferDebugMode::BaseColor;
+        const char* channelName = "";
+        const char* decodeConvention = "";
+        std::string dumpDirectory;
+        bool dumpRequested = false;
+        bool dumpCompleted = false;
+        bool dumpSucceeded = false;
+        uint32_t dumpCount = 0;
+    };
+
     struct AppLaunchOptions
     {
         ResolvedScene scene;
         CameraPreset camera;
         bool lockCamera = false;
+        GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
+        std::string dumpGBufferViewsDirectory;
     };
 
     class RenderingLabUserInterface final : public donut::app::ImGui_Renderer
@@ -65,7 +80,8 @@ namespace renderlab
             const DeviceCapabilities& capabilities,
             const SceneHudState& sceneHud,
             const GBufferTargets& gbuffer,
-            const GBufferPassHud& gbufferPassHud);
+            const GBufferPassHud& gbufferPassHud,
+            GBufferDebugHud& debugHud);
 
     protected:
         void buildUI() override;
@@ -76,6 +92,7 @@ namespace renderlab
         const SceneHudState& m_sceneHud;
         const GBufferTargets& m_gbuffer;
         const GBufferPassHud& m_gbufferPassHud;
+        GBufferDebugHud& m_debugHud;
     };
 
     int SelectPreferredAdapterIndex(const std::vector<donut::app::AdapterInfo>& adapters);
@@ -95,6 +112,9 @@ namespace renderlab
         const SceneHudState& GetSceneHud() const;
         const GBufferTargets& GetGBufferTargets() const;
         const GBufferPassHud& GetGBufferPassHud() const;
+        GBufferDebugHud& GetGBufferDebugHud();
+        const GBufferDebugHud& GetGBufferDebugHud() const;
+        bool DumpGBufferDebugViews(const std::string& directory);
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
         void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;
@@ -116,6 +136,7 @@ namespace renderlab
         void ClearBackBuffer(nvrhi::IFramebuffer* framebuffer);
         void RebuildDrawList();
         void UpdateFrameViewConstants();
+        void UpdateDebugHud();
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;
@@ -130,6 +151,8 @@ namespace renderlab
         ViewConstants m_viewConstants = {};
         GBufferTargets m_gbuffer;
         GBufferPass m_gbufferPass;
+        GBufferDebugPass m_gbufferDebugPass;
+        GBufferDebugHud m_debugHud;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

@@ -190,8 +190,9 @@ and the D3D12 swap-chain convention already used by the application
 Rules:
 
 1. There is exactly one place that converts HDR linear to display sRGB: the S3 tone-map pass.
-2. GBuffer debug views (S1.5) may apply a visualization encoding. That encoding is not the
-   lighting path.
+2. GBuffer debug views (S1.5) apply a visualization encoding. That encoding is not the
+   lighting path. Modes, remap, and linearized-depth display live in
+   [`g-buffer.md`](g-buffer.md) section 10.
 3. Do not write linear albedo into a non-sRGB 8-bit target. Do not write material flags into
    an sRGB target.
 4. Stage 1 does not store HDR scene color. GBufferA is LDR reflectance. Values outside

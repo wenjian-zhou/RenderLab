@@ -5,13 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S1.5 - Add GBuffer debug visualization**
+- Active step: **S1.6 - Create the first image-regression baseline**
 - State: **Not started**
-- Last updated: 2026-08-19
+- Last updated: 2026-08-20
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
-- Stage 1: **S1.1, S1.2, S1.3, and S1.4 complete**; debug views remain S1.5
+- Stage 1: **S1.1 through S1.5 complete**; image regression remains S1.6
 
 ## Completed Repository Reset
 
@@ -486,6 +486,84 @@ Known limitations:
   Fallback-boxes has no TEXCOORD/TANGENT; dummy zero-UV and (1,0,0,1) tangent streams are bound
   Visual confirmation of camera/instance alignment waits on S1.5 debug views; PIX draw counts and transforms match S1.2 records
 Next step: S1.5 - Add GBuffer debug visualization
+```
+
+### S1.5 - Add GBuffer debug visualization
+
+```text
+Step: S1.5
+State: Complete
+Date: 2026-08-20
+Commit: 1dc6c1ad422fb0ea05a785d265a41d068c2823a4
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --output out.png
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --gbuffer-view lighting
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Release\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --dump-gbuffer-views captures\s15-fallback-views
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --gbuffer-view world-normal --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  powershell -NoProfile -File scripts\smoke.ps1
+  pixtool launch RenderLab.exe --command-line="--lock-camera --frames 16" take-capture save-capture captures\s15-gbuffer-debug.wpix
+  pixtool open-capture captures\s15-gbuffer-debug.wpix save-event-list captures\s15-gbuffer-debug-events.csv
+Automated tests: RenderLabDataContractTests Debug and Release
+  existing S1.2 / S1.3 / S1.4 checks
+  six ADR-002 debug modes and channel names
+  normal display remap and linearized-depth convention strings
+  CLI parse aliases and unknown-mode rejection
+  debug raster cull None; depth test/write off
+  deviceDepth == 0 rejected; viewZ = zNear / deviceDepth
+  reversed-Z linearized viewZ is monotonic and finite
+  displayed viewZ/(viewZ+1) stays in (0, 1)
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12, validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
+  Release: same adapter/driver, validation=NVRHI, errors=0
+  Cesium Milk Truck dumps at 1280x720:
+    base color shows the truck, logo, glass, wheels; background is the GBufferA clear
+    world normals change with orientation (hood/side/front distinct); background is black, not remapped gray
+    roughness is white (scene roughness=1); metallic is black (scene metallic=0)
+    AO/flags is yellow (AO=1, ShadingValid=1, TwoSided=0); background is black
+    linearized depth is finite gray on the truck; background is magenta and is not reconstructed
+  Fallback boxes: roughness 0.90 ground vs 0.75 dielectric; normals vary by face
+  --frames 30 resized 1280x720 -> 1344x784 then minimize/restore, errors=0
+  PIX event list under Render:
+    GBuffer: 3x ClearRenderTargetView, ClearDepthStencilView, 5x DrawIndexedInstanced
+    GBufferDebug: OMSetRenderTargets, Barrier, DrawInstanced
+  Capture files and PNG dumps were not committed
+Artifacts:
+  src/renderer/GBufferDebugPass.h
+  src/renderer/GBufferDebugPass.cpp
+  src/shaders/gbuffer_debug_cb.h
+  src/shaders/gbuffer_debug_vs.hlsl
+  src/shaders/gbuffer_debug_ps.hlsl
+  src/shaders/Shaders.cfg
+  src/CMakeLists.txt
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/app/FrameMarkers.h
+  tests/test_gbuffer_debug.cpp
+  tests/CMakeLists.txt
+  tests/test_renderer_data.cpp
+  docs/g-buffer.md
+  docs/capture-guide.md
+  docs/renderer-conventions.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  Numeric pixel inspection is deferred. Donut PixelReadbackPass maps a GPU readback buffer and stalls; it is bound to one texture at construction and is not a low-cost hover path.
+  --output remains unimplemented until S1.6 golden-image regression. --dump-gbuffer-views is a visualization dump only; no tests/golden/, hashes, or comparison rules.
+  Milk Truck metallic is 0, so that debug view is black by contract. Fallback GoldMetal is baked off the locked S0.4 look-at and is not required for S1.5.
+  viewZ/(viewZ+1) compresses far distances; it stays finite and monotonic.
+  Lighting, tone mapping, RDG, and DXR are not implemented.
+Next step: S1.6 - Create the first image-regression baseline
 ```
 
 Selected baseline:

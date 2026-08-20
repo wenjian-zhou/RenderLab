@@ -4,12 +4,15 @@ set(RENDERLAB_SHADER_HEADERS
     shaders/renderer_cb.h
     shaders/gbuffer_encoding.hlsli
     shaders/gbuffer_pass.hlsli
+    shaders/gbuffer_debug_cb.h
 )
 
 set(RENDERLAB_SHADER_SOURCES
     ${RENDERLAB_SHADER_HEADERS}
     shaders/gbuffer_vs.hlsl
     shaders/gbuffer_ps.hlsl
+    shaders/gbuffer_debug_vs.hlsl
+    shaders/gbuffer_debug_ps.hlsl
     shaders/Shaders.cfg
 )
 
@@ -34,6 +37,8 @@ set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferTargets.cpp
     renderer/GBufferPass.h
     renderer/GBufferPass.cpp
+    renderer/GBufferDebugPass.h
+    renderer/GBufferDebugPass.cpp
     renderer/RendererData.h
     renderer/RendererData.cpp
     ${RENDERLAB_SHADER_HEADERS}

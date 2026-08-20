@@ -3,6 +3,7 @@ add_executable(
     test_renderer_data.cpp
     test_gbuffer_targets.cpp
     test_gbuffer_pass.cpp
+    test_gbuffer_debug.cpp
 )
 
 target_link_libraries(

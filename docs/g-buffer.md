@@ -5,7 +5,7 @@ Status: **frozen for Stage 1**
 Step: S1.1
 
 This file is the first-version GBuffer layout. S1.3 created the textures and resize
-path. S1.4 writes them (complete). S1.5 visualizes them. S2 lighting reads them. Do not add targets,
+path. S1.4 writes them (complete). S1.5 visualizes them (complete). S2 lighting reads them. Do not add targets,
 channels, or encodings without updating this file and
 [`adr/ADR-002-gbuffer-layout.md`](adr/ADR-002-gbuffer-layout.md).
 
@@ -390,7 +390,48 @@ in the diagnostics UI.
 - Frame/view/instance/material CPU+HLSL contracts and draw records: S1.2 (complete)
 - Texture creation, resize, and debug UI byte counts: S1.3 (complete)
 - Mesh drawing and material evaluation: S1.4 (complete)
-- Channel debug views and screenshots: S1.5 / S1.6
+- Channel debug views: S1.5 (complete)
+- Image regression / golden hashes: S1.6
+- Numeric pixel inspection: deferred; Donut `PixelReadbackPass` stalls on `mapBuffer`
 - Position reconstruction in a live pass: S2.2
 - HDR scene color, lights, and background fill color: S2
 - Velocity, emissive GBuffer, MSAA, packed octahedral normals
+
+## 10. Debug Visualization (S1.5)
+
+`GBufferDebugPass` is implemented in
+[`../src/renderer/GBufferDebugPass.h`](../src/renderer/GBufferDebugPass.h).
+Inputs and outputs are named for later RDG migration:
+
+**Inputs**
+
+- `gbufferA`, `gbufferB`, `gbufferC` (color SRVs)
+- `gbufferDepth` (existing S1.3 `R32_FLOAT` SRV; the depth resource is not recreated)
+- `viewConstants` from `renderer_cb.h` (`zNear` for linearized depth)
+
+**Output**
+
+- `debugColor` (back buffer or `GBufferDebugColor` dump target)
+
+The GPU marker name is `GBufferDebug`, nested under `Render` after `GBuffer`.
+Do not rename `Frame`, `SceneUpdate`, `Render`, `GBuffer`, `UI`, or `Present`.
+
+The pixel shader includes `gbuffer_encoding.hlsli` and `renderer_cb.h` and calls
+`DecodeGBuffer`. It does not include Donut `gbuffer_cb.h`, `PlanarViewConstants`,
+or `MaterialConstants`. ImGui is not the decode path; it only shows the selected
+channel name and decode convention.
+
+ADR-002 modes:
+
+| CLI name | Channel name | Decode / display |
+|---|---|---|
+| `base-color` | Base color | Linear `GBufferA.rgb`. Hardware sRGB OETF on the back buffer. Not lighting and not the S3 tone map. Background is the clear `(0,0,0)`. |
+| `world-normal` | World normal | Raw float16 world normal in `[-1, 1]`. Display remap `0.5 * n + 0.5`. Background (`deviceDepth == 0`) is black, not remapped. |
+| `roughness` | Roughness | Perceptual `GBufferB.a` as grayscale. |
+| `metallic` | Metallic | `GBufferC.r` as grayscale. |
+| `ao-flags` | AO / material flags | `R = AO`, `G = ShadingValid`, `B = TwoSided`. Background is `(0,0,0)`. |
+| `linear-depth` | Linearized depth | `viewZ = zNear / deviceDepth`, rejected when `deviceDepth == 0`. Displayed as `viewZ / (viewZ + 1)`. Background is magenta `(1,0,1)` and is not reconstructed. |
+
+Dump every view with `--lock-camera --dump-gbuffer-views <dir>`. That writes PNGs of
+the visualized channels. It is not the S1.6 golden-image harness (`--output` stays
+unimplemented until S1.6).
