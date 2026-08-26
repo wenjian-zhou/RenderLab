@@ -93,7 +93,8 @@ The comparator parses the complete document with Donut's jsoncpp. It does not
 scan for keys or stop at the first digit run. A file that is not valid JSON —
 including trailing garbage or a token such as `1280oops` — is an **error**.
 Required fields must be present with the correct JSON types (strings or
-non-negative integers). Empty metadata is not a wildcard.
+non-negative integer tokens in `uint32` range). Integral reals such as
+`1280.0` or `1.0` are an **error**. Empty metadata is not a wildcard.
 
 Identity is then checked against the locked S1.6 constants. Present identity
 fields that do not match the locked scene, camera, resolution, frame, schema,

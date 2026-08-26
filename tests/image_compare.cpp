@@ -145,13 +145,26 @@ namespace renderlab::golden
             }
 
             const Json::Value& node = root[key];
-            if (node.type() == Json::uintValue && node.isUInt())
+            // jsoncpp isUInt()/isInt() are true for integral reals such as 1280.0.
+            // Required metadata fields accept only JSON integer tokens.
+            const Json::ValueType type = node.type();
+            if (type == Json::uintValue)
             {
+                if (!node.isUInt())
+                {
+                    error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
+                    return false;
+                }
                 value = node.asUInt();
                 return true;
             }
-            if (node.type() == Json::intValue && node.asInt() >= 0)
+            if (type == Json::intValue)
             {
+                if (!node.isInt() || node.asInt() < 0)
+                {
+                    error = std::string("capture-metadata.json is missing or invalid '") + key + "'.";
+                    return false;
+                }
                 value = static_cast<uint32_t>(node.asInt());
                 return true;
             }

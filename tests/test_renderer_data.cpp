@@ -7,10 +7,15 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
+
+#if defined(_MSC_VER)
+#include <crtdbg.h>
+#endif
 
 using namespace donut;
 using namespace donut::math;
@@ -20,6 +25,7 @@ int RunGBufferTargetContractTests();
 int RunGBufferPassContractTests();
 int RunGBufferDebugPassTests();
 int RunImageCompareTests();
+int RunLightingContractTests();
 
 namespace
 {
@@ -102,6 +108,17 @@ namespace
 
 int main()
 {
+#if defined(_MSC_VER)
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    _set_error_mode(_OUT_TO_STDERR);
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+#endif
+
     log::ConsoleApplicationMode();
     log::SetMinSeverity(log::Severity::None);
 
@@ -247,6 +264,7 @@ int main()
     const FrameConstants frame = MakeFrameConstants(12);
     Check(frame.frameIndex == 12, "FrameConstants stores the frame index");
 
+    g_failures += RunLightingContractTests();
     g_failures += RunGBufferTargetContractTests();
     g_failures += RunGBufferPassContractTests();
     g_failures += RunGBufferDebugPassTests();

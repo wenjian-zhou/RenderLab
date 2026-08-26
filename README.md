@@ -11,12 +11,12 @@ The repository was reset on 2026-08-18 after retiring the original from-scratch 
 The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` at commit
 `856b4c2`.
 
-This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**, and
-**S1.1 through S1.6 are complete**: GBuffer channels are inspectable, timed,
-documented, and protected by a committed image-regression baseline. Device,
-queue, fence, and swap-chain ownership stay in
-`donut::app::DeviceManager`. Lighting, tone mapping, RDG, and DXR are not
-implemented. The next executable task is **S2.1: define the lighting contract**.
+This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
+**S1.1 through S1.6 are complete**, and **S2.1 is complete**: the lighting
+contract is frozen. Device, queue, fence, and swap-chain ownership stay in
+`donut::app::DeviceManager`. The lighting pass, tone mapping, RDG, and DXR are
+not implemented. The next executable task is **S2.2: position reconstruction
+and a diagnostic light**.
 
 ## Plans
 
@@ -32,6 +32,7 @@ implemented. The next executable task is **S2.1: define the lighting contract**.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
 - [GBuffer contract](docs/g-buffer.md) defines the first-version targets, encodings, lifetime, raster writes, and debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
+- [Lighting contract](docs/lighting.md) is the S2.1 deferred lighting interface.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 

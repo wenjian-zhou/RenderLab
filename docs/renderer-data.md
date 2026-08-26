@@ -18,6 +18,7 @@ consume these contracts, not Donut `GBufferFillPass`, `DeferredLightingPass`,
 | File | Role |
 |---|---|
 | [`src/shaders/renderer_cb.h`](../src/shaders/renderer_cb.h) | Shared C++/HLSL cbuffers: `FrameConstants`, `ViewConstants`, `InstanceConstants`, `MaterialParams` |
+| [`src/shaders/lighting_cb.h`](../src/shaders/lighting_cb.h) | Shared C++/HLSL lighting cbuffer (S2.1). Not Donut `deferred_lighting_cb.h`. |
 | [`src/shaders/gbuffer_encoding.hlsli`](../src/shaders/gbuffer_encoding.hlsli) | GBuffer pack/encode/decode for S1.4 |
 | [`src/renderer/GBufferContract.h`](../src/renderer/GBufferContract.h) | C++ GBuffer flags, formats, pack helpers |
 | [`src/renderer/RendererData.h`](../src/renderer/RendererData.h) | Fill/convert/map API and `DrawRecord` |
@@ -112,5 +113,6 @@ Emissive is ignored: it is not a Stage 1 GBuffer channel.
 
 ## 7. What this step does not do
 
-No GBuffer textures, lighting, RDG, or DXR. Draw records are CPU data. S1.4
-consumes them in `GBufferPass` (complete).
+No GBuffer textures, RDG, or DXR. Draw records are CPU data. S1.4 consumes them
+in `GBufferPass` (complete). Lighting constants live in `lighting_cb.h` and
+[`lighting.md`](lighting.md), not in these frame/view/material structs.

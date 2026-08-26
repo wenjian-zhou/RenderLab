@@ -156,10 +156,11 @@ A pixel is **background** if and only if `GBufferDepth == 0` (compare in the sha
 `deviceDepth <= 0.0`, which is exact for a cleared `D32` target). `ShadingValid == 0` must
 agree; if a later bug writes a normal without depth, depth still wins.
 
-Background lighting policy is defined in S2.1. Until then:
+Background lighting policy is frozen in [`lighting.md`](lighting.md):
 
 - Do not reconstruct world position.
 - Do not evaluate a BRDF.
+- Write `backgroundRadiance` (default `(0, 0, 0)`) to `HDRSceneColor`.
 - Debug views show the clear encodings (black albedo, zero normal, far depth).
 
 Foreground pixels must write all four resources, including `ShadingValid = 1` and a unit
@@ -175,13 +176,13 @@ Each S2 lighting input has **exactly one** source. No second copy exists in anot
 | World shading normal | `GBufferB.rgb` | Normalize after load |
 | Perceptual roughness | `GBufferB.a` | Square in the BRDF, not here |
 | Metallic | `GBufferC.r` | |
-| Ambient occlusion | `GBufferC.g` | S2.1 decides how AO weights ambient versus direct light. This channel is the only AO texture. |
+| Ambient occlusion | `GBufferC.g` | Multiplies ambient only. Direct lights ignore AO. This channel is the only AO texture. |
 | Material flags | `GBufferC.b` unpacked | Background / two-sided / reserved |
 | Device depth | `GBufferDepth` SRV | Reversed-Z |
 | World position | Reconstructed from device depth + `matClipToWorld` | Formula in [`renderer-conventions.md`](renderer-conventions.md) |
 | View / camera | Frame/view constant buffer from S1.2 | Not a GBuffer channel |
 | Dielectric F0 / diffuse albedo | Derived in the lighting shader from base color and metallic | `F0 = 0.04` |
-| Lights | Light buffer from S2 | Not a GBuffer channel |
+| Lights | `LightingConstants` from S2.1 | Not a GBuffer channel |
 | Shadows / DXR visibility | None in S2 | Optional declared lighting input in S7.4 |
 
 `GBufferA.a` and `GBufferC.a` are not lighting inputs.
@@ -395,7 +396,8 @@ in the diagnostics UI.
 - Image regression / golden hashes: S1.6 (complete; [`image-regression.md`](image-regression.md))
 - Numeric pixel inspection: deferred; Donut `PixelReadbackPass` stalls on `mapBuffer`
 - Position reconstruction in a live pass: S2.2
-- HDR scene color, lights, and background fill color: S2
+- HDR scene color texture creation: S2.2
+- Lighting contract (spaces, HDR descriptor, lights, BRDF, AO, ambient): S2.1 (complete; [`lighting.md`](lighting.md))
 - Velocity, emissive GBuffer, MSAA, packed octahedral normals
 
 ## 10. Debug Visualization (S1.5)

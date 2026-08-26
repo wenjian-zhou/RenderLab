@@ -5,6 +5,9 @@ set(RENDERLAB_SHADER_HEADERS
     shaders/gbuffer_encoding.hlsli
     shaders/gbuffer_pass.hlsli
     shaders/gbuffer_debug_cb.h
+    shaders/lighting_cb.h
+    shaders/lighting_debug_cb.h
+    shaders/lighting.hlsli
 )
 
 set(RENDERLAB_SHADER_SOURCES
@@ -33,6 +36,7 @@ donut_compile_shaders(
 
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
+    renderer/LightingContract.h
     renderer/GBufferTargets.h
     renderer/GBufferTargets.cpp
     renderer/GBufferPass.h

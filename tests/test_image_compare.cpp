@@ -282,6 +282,12 @@ int RunImageCompareTests()
           "Width as a JSON string is an error");
     Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1280.5")), malformedNumber, identityError),
           "Width as a JSON real is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1280.0")), malformedNumber, identityError),
+          "Width as integral JSON real 1280.0 is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "1.0")), malformedNumber, identityError),
+          "Width as integral JSON real 1.0 is an error");
+    Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "-1")), malformedNumber, identityError),
+          "Negative width is an error");
     Check(!LoadCaptureIdentity(MakeTempMetadataDir(MakeIdentityJson(kSceneId, "4294967296")), malformedNumber, identityError),
           "Width outside uint32 range is an error");
     Check(!LoadCaptureIdentity(MakeTempMetadataDir("{ \"schema\": "), malformedNumber, identityError),

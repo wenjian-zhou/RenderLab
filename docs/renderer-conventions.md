@@ -183,7 +183,7 @@ and the D3D12 swap-chain convention already used by the application
 | glTF `baseColorTexture` | sRGB on disk; sampled linear | Same |
 | GBufferA RGB | Linear values written to an sRGB RTV | Same. Hardware applies the sRGB OETF on store and the EOTF on an sRGB SRV load. |
 | Metallic, roughness, AO, normals | Linear UNORM or float | See [`g-buffer.md`](g-buffer.md) |
-| Deferred lighting output (S2) | Linear HDR | Scene-referred RGB. Light intensities are defined in `docs/lighting.md` during S2.1. Exposure-independent. |
+| Deferred lighting output (S2) | Linear HDR | Scene-referred RGB in simplified scene units. See [`lighting.md`](lighting.md). Exposure-independent. |
 | Tone map / present (S3) | Display-referred | The only output transfer. UI composition stays on the sRGB back buffer. |
 | ImGui | Donut ImGui path | Not a GBuffer consumer |
 
@@ -215,7 +215,7 @@ and handedness. Image tests must lock the camera.
 
 ## 8. What This File Does Not Freeze
 
-- Light intensity units and the HDR background color (S2.1 / `docs/lighting.md`)
+- Light intensity numeric defaults beyond the S2.1 scene-unit rule ([`lighting.md`](lighting.md))
 - Tone-mapper and back-buffer transfer ownership details beyond "exactly one output
   transfer" (S3.1)
 - DXR ray space: world space, using the same instance transforms as raster (Stage 6)

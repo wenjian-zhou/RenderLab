@@ -5,9 +5,9 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S2.1 - Define the lighting contract**
+- Active step: **S2.2 - Implement position reconstruction and a diagnostic light**
 - State: **Not started**
-- Last updated: 2026-08-20
+- Last updated: 2026-08-26
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
@@ -594,6 +594,47 @@ Known limitations:
   GitHub-hosted windows-2022 has no NVIDIA GPU; CI runs CPU comparison of committed goldens. GPU capture stays a local/self-hosted test.
   The portability band is implemented and classified separately from regressions; it was not exercised on a second GPU.
 Next step: S2.1 - Define the lighting contract
+```
+
+### S2.1 - Define the lighting contract
+
+```text
+Step: S2.1
+State: Complete
+Date: 2026-08-26
+Commit: (fill after commit)
+Commands:
+  cmake --build --preset windows-debug --parallel --target RenderLabDataContractTests
+  cmake --build --preset windows-release --parallel --target RenderLabDataContractTests
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+Automated tests: RenderLabDataContractTests Debug and Release
+  LightingConstants 320 bytes; directional/point 32 bytes; debug CB 16 bytes
+  offsets: toLight@0 intensity@12 color@16 ambient@32 count@44 background@48 flags@60 lights@64
+  F0 lerp at metallic 0 / 0.5 / 1; metal has no diffuse albedo
+  alpha = max(r^2, 1e-3); attenuation 1/d^2 inside range, 0 at/beyond range
+  same d and different ranges match; count 9 clamps to 8
+  NDC reconstruction recovers (1,2,3) through the S0.4 camera
+  HDRSceneColor desc is RGBA16_FLOAT, RT+SRV, no UAV, clear (0,0,0,1)
+GPU validation/capture: not applicable; S2.1 is a contract freeze
+Artifacts:
+  docs/lighting.md
+  src/shaders/lighting_cb.h
+  src/shaders/lighting_debug_cb.h
+  src/shaders/lighting.hlsli
+  src/renderer/LightingContract.h
+  tests/test_lighting_contract.cpp
+  docs/renderer-conventions.md
+  docs/g-buffer.md
+  docs/renderer-data.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  No DeferredLightingPass, no lighting pixel shader, no HDR allocation
+  Default lights are CPU constants; glTF punctual lights are not imported
+  S2.2 creates HDRSceneColor and proves reconstruction on the GPU
+Next step: S2.2 - Implement position reconstruction and a diagnostic light
 ```
 
 Selected baseline:
