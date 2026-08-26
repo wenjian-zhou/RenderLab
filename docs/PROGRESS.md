@@ -602,7 +602,7 @@ Next step: S2.1 - Define the lighting contract
 Step: S2.1
 State: Complete
 Date: 2026-08-26
-Commit: (fill after commit)
+Commit: 3ef36f82ded636ff8064e3bc9166e9d63c8b3cb0
 Commands:
   cmake --build --preset windows-debug --parallel --target RenderLabDataContractTests
   cmake --build --preset windows-release --parallel --target RenderLabDataContractTests
