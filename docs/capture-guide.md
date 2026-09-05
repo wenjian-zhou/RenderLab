@@ -1,6 +1,6 @@
 # Capture Guide
 
-This file covers the Stage 0 / M0 checklist and PIX inspection through S2.2.
+This file covers the Stage 0 / M0 checklist and PIX inspection through S2.3.
 Do not commit generated captures. The image-regression contract and approval
 workflow live in [`image-regression.md`](image-regression.md).
 
@@ -19,10 +19,10 @@ RenderLab emits stable marker names in Debug and Release:
 Do not rename these strings. Nested markers under `Render`:
 
 - S1.3–S1.4: `GBuffer` (clears + opaque draws; timestamped)
-- S2.2: `DeferredLighting` after `GBuffer` (HDR diagnostic; timestamped)
+- S2.2+: `DeferredLighting` after `GBuffer` (HDR lighting; timestamped)
 - Present-source XOR: `GBufferDebug` **or** `LightingDebug` (fullscreen visualization)
 
-Default present (no `--gbuffer-view` / `--lighting-view`) is lighting `ndotl`, so PIX
+Default present (no `--gbuffer-view` / `--lighting-view`) is lighting `lit`, so PIX
 usually shows `LightingDebug` rather than `GBufferDebug`.
 
 ```text
@@ -208,9 +208,9 @@ checks that a deliberate channel swap fails. See
 output files, comparison rules, and CI policy. Generated files go under the
 gitignored `results/` directory. S1.6 `--output` remains GBuffer-only.
 
-## S2.2 Deferred Lighting Diagnostic
+## S2.3 Deferred Lighting (BRDF)
 
-After a GPU capture of `--lock-camera` (default present = lighting `ndotl`), confirm:
+After a GPU capture of `--lock-camera` (default present = lighting `lit`), confirm:
 
 - Event list: `Render / GBuffer` still has clears and opaque draws
 - Event list: `Render / DeferredLighting` clears `HDRSceneColor` and draws a fullscreen triangle
@@ -219,15 +219,19 @@ After a GPU capture of `--lock-camera` (default present = lighting `ndotl`), con
 - `--gbuffer-view` and `--lighting-view` together fail at CLI parse time
 
 ```powershell
-.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-lighting-views captures\s22-lighting-views
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-lighting-views captures\s23-lighting-views
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --lighting-view lit --frames 8
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --verify-lights --lock-camera --frames 8
 ```
 
-Expected PNGs:
+Expected dump PNGs:
 
 - `lighting-world-position.png`
 - `lighting-ndotl.png`
+- `lighting-lit.png`
 
-Do not commit the PNG files or the PIX capture.
+Metal response checklist: `--scene fallback-boxes --lighting-view lit` (optional
+`--verify-lights`). Do not commit the PNG files or the PIX capture.
 
 ## Smoke And CI
 

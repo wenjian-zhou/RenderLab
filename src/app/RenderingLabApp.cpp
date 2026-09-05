@@ -194,7 +194,7 @@ namespace renderlab
             return;
         }
 
-        ImGui::TextUnformatted("S2.2 deferred lighting diagnostic + debug views");
+        ImGui::TextUnformatted("S2.3 deferred lighting (Lambert + GGX) + debug views");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -305,7 +305,7 @@ namespace renderlab
             }
             ImGui::TextWrapped(
                 "%s", m_lightingDebugHud.decodeConvention ? m_lightingDebugHud.decodeConvention : "");
-            ImGui::TextUnformatted("Keys 7-8 select lighting channels.");
+            ImGui::TextUnformatted("Keys 7-9 select lighting channels.");
         }
         else
         {
@@ -377,6 +377,11 @@ namespace renderlab
                 m_lightingDebugHud.mode = LightingDebugMode::NdotL;
                 m_presentSource = PresentSource::LightingDebug;
             }
+            else if (ImGui::IsKeyPressed(ImGuiKey_9))
+            {
+                m_lightingDebugHud.mode = LightingDebugMode::Lit;
+                m_presentSource = PresentSource::LightingDebug;
+            }
         }
 
         ImGui::Separator();
@@ -433,7 +438,8 @@ namespace renderlab
         m_lightingDebugHud.mode = m_options.lightingView;
         m_lightingDebugHud.dumpDirectory = m_options.dumpLightingViewsDirectory;
         m_lightingDebugHud.dumpRequested = !m_lightingDebugHud.dumpDirectory.empty();
-        m_lightingConstants = MakeDefaultLightingConstants();
+        m_lightingConstants = m_options.verifyLights ? MakeVerifyLightsLightingConstants()
+                                                     : MakeDefaultLightingConstants();
         UpdateDebugHud();
     }
 
@@ -663,9 +669,9 @@ namespace renderlab
         {
             return failDump("--dump-lighting-views requires a directory path.");
         }
-        if (!m_gbuffer.IsValid() || !m_CommonPasses)
+        if (!m_gbuffer.IsValid() || !m_hdrSceneColor.IsValid() || !m_CommonPasses)
         {
-            return failDump("Cannot dump lighting views before the GBuffer targets exist.");
+            return failDump("Cannot dump lighting views before GBuffer and HDRSceneColor exist.");
         }
 
         const std::filesystem::path outputDir(directory);
@@ -707,7 +713,11 @@ namespace renderlab
 
             commandList->open();
             const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
-                m_gbuffer, m_viewConstants, m_lightingConstants, mode);
+                m_gbuffer,
+                m_hdrSceneColor.GetTexture(),
+                m_viewConstants,
+                m_lightingConstants,
+                mode);
             LightingDebugPassOutputs debugOutputs;
             debugOutputs.debugColor = dumpTarget;
             m_lightingDebugPass.Execute(commandList, debugInputs, debugOutputs);
@@ -923,7 +933,22 @@ namespace renderlab
                 const GBufferPassOutputs gbufferOutputs = MakeGBufferPassOutputs(m_gbuffer);
                 m_gbufferPass.Execute(m_commandList, gbufferInputs, gbufferOutputs);
 
-                m_lightingConstants = MakeDefaultLightingConstants();
+                m_lightingConstants = m_options.verifyLights ? MakeVerifyLightsLightingConstants()
+                                                             : MakeDefaultLightingConstants();
+                if (m_lightingConstants.pointLightCount > kMaxPointLights)
+                {
+                    static bool s_pointLightCountWarned = false;
+                    if (!s_pointLightCountWarned)
+                    {
+                        log::warning(
+                            "pointLightCount %u exceeds kMaxPointLights (%u); clamping.",
+                            m_lightingConstants.pointLightCount,
+                            kMaxPointLights);
+                        s_pointLightCountWarned = true;
+                    }
+                    m_lightingConstants.pointLightCount =
+                        ClampPointLightCount(m_lightingConstants.pointLightCount);
+                }
                 if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid())
                 {
                     const DeferredLightingPassInputs lightingInputs = MakeDeferredLightingPassInputs(
@@ -939,13 +964,14 @@ namespace renderlab
                     debugColor = framebuffer->getDesc().colorAttachments[0].texture;
                 }
 
-                if (m_gbuffer.IsValid() && debugColor)
+                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid() && debugColor)
                 {
                     UpdateDebugHud();
                     if (m_presentSource == PresentSource::LightingDebug)
                     {
                         const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
                             m_gbuffer,
+                            m_hdrSceneColor.GetTexture(),
                             m_viewConstants,
                             m_lightingConstants,
                             m_lightingDebugHud.mode);
@@ -960,6 +986,22 @@ namespace renderlab
                         GBufferDebugPassOutputs debugOutputs;
                         debugOutputs.debugColor = debugColor;
                         m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
+                    }
+                }
+                else if (m_gbuffer.IsValid() && debugColor)
+                {
+                    UpdateDebugHud();
+                    if (m_presentSource == PresentSource::GBufferDebug)
+                    {
+                        const GBufferDebugPassInputs debugInputs = MakeGBufferDebugPassInputs(
+                            m_gbuffer, m_viewConstants, m_gbufferDebugHud.mode);
+                        GBufferDebugPassOutputs debugOutputs;
+                        debugOutputs.debugColor = debugColor;
+                        m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
+                    }
+                    else
+                    {
+                        nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
                     }
                 }
                 else

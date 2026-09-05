@@ -12,11 +12,11 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
-**S1.1 through S1.6 are complete**, **S2.1 is complete**, and **S2.2 is complete**:
-`HDRSceneColor` exists, deferred lighting writes a directional `N·L` diagnostic, and
-lighting debug views (`world-position`, `ndotl`) present by default as `ndotl`.
-Tone mapping, full BRDF lighting (S2.3), RDG, and DXR are not implemented. The next
-executable task is **S2.3: directional and point-light shading**.
+**S1.1 through S1.6 are complete**, and **S2.1 through S2.3 are complete**:
+`HDRSceneColor` holds Lambert + GGX deferred lighting (directional, point lights,
+ambient). Default present is lighting `lit` (Reinhard of HDR). Tone mapping (S3),
+HDR regression (S2.4), RDG, and DXR are not implemented. The next executable task
+is **S2.4: lighting validation and regression output**.
 
 ## Plans
 
@@ -114,7 +114,8 @@ Command-line parsing is stable:
 | `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
 | `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
 | `--gbuffer-view <mode>` | present a GBuffer debug channel; mutually exclusive with `--lighting-view` |
-| `--lighting-view <mode>` | present `world-position` or `ndotl`; default present (no view flags) is `ndotl` |
+| `--lighting-view <mode>` | present `world-position`, `ndotl`, or `lit`; default present (no view flags) is `lit` |
+| `--verify-lights` | upload the S2.3 verification fixture (directional + 1 point + weak ambient) |
 | `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory GBuffer debug view; implies `--lock-camera` |
 | `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |

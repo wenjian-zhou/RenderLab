@@ -24,16 +24,18 @@ namespace renderlab
         LightingDebug = 1
     };
 
-    // Inputs named for later RDG migration. Reconstructs from GBuffer; does not read HDR.
+    // Inputs named for later RDG migration.
+    // world-position / ndotl reconstruct from GBuffer; lit reads HDRSceneColor (Reinhard).
     struct LightingDebugPassInputs
     {
         nvrhi::ITexture* gbufferA = nullptr;
         nvrhi::ITexture* gbufferB = nullptr;
         nvrhi::ITexture* gbufferC = nullptr;
         nvrhi::ITexture* gbufferDepth = nullptr;
+        nvrhi::ITexture* hdrSceneColor = nullptr;
         const ViewConstants* viewConstants = nullptr;
         const LightingConstants* lightingConstants = nullptr;
-        LightingDebugMode mode = LightingDebugMode::NdotL;
+        LightingDebugMode mode = LightingDebugMode::Lit;
     };
 
     // Output named for later RDG migration. Caller owns the color target (back buffer or dump).
@@ -44,7 +46,7 @@ namespace renderlab
 
     struct LightingDebugModeInfo
     {
-        LightingDebugMode mode = LightingDebugMode::NdotL;
+        LightingDebugMode mode = LightingDebugMode::Lit;
         const char* cliName = "";
         const char* channelName = "";
         const char* decodeConvention = "";
@@ -55,6 +57,7 @@ namespace renderlab
     nvrhi::DepthStencilState MakeLightingDebugDepthState();
     LightingDebugPassInputs MakeLightingDebugPassInputs(
         const GBufferTargets& targets,
+        nvrhi::ITexture* hdrSceneColor,
         const ViewConstants& viewConstants,
         const LightingConstants& lightingConstants,
         LightingDebugMode mode);
@@ -62,7 +65,7 @@ namespace renderlab
     const LightingDebugModeInfo& GetLightingDebugModeInfo(LightingDebugMode mode);
     bool ParseLightingDebugMode(std::string_view text, LightingDebugMode& mode, std::string& error);
 
-    // S2.2 visualization pass. Marker: LightingDebug. No timestamp.
+    // Lighting visualization pass. Marker: LightingDebug. No timestamp.
     class LightingDebugPass
     {
     public:

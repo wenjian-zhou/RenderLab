@@ -5,14 +5,14 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S2.3 - Implement directional and point-light shading**
+- Active step: **S2.4 - Add lighting validation and regression output**
 - State: **Not started**
 - Last updated: 2026-09-05
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
-- Stage 2: **S2.1 and S2.2 complete**; next is S2.3
+- Stage 2: **S2.1 through S2.3 complete**; next is S2.4
 
 ## Completed Repository Reset
 
@@ -699,6 +699,70 @@ Known limitations:
   No HDR golden / non-finite regression (S2.4)
   S1.6 --output / golden remains GBuffer-only
 Next step: S2.3 - Implement directional and point-light shading
+```
+
+### S2.3 - Implement directional and point-light shading
+
+```text
+Step: S2.3
+State: Complete
+Date: 2026-09-05
+Commit: (pending)
+Commands:
+  cmake --preset windows-vs2022 -DSHADERMAKE_FIND_DXC=OFF -DSHADERMAKE_DXC_PATH=<local dxc>
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --verify-lights --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lighting-view lit --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-lighting-views captures\s23-lighting-views
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --gbuffer-view base-color --lighting-view lit
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 checks
+  lighting debug CLI parse (world-position, ndotl, lit, aliases, rejection)
+  PresentSource defaults to LightingDebug + lit
+  --verify-lights fixture constants
+  DeferredLighting / LightingDebug raster: cull none, depth test/write off
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 5060 Laptop GPU, driver 32.0.15.7322, NVRHI D3D12,
+    validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
+  HDRSceneColor created 1280x720 RGBA16_FLOAT approxBytes=7372800
+  Default present is lighting lit (no view flags)
+  --verify-lights headless errors=0
+  --dump-lighting-views wrote lighting-world-position.png, lighting-ndotl.png,
+    lighting-lit.png
+  --gbuffer-view and --lighting-view together exit 2
+  S1.6 golden.ps1 Verify still passes (mae=0 vs committed goldens; adapter differs)
+  PIX nesting: Render / GBuffer / DeferredLighting / LightingDebug (or GBufferDebug)
+Artifacts:
+  src/shaders/lighting.hlsli (BRDF helpers)
+  src/shaders/deferred_lighting_ps.hlsl
+  src/shaders/lighting_debug_ps.hlsl
+  src/shaders/lighting_debug_cb.h
+  src/renderer/LightingContract.h
+  src/renderer/LightingDebugPass.h/.cpp
+  src/renderer/DeferredLightingPass.cpp/.h
+  src/app/RenderingLabApp.cpp/.h
+  src/app/main.cpp
+  tests/test_lighting_debug.cpp
+  tests/test_lighting_contract.cpp
+  scenes/manifest.json (fallback-boxes SHA-256 refreshed to match on-disk glTF)
+  docs/lighting.md
+  docs/capture-guide.md
+  docs/g-buffer.md
+  docs/PROGRESS.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+Known limitations:
+  No tone map; lit debug is Reinhard visualization only
+  No HDR golden / non-finite regression (S2.4)
+  Default scene metallic is ~0; use fallback-boxes for metal checklist
+  S1.6 --output / golden remains GBuffer-only
+Next step: S2.4 - Add lighting validation and regression output
 ```
 
 Selected baseline:

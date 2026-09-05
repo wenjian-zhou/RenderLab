@@ -49,7 +49,7 @@ namespace renderlab
         const LightingConstants& lightingConstants);
     DeferredLightingPassOutputs MakeDeferredLightingPassOutputs(const HDRSceneColorTarget& hdr);
 
-    // S2.2: clear HDRSceneColor and write the directional N·L diagnostic.
+    // S2.3: clear HDRSceneColor and write Lambert + GGX deferred lighting.
     // Marker: DeferredLighting. Timestamped. Fullscreen triangle; depth test/write off.
     class DeferredLightingPass
     {

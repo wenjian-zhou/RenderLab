@@ -398,7 +398,7 @@ in the diagnostics UI.
 - Position reconstruction in a live pass: S2.2 (complete)
 - HDR scene color texture creation: S2.2 (complete)
 - Lighting contract (spaces, HDR descriptor, lights, BRDF, AO, ambient): S2.1 (complete; [`lighting.md`](lighting.md))
-- Full BRDF deferred shading: S2.3
+- Full BRDF deferred shading: S2.3 (complete)
 - Velocity, emissive GBuffer, MSAA, packed octahedral normals
 
 ## 10. Debug Visualization (S1.5)

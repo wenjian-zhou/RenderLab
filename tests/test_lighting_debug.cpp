@@ -25,13 +25,14 @@ namespace
 
 int RunLightingDebugPassTests()
 {
-    std::printf("RenderLab S2.2 lighting debug / present-source tests\n");
+    std::printf("RenderLab S2.3 lighting debug / present-source tests\n");
 
-    Check(static_cast<uint32_t>(LightingDebugMode::Count) == 2u, "S2.2 defines exactly two lighting debug modes");
+    Check(static_cast<uint32_t>(LightingDebugMode::Count) == 3u, "S2.3 defines exactly three lighting debug modes");
     Check(LightingDebugMode_WorldPosition == 0u, "world-position is mode 0");
     Check(LightingDebugMode_NdotL == 1u, "ndotl is mode 1");
+    Check(LightingDebugMode_Lit == 2u, "lit is mode 2");
 
-    LightingDebugMode mode = LightingDebugMode::NdotL;
+    LightingDebugMode mode = LightingDebugMode::Lit;
     std::string error;
     Check(ParseLightingDebugMode("world-position", mode, error), "Parse world-position");
     Check(mode == LightingDebugMode::WorldPosition, "world-position maps to WorldPosition");
@@ -39,6 +40,10 @@ int RunLightingDebugPassTests()
     Check(mode == LightingDebugMode::NdotL, "ndotl maps to NdotL");
     Check(ParseLightingDebugMode("N-Dot-L", mode, error), "Parse N-Dot-L alias");
     Check(mode == LightingDebugMode::NdotL, "N-Dot-L maps to NdotL");
+    Check(ParseLightingDebugMode("lit", mode, error), "Parse lit");
+    Check(mode == LightingDebugMode::Lit, "lit maps to Lit");
+    Check(ParseLightingDebugMode("reinhard", mode, error), "Parse reinhard alias");
+    Check(mode == LightingDebugMode::Lit, "reinhard maps to Lit");
     Check(!ParseLightingDebugMode("base-color", mode, error), "Reject GBuffer channel on lighting-view");
     Check(!error.empty(), "Unknown lighting-view produces an error string");
 
@@ -48,6 +53,9 @@ int RunLightingDebugPassTests()
     const LightingDebugModeInfo& ndotlInfo = GetLightingDebugModeInfo(LightingDebugMode::NdotL);
     Check(std::string(ndotlInfo.cliName) == "ndotl", "NdotL CLI name");
     Check(std::string(ndotlInfo.dumpFileName) == "lighting-ndotl.png", "NdotL dump file");
+    const LightingDebugModeInfo& litInfo = GetLightingDebugModeInfo(LightingDebugMode::Lit);
+    Check(std::string(litInfo.cliName) == "lit", "Lit CLI name");
+    Check(std::string(litInfo.dumpFileName) == "lighting-lit.png", "Lit dump file");
 
     const nvrhi::RasterState lightingRaster = MakeLightingDebugRasterState();
     Check(lightingRaster.cullMode == nvrhi::RasterCullMode::None, "Lighting debug culls none");
@@ -64,10 +72,23 @@ int RunLightingDebugPassTests()
     Check(static_cast<uint32_t>(PresentSource::GBufferDebug) == 0u, "PresentSource GBufferDebug is 0");
     Check(static_cast<uint32_t>(PresentSource::LightingDebug) == 1u, "PresentSource LightingDebug is 1");
 
-    // Mutual exclusion is enforced in main CLI parsing: both view flags must not be set.
-    // Document the expected default present source here for S2.2.
+    // Default present: lighting debug with lit (Reinhard of HDR).
     PresentSource present = PresentSource::LightingDebug;
+    LightingDebugMode defaultView = LightingDebugMode::Lit;
     Check(present == PresentSource::LightingDebug, "Default present source is lighting debug");
+    Check(defaultView == LightingDebugMode::Lit, "Default lighting view is lit");
+
+    const LightingConstants verify = MakeVerifyLightsLightingConstants();
+    Check(verify.pointLightCount == 1u, "Verify-lights fixture has one point light");
+    Check((verify.flags & kLightingFlagDirectionalEnabled) != 0, "Verify-lights keeps directional enabled");
+    Check(verify.pointLights[0].intensity == kVerifyLightsPointIntensity, "Verify-lights point intensity");
+    Check(verify.pointLights[0].range == kVerifyLightsPointRange, "Verify-lights point range");
+
+    const LightingConstants defaults = MakeDefaultLightingConstants();
+    Check(defaults.pointLightCount == 0u, "Default fill has zero point lights without --verify-lights");
+    Check(defaults.ambientRadiance.x == 0.f && defaults.ambientRadiance.y == 0.f &&
+              defaults.ambientRadiance.z == 0.f,
+          "Default ambient stays zero without --verify-lights");
 
     return g_failures;
 }

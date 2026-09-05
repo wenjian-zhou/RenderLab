@@ -113,10 +113,19 @@ int RunLightingContractTests()
           "Default directional intensity is 4");
     Check(Near(length(defaults.directional.toLight), 1.f, 1e-5f), "Default toLight is unit length");
 
-    Check(LightingDebugMode_WorldPosition == 0 && LightingDebugMode_NdotL == 1,
-          "S2.2 debug mode values are frozen");
+    Check(LightingDebugMode_WorldPosition == 0 && LightingDebugMode_NdotL == 1 &&
+              LightingDebugMode_Lit == 2,
+          "S2.3 debug mode values are frozen");
     Check(std::string(kLightingDebugWorldPositionCli) == "world-position", "world-position CLI name");
     Check(std::string(kLightingDebugNdotLCli) == "ndotl", "ndotl CLI name");
+    Check(std::string(kLightingDebugLitCli) == "lit", "lit CLI name");
+
+    const LightingConstants verify = MakeVerifyLightsLightingConstants();
+    Check(verify.pointLightCount == 1, "Verify-lights point count is 1");
+    Check(Near(verify.ambientRadiance, kVerifyLightsAmbientRadiance, 1e-6f),
+          "Verify-lights ambient matches the fixture");
+    Check(Near(verify.pointLights[0].position, kVerifyLightsPointPosition, 1e-6f),
+          "Verify-lights point position matches the fixture");
 
     const nvrhi::TextureDesc hdr = MakeHDRSceneColorTextureDesc(1280, 720);
     std::string hdrError;

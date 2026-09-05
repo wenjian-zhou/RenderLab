@@ -6,9 +6,9 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-05): **S0.1 through S2.2 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied. The next step is **S2.3 — Implement directional and point-light
-shading**. Step evidence and commit hashes live in
+Current progress (2026-09-05): **S0.1 through S2.3 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied. The next step is **S2.4 — Add lighting validation and regression
+output**. Step evidence and commit hashes live in
 [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## 1. Purpose and Success Definition

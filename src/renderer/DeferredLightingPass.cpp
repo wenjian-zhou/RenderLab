@@ -113,7 +113,7 @@ namespace renderlab
             }
         }
 
-        log::info("DeferredLightingPass initialized (S2.2 directional N·L diagnostic).");
+        log::info("DeferredLightingPass initialized (S2.3 Lambert + GGX deferred lighting).");
         return true;
     }
 

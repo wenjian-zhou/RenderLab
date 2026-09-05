@@ -69,7 +69,7 @@ namespace renderlab
 
     struct LightingDebugHud
     {
-        LightingDebugMode mode = LightingDebugMode::NdotL;
+        LightingDebugMode mode = LightingDebugMode::Lit;
         const char* channelName = "";
         const char* decodeConvention = "";
         std::string dumpDirectory;
@@ -84,9 +84,10 @@ namespace renderlab
         ResolvedScene scene;
         CameraPreset camera;
         bool lockCamera = false;
+        bool verifyLights = false;
         PresentSource presentSource = PresentSource::LightingDebug;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
-        LightingDebugMode lightingView = LightingDebugMode::NdotL;
+        LightingDebugMode lightingView = LightingDebugMode::Lit;
         std::string dumpGBufferViewsDirectory;
         std::string dumpLightingViewsDirectory;
         std::string goldenOutputDirectory;

@@ -39,8 +39,17 @@ namespace renderlab
                 "saturate(dot(N, toLight)) grayscale using the same directional toLight as lighting. "
                 "N comes from normalize(GBufferB.rgb). "
                 "Background (deviceDepth <= 0) is black (0,0,0). "
-                "This is visualization encoding, not the HDR diagnostic path.",
+                "This is visualization encoding, not the HDR lighting path.",
                 "lighting-ndotl.png",
+            },
+            {
+                LightingDebugMode::Lit,
+                kLightingDebugLitCli,
+                "Lit (Reinhard HDR)",
+                "Reads HDRSceneColor and displays Reinhard tonemap hdr/(1+hdr). "
+                "This is visualization encoding only; HDRSceneColor remains scene-referred. "
+                "Background pixels show Reinhard of backgroundRadiance written by DeferredLighting.",
+                "lighting-lit.png",
             },
         };
 
@@ -65,6 +74,7 @@ namespace renderlab
 
     LightingDebugPassInputs MakeLightingDebugPassInputs(
         const GBufferTargets& targets,
+        nvrhi::ITexture* hdrSceneColor,
         const ViewConstants& viewConstants,
         const LightingConstants& lightingConstants,
         LightingDebugMode mode)
@@ -74,6 +84,7 @@ namespace renderlab
         inputs.gbufferB = targets.GetShaderResource(GBufferTarget::B);
         inputs.gbufferC = targets.GetShaderResource(GBufferTarget::C);
         inputs.gbufferDepth = targets.GetShaderResource(GBufferTarget::Depth);
+        inputs.hdrSceneColor = hdrSceneColor;
         inputs.viewConstants = &viewConstants;
         inputs.lightingConstants = &lightingConstants;
         inputs.mode = mode;
@@ -85,7 +96,7 @@ namespace renderlab
         const uint32_t index = static_cast<uint32_t>(mode);
         if (index >= LightingDebugMode_Count)
         {
-            return kModeInfo[static_cast<size_t>(LightingDebugMode::NdotL)];
+            return kModeInfo[static_cast<size_t>(LightingDebugMode::Lit)];
         }
         return kModeInfo[index];
     }
@@ -103,10 +114,15 @@ namespace renderlab
             mode = LightingDebugMode::NdotL;
             return true;
         }
+        if (lower == kLightingDebugLitCli || lower == "reinhard" || lower == "hdr")
+        {
+            mode = LightingDebugMode::Lit;
+            return true;
+        }
 
         error =
             "Unknown --lighting-view '" + std::string(text) +
-            "'. Expected world-position or ndotl.";
+            "'. Expected world-position, ndotl, or lit.";
         return false;
     }
 
@@ -149,6 +165,7 @@ namespace renderlab
             nvrhi::BindingLayoutItem::Texture_SRV(1),
             nvrhi::BindingLayoutItem::Texture_SRV(2),
             nvrhi::BindingLayoutItem::Texture_SRV(3),
+            nvrhi::BindingLayoutItem::Texture_SRV(4),
         };
         m_bindingLayout = device->createBindingLayout(layoutDesc);
         if (!m_bindingLayout)
@@ -173,7 +190,7 @@ namespace renderlab
             return false;
         }
 
-        log::info("LightingDebugPass initialized (S2.2 world-position / N·L visualization).");
+        log::info("LightingDebugPass initialized (world-position / N·L / lit Reinhard).");
         return true;
     }
 
@@ -262,6 +279,7 @@ namespace renderlab
             nvrhi::BindingSetItem::Texture_SRV(1, inputs.gbufferB),
             nvrhi::BindingSetItem::Texture_SRV(2, inputs.gbufferC),
             nvrhi::BindingSetItem::Texture_SRV(3, inputs.gbufferDepth),
+            nvrhi::BindingSetItem::Texture_SRV(4, inputs.hdrSceneColor),
         };
         return m_bindingCache->GetOrCreateBindingSet(desc, m_bindingLayout);
     }
@@ -321,7 +339,8 @@ namespace renderlab
         } scope{ commandList };
 
         if (!outputs.debugColor || !inputs.gbufferA || !inputs.gbufferB || !inputs.gbufferC ||
-            !inputs.gbufferDepth || !inputs.viewConstants || !inputs.lightingConstants)
+            !inputs.gbufferDepth || !inputs.hdrSceneColor || !inputs.viewConstants ||
+            !inputs.lightingConstants)
         {
             log::error("LightingDebugPass inputs/outputs are incomplete; skipping visualization.");
             return;

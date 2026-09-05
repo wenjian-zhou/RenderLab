@@ -38,6 +38,7 @@ namespace
         std::optional<std::string> lightingView;
         std::optional<std::string> dumpGBufferViews;
         std::optional<std::string> dumpLightingViews;
+        bool verifyLights = false;
     };
 
     struct ValidationLog
@@ -61,14 +62,17 @@ namespace
             "  --gbuffer-view <m>  Present a GBuffer debug channel: base-color, world-normal,\n"
             "                      roughness, metallic, ao-flags, linear-depth\n"
             "                      Mutually exclusive with --lighting-view.\n"
-            "  --lighting-view <m> Present a lighting debug channel: world-position, ndotl\n"
-            "                      Default present (no view flags): lighting ndotl\n"
+            "  --lighting-view <m> Present a lighting debug channel: world-position, ndotl, lit\n"
+            "                      Default present (no view flags): lighting lit (Reinhard of HDR)\n"
             "                      Mutually exclusive with --gbuffer-view.\n"
+            "  --verify-lights     Upload the S2.3 verification light fixture (default directional\n"
+            "                      + one point light + weak ambient). Default fill stays contract\n"
+            "                      defaults when this flag is omitted.\n"
             "  --dump-gbuffer-views <dir>\n"
             "                      Dump every mandatory GBuffer debug view as PNG under <dir>\n"
             "                      (visualization dump). Implies --lock-camera.\n"
             "  --dump-lighting-views <dir>\n"
-            "                      Dump lighting debug views (world-position, ndotl) as PNG\n"
+            "                      Dump lighting debug views (world-position, ndotl, lit) as PNG\n"
             "                      under <dir>. Implies --lock-camera. Orthogonal to GBuffer dump.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
@@ -131,6 +135,12 @@ namespace
             if (EqualsOption(argument, "--lock-camera") || EqualsOption(argument, "--no-free-camera"))
             {
                 options.lockCamera = true;
+                continue;
+            }
+
+            if (EqualsOption(argument, "--verify-lights"))
+            {
+                options.verifyLights = true;
                 continue;
             }
 
@@ -295,7 +305,7 @@ int main(int argc, char** argv)
 
     renderlab::PresentSource presentSource = renderlab::PresentSource::LightingDebug;
     renderlab::GBufferDebugMode gbufferView = renderlab::GBufferDebugMode::BaseColor;
-    renderlab::LightingDebugMode lightingView = renderlab::LightingDebugMode::NdotL;
+    renderlab::LightingDebugMode lightingView = renderlab::LightingDebugMode::Lit;
     if (options.gbufferView.has_value())
     {
         if (!renderlab::ParseGBufferDebugMode(*options.gbufferView, gbufferView, parseError))
@@ -461,6 +471,7 @@ int main(int argc, char** argv)
     launchOptions.presentSource = presentSource;
     launchOptions.gbufferView = gbufferView;
     launchOptions.lightingView = lightingView;
+    launchOptions.verifyLights = options.verifyLights;
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
     {

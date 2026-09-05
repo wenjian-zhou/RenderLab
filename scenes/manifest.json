@@ -54,12 +54,12 @@
       "license": "CC0-1.0",
       "spdx": "CC0-1.0",
       "copyright": "RenderLab, 2026",
-      "sha256": "b604c5be1bc5b3f648b8bff32613e57984885249f4153ef56d1b0ab751538319",
+      "sha256": "546b1d2cd5c45e0613c4ade99d521c0570681717cbb6106501e8378afb168b5c",
       "files": [
         {
           "path": "fallback/boxes.gltf",
-          "sha256": "b604c5be1bc5b3f648b8bff32613e57984885249f4153ef56d1b0ab751538319",
-          "sizeBytes": 4093
+          "sha256": "546b1d2cd5c45e0613c4ade99d521c0570681717cbb6106501e8378afb168b5c",
+          "sizeBytes": 3859
         },
         {
           "path": "fallback/boxes.bin",

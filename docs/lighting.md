@@ -1,8 +1,8 @@
 # Lighting Contract
 
-Status: **S2.1 frozen; S2.2 implemented**
+Status: **S2.1 frozen; S2.3 implemented**
 
-Step: S2.1 (contract) / S2.2 (HDR + diagnostic + debug views)
+Step: S2.1 (contract) / S2.2 (HDR + diagnostic) / S2.3 (BRDF + lit debug)
 
 This file is the first-version deferred lighting contract. It is a deliberately
 small physically based scope: a reference workload for later Mini RDG migration
@@ -13,11 +13,12 @@ Coordinate, matrix, reversed-Z, and color-space rules live in
 [`g-buffer.md`](g-buffer.md). This file only describes lighting spaces, the HDR
 target, lights, the first BRDF, pass I/O, debug views, and validation.
 
-S2.1 froze the shader interface. S2.2 creates `HDRSceneColor`, runs
-`DeferredLighting` every frame with the directional `N·L` diagnostic, and presents
-lighting debug views (`world-position` / `ndotl`) by default as `ndotl`. S2.3
-evaluates the BRDF. Do not add clustered lighting, IBL, shadows, or a second
-material model.
+S2.1 froze the shader interface. S2.2 created `HDRSceneColor` and proved
+reconstruction with a directional `N·L` diagnostic. S2.3 evaluates Lambert +
+UE DefaultLit GGX into `HDRSceneColor`, presents lighting debug views
+(`world-position` / `ndotl` / `lit`) by default as `lit` (Reinhard of HDR), and
+supports `--verify-lights` for a fixed point + ambient fixture. Do not add
+clustered lighting, IBL, shadows, or a second material model.
 
 ## 1. Spaces
 
@@ -60,7 +61,7 @@ S2.2 creates the texture from `MakeHDRSceneColorTextureDesc` via
 `HDRSceneColorTarget` (app-owned; same resize sequence as GBuffer).
 
 Do not store visualization encodings in `HDRSceneColor`. It is always
-scene-referred lighting (including the S2.2 diagnostic `N·L` light).
+scene-referred lighting from the deferred BRDF (or the historical S2.2 diagnostic).
 
 ## 3. Background
 
@@ -115,7 +116,7 @@ radiance = color * intensity
 att      = 1
 ```
 
-Default fill (S2.2 / S2.3 may upload this until a UI exists):
+Default fill (uploaded every frame until a UI exists):
 
 ```text
 toLight   = normalize(0.45, 0.80, 0.40)
@@ -127,8 +128,9 @@ flags bit 0 = 1 (directional enabled)
 ### 5.2 Point lights
 
 Maximum **8**, stored inline in `LightingConstants`. `pointLightCount` is clamped
-to 8. A 9th light is dropped on the CPU with a diagnostic; the shader never walks
-past the array. Default count is 0.
+to 8. A 9th light is dropped on the CPU with a diagnostic (warning at most once
+per process); the shader never walks past the array. Default count is 0.
+`--verify-lights` uploads one fixture point light (see §10).
 
 | Field | Meaning |
 |---|---|
@@ -175,30 +177,43 @@ alpha          = max(roughness * roughness, 1e-3)
 Dielectric F0 `0.04` is already frozen in the renderer conventions. Do not store
 F0 in the GBuffer. The `1e-3` floor is on `alpha`, not on stored roughness.
 
-Specular is UE DefaultLit `D_GGX * Vis_SmithJointApprox * F_Schlick`. `Vis`
-already includes `G / (4 N·L N·V)`.
+Specular is UE DefaultLit `D_GGX * Vis_SmithJointApprox * F_Schlick`, with
+diffuse and specular evaluated as separate lobes (not a single Fresnel-lerped
+`fr`). `Vis` already includes `G / (4 N·L N·V)`.
 
 ```text
 a2  = alpha * alpha
 D   = a2 / (π * (NdotH² * (a2 - 1) + 1)²)
 a   = alpha
 Vis = 0.5 / (NdotL * (NdotV * (1 - a) + a) + NdotV * (NdotL * (1 - a) + a))
-F   = f0 + (1 - f0) * (1 - VdotH)⁵
+F   = saturate(50 * f0.g) * (1 - VdotH)⁵ + (1 - (1 - VdotH)⁵) * f0
+      (UE BRDF.ush F_Schlick; <2% F0.g treated as shadowing)
+fd  = diffuseAlbedo / π
 fs  = D * Vis * F
-fr  = fd * (1 - F) + fs
 ```
 
-Saturate `NdotL`, `NdotV`, `NdotH`, `VdotH`. Use `ε = 1e-5` in any extra
-denominator defense. Skip the light when `NdotL <= 0`.
+`NdotV` uses `saturate(abs(N·V) + 1e-5)` (UE DefaultLit). Saturate `NdotL`,
+`NdotH`, `VdotH`. Use `ε = 1e-5` in any extra denominator defense. Skip the light
+when `NdotL <= 0`.
+
+Analytic multi-scatter energy terms match UE
+`USE_ENERGY_CONSERVATION == 2` (no LUT texture):
 
 ```text
-Lo_k = fr * (color * intensity * att) * saturate(NdotL) * Vk
+(E, Ef) = GGXEnergyLookupAnalytic(roughness, NdotV)
+F90     = saturate(50 * max3(f0))
+W       = 1 + f0 * ((1 - E) / E)
+Erefl   = W * (E * f0 + Ef * (F90 - f0))
+fd'     = fd * saturate(1 - LuminanceRec709(Erefl))
+fs'     = fs * W
+Lo_k    = (fd' + fs') * (color * intensity * att) * saturate(NdotL) * Vk
 ```
 
 Directional lights use `att = 1`. `Vk = 1` in Stage 2. S7.4 multiplies **direct**
-terms only.
+terms only. Ambient stays `ambientRadiance * diffuseAlbedo * ao` (no energy terms).
 
-Energy split is Fresnel-modulated diffuse. No multi-scatter LUT.
+Point `L` is `normalize(lightPosition - P)` when `d > 0`; attenuation still floors
+`d²` at `1e-4` independently.
 
 ## 7. AO
 
@@ -262,13 +277,13 @@ directional plus `pointLightCount` points in the pixel shader.
 S7.4 reserved name, **not** an S2 field: `directVisibility`. Missing / disabled
 means 1. It will multiply direct light only.
 
-## 10. S2.2 debug views
+## 10. Debug views and verification fixture
 
 Visualization, presented like GBuffer debug (`debugColor` = back buffer or dump).
 Not the meaning of `HDRSceneColor`.
 
-CLI: `--lighting-view world-position|ndotl`. Mutually exclusive with
-`--gbuffer-view`. With no view flags, present defaults to lighting `ndotl`.
+CLI: `--lighting-view world-position|ndotl|lit`. Mutually exclusive with
+`--gbuffer-view`. With no view flags, present defaults to lighting `lit`.
 Dump with `--dump-lighting-views <dir>` (orthogonal to `--dump-gbuffer-views`;
 not part of S1.6 `--output` / golden).
 
@@ -276,13 +291,31 @@ not part of S1.6 `--output` / golden).
 |---|---|---|---|
 | `world-position` | Reconstructed `P` | `frac(abs(P))` | Magenta `(1, 0, 1)` |
 | `ndotl` | `saturate(dot(N, toLight))` | Grayscale | Black `(0, 0, 0)` |
+| `lit` | `HDRSceneColor.rgb` | Reinhard `hdr/(1+hdr)` | Reinhard of `backgroundRadiance` |
 
-`ndotl` uses the same directional `toLight` as lighting.
+`ndotl` uses the same directional `toLight` as lighting. `lit` **reads**
+`HDRSceneColor`; it does not re-evaluate the BRDF and does not write visualization
+encodings back into HDR.
 
-S2.2 also writes a diagnostic HDR image `saturate(N·L) * color * intensity` into
-`HDRSceneColor` (background writes `backgroundRadiance`). That path is not GGX.
-GPU marker nesting under `Render`: `GBuffer`, then `DeferredLighting` (timestamped),
-then exactly one of `GBufferDebug` or `LightingDebug`.
+S2.3 `DeferredLighting` writes Lambert + GGX into `HDRSceneColor` (background
+writes `backgroundRadiance`). GPU marker nesting under `Render`: `GBuffer`, then
+`DeferredLighting` (timestamped), then exactly one of `GBufferDebug` or
+`LightingDebug`.
+
+### `--verify-lights` fixture
+
+Default fill is unchanged (directional only, `pointLightCount = 0`, ambient 0).
+With `--verify-lights`, upload:
+
+| Field | Value |
+|---|---|
+| Directional | Contract default (`toLight`, color, intensity 4, enabled) |
+| Point[0] | `position=(0,2,0)`, `color=(1,0.9,0.8)`, `intensity=20`, `range=8` |
+| `pointLightCount` | 1 |
+| Ambient | `(0.03, 0.03, 0.035)` |
+
+Metal / roughness response checklist: `--scene fallback-boxes --lighting-view lit`
+(and optionally `--verify-lights`). Default scene remains `cesium-milk-truck`.
 
 ## 11. Explicit exclusions
 
@@ -299,7 +332,7 @@ then exactly one of `GBufferDebug` or `LightingDebug`.
 - Compute lighting / UAV HDR
 - glTF punctual-light import
 - Photometric units
-- Multi-scatter LUT / energy-compensation tables
+- Multi-scatter LUT / energy-compensation **textures** (analytic UE fit is used)
 - Disney diffuse, height-correlated Smith (beyond `Vis_SmithJointApprox`), Karis `G1`
 
 ## 12. Validation
@@ -323,6 +356,7 @@ S2.1 CPU tests: struct sizes and offsets, F0 lerp, alpha floor, attenuation
 endpoints, count clamp, NDC→world reconstruction with the S0.4 camera, HDR
 descriptor flags.
 
-S2.2 GPU: reconstruction stability and `N·L` (implemented). S2.2 CPU: lighting
-debug CLI parse, present-source defaults, deferred/lighting-debug raster state.
-S2.3 evaluates the BRDF. S2.4 is HDR regression and finite-pixel checks.
+S2.2 GPU: reconstruction stability and `N·L` (historical). S2.3 GPU: BRDF into
+HDR + `lit` Reinhard present. S2.3 CPU: lighting debug CLI (`lit`), default
+present=`lit`, `--verify-lights` fixture constants, deferred/lighting-debug raster
+state. S2.4 is HDR regression and finite-pixel checks.

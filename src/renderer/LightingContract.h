@@ -48,6 +48,14 @@ namespace renderlab
 
     inline constexpr const char* kLightingDebugWorldPositionCli = "world-position";
     inline constexpr const char* kLightingDebugNdotLCli = "ndotl";
+    inline constexpr const char* kLightingDebugLitCli = "lit";
+
+    // S2.3 --verify-lights fixture (docs/lighting.md). Does not change default fill.
+    inline constexpr donut::math::float3 kVerifyLightsAmbientRadiance = {0.03f, 0.03f, 0.035f};
+    inline constexpr donut::math::float3 kVerifyLightsPointPosition = {0.f, 2.f, 0.f};
+    inline constexpr donut::math::float3 kVerifyLightsPointColor = {1.f, 0.9f, 0.8f};
+    inline constexpr float kVerifyLightsPointIntensity = 20.f;
+    inline constexpr float kVerifyLightsPointRange = 8.f;
 
     inline bool IsBackgroundDeviceDepth(float deviceDepth)
     {
@@ -104,6 +112,18 @@ namespace renderlab
         lighting.backgroundRadiance = donut::math::float3(0.f);
         lighting.flags = kLightingFlagDirectionalEnabled;
         lighting.pointLightCount = 0;
+        return lighting;
+    }
+
+    inline LightingConstants MakeVerifyLightsLightingConstants()
+    {
+        LightingConstants lighting = MakeDefaultLightingConstants();
+        lighting.ambientRadiance = kVerifyLightsAmbientRadiance;
+        lighting.pointLightCount = 1;
+        lighting.pointLights[0].position = kVerifyLightsPointPosition;
+        lighting.pointLights[0].range = kVerifyLightsPointRange;
+        lighting.pointLights[0].color = kVerifyLightsPointColor;
+        lighting.pointLights[0].intensity = kVerifyLightsPointIntensity;
         return lighting;
     }
 

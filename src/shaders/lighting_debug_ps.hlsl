@@ -3,7 +3,7 @@
 #include "lighting_debug_cb.h"
 #include "lighting.hlsli"
 
-// S2.2 lighting debug visualization to the back buffer or dump target.
+// Lighting debug visualization to the back buffer or dump target.
 // Encodings are not stored in HDRSceneColor (docs/lighting.md section 10).
 
 ConstantBuffer<ViewConstants> g_View : register(b0);
@@ -14,6 +14,7 @@ Texture2D t_GBufferA : register(t0);
 Texture2D t_GBufferB : register(t1);
 Texture2D t_GBufferC : register(t2);
 Texture2D t_GBufferDepth : register(t3); // R32_FLOAT SRV on the typeless D32 texture
+Texture2D t_HDRSceneColor : register(t4);
 
 float4 main(float4 position : SV_Position) : SV_Target0
 {
@@ -23,9 +24,11 @@ float4 main(float4 position : SV_Position) : SV_Target0
     const float4 targetB = t_GBufferB.Load(int3(pixelCoord, 0));
     const float deviceDepth = t_GBufferDepth.Load(int3(pixelCoord, 0)).r;
     const bool background = IsBackgroundDeviceDepth(deviceDepth);
-    // Keep A/C in the shader so the frozen binding layout stays live.
+    // Keep A/C/HDR in the shader so the frozen binding layout stays live.
     const float keepAlive =
-        t_GBufferA.Load(int3(pixelCoord, 0)).a * 0.0 + t_GBufferC.Load(int3(pixelCoord, 0)).a * 0.0;
+        t_GBufferA.Load(int3(pixelCoord, 0)).a * 0.0 +
+        t_GBufferC.Load(int3(pixelCoord, 0)).a * 0.0 +
+        t_HDRSceneColor.Load(int3(pixelCoord, 0)).a * 0.0;
 
     if (g_Debug.mode == LightingDebugMode_WorldPosition)
     {
@@ -40,6 +43,14 @@ float4 main(float4 position : SV_Position) : SV_Target0
             return float4(1.0, 0.0, 1.0, 1.0);
         }
         return float4(frac(abs(P)) + keepAlive, 1.0);
+    }
+
+    if (g_Debug.mode == LightingDebugMode_Lit)
+    {
+        // Reinhard of scene-referred HDR (visualization only; not written back).
+        const float3 hdr = t_HDRSceneColor.Load(int3(pixelCoord, 0)).rgb;
+        const float3 mapped = hdr / (1.0 + hdr);
+        return float4(mapped + keepAlive, 1.0);
     }
 
     // LightingDebugMode_NdotL

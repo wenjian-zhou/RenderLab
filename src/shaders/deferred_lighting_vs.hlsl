@@ -1,4 +1,4 @@
-// Fullscreen triangle for the S2.2 deferred lighting diagnostic pass.
+// Fullscreen triangle for the S2.3 deferred lighting pass.
 // UV origin is top-left (D3D / docs/renderer-conventions.md). clip.z = 0, clip.w = 1.
 // Depth test is disabled; world position comes from GBufferDepth reconstruction.
 
