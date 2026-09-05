@@ -1,8 +1,11 @@
 #include "RenderingLabApp.h"
 #include "FrameMarkers.h"
+#include "renderer/DeferredLightingPass.h"
 #include "renderer/GBufferDebugPass.h"
 #include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
+#include "renderer/HDRSceneColorTarget.h"
+#include "renderer/LightingDebugPass.h"
 #include "renderer/RendererData.h"
 
 #include <donut/app/DeviceManager.h>
@@ -156,14 +159,22 @@ namespace renderlab
         const DeviceCapabilities& capabilities,
         const SceneHudState& sceneHud,
         const GBufferTargets& gbuffer,
+        const HDRSceneColorTarget& hdrSceneColor,
         const GBufferPassHud& gbufferPassHud,
-        GBufferDebugHud& debugHud)
+        const DeferredLightingPassHud& deferredLightingHud,
+        PresentSource& presentSource,
+        GBufferDebugHud& gbufferDebugHud,
+        LightingDebugHud& lightingDebugHud)
         : ImGui_Renderer(deviceManager)
         , m_capabilities(capabilities)
         , m_sceneHud(sceneHud)
         , m_gbuffer(gbuffer)
+        , m_hdrSceneColor(hdrSceneColor)
         , m_gbufferPassHud(gbufferPassHud)
-        , m_debugHud(debugHud)
+        , m_deferredLightingHud(deferredLightingHud)
+        , m_presentSource(presentSource)
+        , m_gbufferDebugHud(gbufferDebugHud)
+        , m_lightingDebugHud(lightingDebugHud)
     {
         ImGui::GetIO().IniFilename = nullptr;
     }
@@ -176,14 +187,14 @@ namespace renderlab
         deviceManager->GetWindowDimensions(width, height);
 
         ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(460.0f, 0.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(480.0f, 0.0f), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("RenderLab Diagnostics"))
         {
             ImGui::End();
             return;
         }
 
-        ImGui::TextUnformatted("S1.5 GBuffer debug visualization");
+        ImGui::TextUnformatted("S2.2 deferred lighting diagnostic + debug views");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -229,56 +240,144 @@ namespace renderlab
             }
         }
 
+        const HDRSceneColorTargetHud hdrHud = m_hdrSceneColor.GetHud();
         ImGui::Separator();
-        ImGui::TextUnformatted("Debug view");
-        const char* currentChannel = m_debugHud.channelName ? m_debugHud.channelName : "Base color";
-        if (ImGui::BeginCombo("Channel", currentChannel))
+        ImGui::TextUnformatted("HDRSceneColor");
+        if (!hdrHud.valid)
         {
-            for (uint32_t index = 0; index < static_cast<uint32_t>(GBufferDebugMode::Count); ++index)
-            {
-                const GBufferDebugMode mode = static_cast<GBufferDebugMode>(index);
-                const GBufferDebugModeInfo& info = GetGBufferDebugModeInfo(mode);
-                const bool selected = m_debugHud.mode == mode;
-                if (ImGui::Selectable(info.channelName, selected))
-                {
-                    m_debugHud.mode = mode;
-                }
-                if (selected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
+            ImGui::TextUnformatted("  not created");
         }
+        else
+        {
+            ImGui::Text(
+                "  %u x %u  %s  %u B/px  ~%llu bytes  creates=%u releases=%u",
+                hdrHud.width,
+                hdrHud.height,
+                hdrHud.formatName,
+                hdrHud.bytesPerPixel,
+                static_cast<unsigned long long>(hdrHud.approximateBytes),
+                hdrHud.createCount,
+                hdrHud.releaseCount);
+            if (m_deferredLightingHud.timestampValid)
+            {
+                ImGui::Text("  DeferredLighting GPU time=%.3f ms", m_deferredLightingHud.gpuTimeMilliseconds);
+            }
+            else
+            {
+                ImGui::TextUnformatted("  DeferredLighting GPU time=pending");
+            }
+        }
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("Present source (mutually exclusive)");
+        if (ImGui::RadioButton("Lighting debug", m_presentSource == PresentSource::LightingDebug))
+        {
+            m_presentSource = PresentSource::LightingDebug;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("GBuffer debug", m_presentSource == PresentSource::GBufferDebug))
+        {
+            m_presentSource = PresentSource::GBufferDebug;
+        }
+
+        if (m_presentSource == PresentSource::LightingDebug)
+        {
+            const char* currentChannel =
+                m_lightingDebugHud.channelName ? m_lightingDebugHud.channelName : "N dot L";
+            if (ImGui::BeginCombo("Lighting channel", currentChannel))
+            {
+                for (uint32_t index = 0; index < static_cast<uint32_t>(LightingDebugMode::Count); ++index)
+                {
+                    const LightingDebugMode mode = static_cast<LightingDebugMode>(index);
+                    const LightingDebugModeInfo& info = GetLightingDebugModeInfo(mode);
+                    const bool selected = m_lightingDebugHud.mode == mode;
+                    if (ImGui::Selectable(info.channelName, selected))
+                    {
+                        m_lightingDebugHud.mode = mode;
+                        m_presentSource = PresentSource::LightingDebug;
+                    }
+                    if (selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextWrapped(
+                "%s", m_lightingDebugHud.decodeConvention ? m_lightingDebugHud.decodeConvention : "");
+            ImGui::TextUnformatted("Keys 7-8 select lighting channels.");
+        }
+        else
+        {
+            const char* currentChannel =
+                m_gbufferDebugHud.channelName ? m_gbufferDebugHud.channelName : "Base color";
+            if (ImGui::BeginCombo("GBuffer channel", currentChannel))
+            {
+                for (uint32_t index = 0; index < static_cast<uint32_t>(GBufferDebugMode::Count); ++index)
+                {
+                    const GBufferDebugMode mode = static_cast<GBufferDebugMode>(index);
+                    const GBufferDebugModeInfo& info = GetGBufferDebugModeInfo(mode);
+                    const bool selected = m_gbufferDebugHud.mode == mode;
+                    if (ImGui::Selectable(info.channelName, selected))
+                    {
+                        m_gbufferDebugHud.mode = mode;
+                        m_presentSource = PresentSource::GBufferDebug;
+                    }
+                    if (selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextWrapped(
+                "%s", m_gbufferDebugHud.decodeConvention ? m_gbufferDebugHud.decodeConvention : "");
+            ImGui::TextUnformatted("Keys 1-6 select GBuffer channels.");
+        }
+
         if (!ImGui::GetIO().WantCaptureKeyboard)
         {
             if (ImGui::IsKeyPressed(ImGuiKey_1))
             {
-                m_debugHud.mode = GBufferDebugMode::BaseColor;
+                m_gbufferDebugHud.mode = GBufferDebugMode::BaseColor;
+                m_presentSource = PresentSource::GBufferDebug;
             }
             else if (ImGui::IsKeyPressed(ImGuiKey_2))
             {
-                m_debugHud.mode = GBufferDebugMode::WorldNormal;
+                m_gbufferDebugHud.mode = GBufferDebugMode::WorldNormal;
+                m_presentSource = PresentSource::GBufferDebug;
             }
             else if (ImGui::IsKeyPressed(ImGuiKey_3))
             {
-                m_debugHud.mode = GBufferDebugMode::Roughness;
+                m_gbufferDebugHud.mode = GBufferDebugMode::Roughness;
+                m_presentSource = PresentSource::GBufferDebug;
             }
             else if (ImGui::IsKeyPressed(ImGuiKey_4))
             {
-                m_debugHud.mode = GBufferDebugMode::Metallic;
+                m_gbufferDebugHud.mode = GBufferDebugMode::Metallic;
+                m_presentSource = PresentSource::GBufferDebug;
             }
             else if (ImGui::IsKeyPressed(ImGuiKey_5))
             {
-                m_debugHud.mode = GBufferDebugMode::AoFlags;
+                m_gbufferDebugHud.mode = GBufferDebugMode::AoFlags;
+                m_presentSource = PresentSource::GBufferDebug;
             }
             else if (ImGui::IsKeyPressed(ImGuiKey_6))
             {
-                m_debugHud.mode = GBufferDebugMode::LinearDepth;
+                m_gbufferDebugHud.mode = GBufferDebugMode::LinearDepth;
+                m_presentSource = PresentSource::GBufferDebug;
+            }
+            else if (ImGui::IsKeyPressed(ImGuiKey_7))
+            {
+                m_lightingDebugHud.mode = LightingDebugMode::WorldPosition;
+                m_presentSource = PresentSource::LightingDebug;
+            }
+            else if (ImGui::IsKeyPressed(ImGuiKey_8))
+            {
+                m_lightingDebugHud.mode = LightingDebugMode::NdotL;
+                m_presentSource = PresentSource::LightingDebug;
             }
         }
-        ImGui::TextWrapped("%s", m_debugHud.decodeConvention ? m_debugHud.decodeConvention : "");
-        ImGui::TextUnformatted("Keys 1-6 select the channel. Normal display remap is documented above.");
 
         ImGui::Separator();
         ImGui::Text("Scene: %s", m_sceneHud.sceneLabel.c_str());
@@ -327,9 +426,14 @@ namespace renderlab
         m_sceneHud.cameraLocked = m_options.lockCamera;
         m_sceneHud.cameraTarget = m_options.camera.target;
         m_sceneHud.verticalFovDegrees = m_options.camera.verticalFovDegrees;
-        m_debugHud.mode = m_options.gbufferView;
-        m_debugHud.dumpDirectory = m_options.dumpGBufferViewsDirectory;
-        m_debugHud.dumpRequested = !m_debugHud.dumpDirectory.empty();
+        m_presentSource = m_options.presentSource;
+        m_gbufferDebugHud.mode = m_options.gbufferView;
+        m_gbufferDebugHud.dumpDirectory = m_options.dumpGBufferViewsDirectory;
+        m_gbufferDebugHud.dumpRequested = !m_gbufferDebugHud.dumpDirectory.empty();
+        m_lightingDebugHud.mode = m_options.lightingView;
+        m_lightingDebugHud.dumpDirectory = m_options.dumpLightingViewsDirectory;
+        m_lightingDebugHud.dumpRequested = !m_lightingDebugHud.dumpDirectory.empty();
+        m_lightingConstants = MakeDefaultLightingConstants();
         UpdateDebugHud();
     }
 
@@ -368,9 +472,21 @@ namespace renderlab
             return false;
         }
 
+        if (!m_deferredLightingPass.Init(GetDevice(), *m_shaderFactory))
+        {
+            log::error("Failed to initialize the deferred lighting pass.");
+            return false;
+        }
+
         if (!m_gbufferDebugPass.Init(GetDevice(), *m_shaderFactory))
         {
             log::error("Failed to initialize the GBuffer debug visualization pass.");
+            return false;
+        }
+
+        if (!m_lightingDebugPass.Init(GetDevice(), *m_shaderFactory))
+        {
+            log::error("Failed to initialize the lighting debug visualization pass.");
             return false;
         }
 
@@ -399,27 +515,57 @@ namespace renderlab
         return m_gbuffer;
     }
 
+    const HDRSceneColorTarget& RenderingLabApp::GetHDRSceneColorTarget() const
+    {
+        return m_hdrSceneColor;
+    }
+
     const GBufferPassHud& RenderingLabApp::GetGBufferPassHud() const
     {
         return m_gbufferPass.GetHud();
     }
 
+    const DeferredLightingPassHud& RenderingLabApp::GetDeferredLightingPassHud() const
+    {
+        return m_deferredLightingPass.GetHud();
+    }
+
+    PresentSource& RenderingLabApp::GetPresentSource()
+    {
+        return m_presentSource;
+    }
+
+    const PresentSource& RenderingLabApp::GetPresentSource() const
+    {
+        return m_presentSource;
+    }
+
     GBufferDebugHud& RenderingLabApp::GetGBufferDebugHud()
     {
-        return m_debugHud;
+        return m_gbufferDebugHud;
     }
 
     const GBufferDebugHud& RenderingLabApp::GetGBufferDebugHud() const
     {
-        return m_debugHud;
+        return m_gbufferDebugHud;
+    }
+
+    LightingDebugHud& RenderingLabApp::GetLightingDebugHud()
+    {
+        return m_lightingDebugHud;
+    }
+
+    const LightingDebugHud& RenderingLabApp::GetLightingDebugHud() const
+    {
+        return m_lightingDebugHud;
     }
 
     bool RenderingLabApp::DumpGBufferDebugViews(const std::string& directory)
     {
         auto failDump = [this](const char* message) -> bool {
             log::error("%s", message);
-            m_debugHud.dumpCompleted = true;
-            m_debugHud.dumpSucceeded = false;
+            m_gbufferDebugHud.dumpCompleted = true;
+            m_gbufferDebugHud.dumpSucceeded = false;
             return false;
         };
 
@@ -441,8 +587,8 @@ namespace renderlab
                 "Failed to create dump directory '%s': %s",
                 directory.c_str(),
                 createError.message().c_str());
-            m_debugHud.dumpCompleted = true;
-            m_debugHud.dumpSucceeded = false;
+            m_gbufferDebugHud.dumpCompleted = true;
+            m_gbufferDebugHud.dumpSucceeded = false;
             return false;
         }
 
@@ -488,8 +634,8 @@ namespace renderlab
                     false))
             {
                 log::error("Failed to write GBuffer debug view '%s'.", filePathString.c_str());
-                m_debugHud.dumpCompleted = true;
-                m_debugHud.dumpSucceeded = false;
+                m_gbufferDebugHud.dumpCompleted = true;
+                m_gbufferDebugHud.dumpSucceeded = false;
                 return false;
             }
 
@@ -497,11 +643,101 @@ namespace renderlab
             ++dumped;
         }
 
-        m_debugHud.dumpCompleted = true;
-        m_debugHud.dumpSucceeded = dumped == static_cast<uint32_t>(GBufferDebugMode::Count);
-        m_debugHud.dumpCount = dumped;
+        m_gbufferDebugHud.dumpCompleted = true;
+        m_gbufferDebugHud.dumpSucceeded = dumped == static_cast<uint32_t>(GBufferDebugMode::Count);
+        m_gbufferDebugHud.dumpCount = dumped;
         log::info("Dumped %u GBuffer debug views under '%s'.", dumped, directory.c_str());
-        return m_debugHud.dumpSucceeded;
+        return m_gbufferDebugHud.dumpSucceeded;
+    }
+
+    bool RenderingLabApp::DumpLightingDebugViews(const std::string& directory)
+    {
+        auto failDump = [this](const char* message) -> bool {
+            log::error("%s", message);
+            m_lightingDebugHud.dumpCompleted = true;
+            m_lightingDebugHud.dumpSucceeded = false;
+            return false;
+        };
+
+        if (directory.empty())
+        {
+            return failDump("--dump-lighting-views requires a directory path.");
+        }
+        if (!m_gbuffer.IsValid() || !m_CommonPasses)
+        {
+            return failDump("Cannot dump lighting views before the GBuffer targets exist.");
+        }
+
+        const std::filesystem::path outputDir(directory);
+        std::error_code createError;
+        std::filesystem::create_directories(outputDir, createError);
+        if (createError)
+        {
+            log::error(
+                "Failed to create dump directory '%s': %s",
+                directory.c_str(),
+                createError.message().c_str());
+            m_lightingDebugHud.dumpCompleted = true;
+            m_lightingDebugHud.dumpSucceeded = false;
+            return false;
+        }
+
+        nvrhi::IDevice* device = GetDevice();
+        device->waitForIdle();
+
+        nvrhi::ITexture* dumpTarget =
+            m_lightingDebugPass.GetOrCreateDumpTarget(m_gbuffer.GetWidth(), m_gbuffer.GetHeight());
+        if (!dumpTarget)
+        {
+            return failDump("Failed to create LightingDebugColor for view dumps.");
+        }
+
+        nvrhi::CommandListHandle commandList = device->createCommandList();
+        if (!commandList)
+        {
+            return failDump("Failed to create a command list for lighting view dumps.");
+        }
+
+        uint32_t dumped = 0;
+        for (uint32_t index = 0; index < static_cast<uint32_t>(LightingDebugMode::Count); ++index)
+        {
+            const LightingDebugMode mode = static_cast<LightingDebugMode>(index);
+            const LightingDebugModeInfo& info = GetLightingDebugModeInfo(mode);
+            const std::filesystem::path filePath = outputDir / info.dumpFileName;
+
+            commandList->open();
+            const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
+                m_gbuffer, m_viewConstants, m_lightingConstants, mode);
+            LightingDebugPassOutputs debugOutputs;
+            debugOutputs.debugColor = dumpTarget;
+            m_lightingDebugPass.Execute(commandList, debugInputs, debugOutputs);
+            commandList->close();
+            device->executeCommandList(commandList);
+
+            const std::string filePathString = filePath.generic_string();
+            if (!engine::SaveTextureToFile(
+                    device,
+                    m_CommonPasses.get(),
+                    dumpTarget,
+                    nvrhi::ResourceStates::RenderTarget,
+                    filePathString.c_str(),
+                    false))
+            {
+                log::error("Failed to write lighting debug view '%s'.", filePathString.c_str());
+                m_lightingDebugHud.dumpCompleted = true;
+                m_lightingDebugHud.dumpSucceeded = false;
+                return false;
+            }
+
+            log::info("Wrote lighting debug view %s -> %s", info.channelName, filePathString.c_str());
+            ++dumped;
+        }
+
+        m_lightingDebugHud.dumpCompleted = true;
+        m_lightingDebugHud.dumpSucceeded = dumped == static_cast<uint32_t>(LightingDebugMode::Count);
+        m_lightingDebugHud.dumpCount = dumped;
+        log::info("Dumped %u lighting debug views under '%s'.", dumped, directory.c_str());
+        return m_lightingDebugHud.dumpSucceeded;
     }
 
     namespace
@@ -687,6 +923,16 @@ namespace renderlab
                 const GBufferPassOutputs gbufferOutputs = MakeGBufferPassOutputs(m_gbuffer);
                 m_gbufferPass.Execute(m_commandList, gbufferInputs, gbufferOutputs);
 
+                m_lightingConstants = MakeDefaultLightingConstants();
+                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid())
+                {
+                    const DeferredLightingPassInputs lightingInputs = MakeDeferredLightingPassInputs(
+                        m_gbuffer, m_viewConstants, m_lightingConstants);
+                    const DeferredLightingPassOutputs lightingOutputs =
+                        MakeDeferredLightingPassOutputs(m_hdrSceneColor);
+                    m_deferredLightingPass.Execute(m_commandList, lightingInputs, lightingOutputs);
+                }
+
                 nvrhi::ITexture* debugColor = nullptr;
                 if (framebuffer && !framebuffer->getDesc().colorAttachments.empty())
                 {
@@ -696,11 +942,25 @@ namespace renderlab
                 if (m_gbuffer.IsValid() && debugColor)
                 {
                     UpdateDebugHud();
-                    const GBufferDebugPassInputs debugInputs =
-                        MakeGBufferDebugPassInputs(m_gbuffer, m_viewConstants, m_debugHud.mode);
-                    GBufferDebugPassOutputs debugOutputs;
-                    debugOutputs.debugColor = debugColor;
-                    m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
+                    if (m_presentSource == PresentSource::LightingDebug)
+                    {
+                        const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
+                            m_gbuffer,
+                            m_viewConstants,
+                            m_lightingConstants,
+                            m_lightingDebugHud.mode);
+                        LightingDebugPassOutputs debugOutputs;
+                        debugOutputs.debugColor = debugColor;
+                        m_lightingDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
+                    }
+                    else
+                    {
+                        const GBufferDebugPassInputs debugInputs = MakeGBufferDebugPassInputs(
+                            m_gbuffer, m_viewConstants, m_gbufferDebugHud.mode);
+                        GBufferDebugPassOutputs debugOutputs;
+                        debugOutputs.debugColor = debugColor;
+                        m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
+                    }
                 }
                 else
                 {
@@ -732,10 +992,13 @@ namespace renderlab
 
     void RenderingLabApp::BackBufferResizing()
     {
-        // Drop the GBuffer framebuffer first, then size-dependent texture handles, before
+        // Drop size-dependent pass resources, then texture handles, before
         // DeviceManager_DX12::ResizeSwapChain waits for idle and runs NVRHI garbage collection.
+        m_lightingDebugPass.ReleaseSizeDependentResources();
         m_gbufferDebugPass.ReleaseSizeDependentResources();
+        m_deferredLightingPass.ReleaseSizeDependentResources();
         m_gbufferPass.ReleaseSizeDependentResources();
+        m_hdrSceneColor.Release();
         m_gbuffer.Release();
     }
 
@@ -750,14 +1013,17 @@ namespace renderlab
 
         if (width == 0 || height == 0)
         {
-            log::info("Back buffer minimized or zero-sized (%u x %u); GBuffer not recreated.", width, height);
+            log::info(
+                "Back buffer minimized or zero-sized (%u x %u); GBuffer and HDRSceneColor not recreated.",
+                width,
+                height);
             return;
         }
 
         if (sampleCount != kGBufferSampleCount)
         {
             log::warning(
-                "Swap-chain sample count is %u; GBuffer stays at sample count %u (no MSAA).",
+                "Swap-chain sample count is %u; GBuffer and HDRSceneColor stay at sample count %u (no MSAA).",
                 sampleCount,
                 kGBufferSampleCount);
         }
@@ -765,6 +1031,12 @@ namespace renderlab
         if (!m_gbuffer.Create(GetDevice(), width, height))
         {
             log::error("Failed to create GBuffer targets at %u x %u.", width, height);
+            return;
+        }
+
+        if (!m_hdrSceneColor.Create(GetDevice(), width, height))
+        {
+            log::error("Failed to create HDRSceneColor at %u x %u.", width, height);
             return;
         }
 
@@ -966,9 +1238,13 @@ namespace renderlab
 
     void RenderingLabApp::UpdateDebugHud()
     {
-        const GBufferDebugModeInfo& info = GetGBufferDebugModeInfo(m_debugHud.mode);
-        m_debugHud.channelName = info.channelName;
-        m_debugHud.decodeConvention = info.decodeConvention;
+        const GBufferDebugModeInfo& gbufferInfo = GetGBufferDebugModeInfo(m_gbufferDebugHud.mode);
+        m_gbufferDebugHud.channelName = gbufferInfo.channelName;
+        m_gbufferDebugHud.decodeConvention = gbufferInfo.decodeConvention;
+
+        const LightingDebugModeInfo& lightingInfo = GetLightingDebugModeInfo(m_lightingDebugHud.mode);
+        m_lightingDebugHud.channelName = lightingInfo.channelName;
+        m_lightingDebugHud.decodeConvention = lightingInfo.decodeConvention;
     }
 
     void RenderingLabApp::UpdateSceneHud()

@@ -5,13 +5,14 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S2.2 - Implement position reconstruction and a diagnostic light**
+- Active step: **S2.3 - Implement directional and point-light shading**
 - State: **Not started**
-- Last updated: 2026-08-26
+- Last updated: 2026-09-05
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
+- Stage 2: **S2.1 and S2.2 complete**; next is S2.3
 
 ## Completed Repository Reset
 
@@ -635,6 +636,69 @@ Known limitations:
   Default lights are CPU constants; glTF punctual lights are not imported
   S2.2 creates HDRSceneColor and proves reconstruction on the GPU
 Next step: S2.2 - Implement position reconstruction and a diagnostic light
+```
+
+### S2.2 - Implement position reconstruction and a diagnostic light
+
+```text
+Step: S2.2
+State: Complete
+Date: 2026-09-05
+Commit: (pending)
+Commands:
+  cmake --preset windows-vs2022
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --help
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --frames 30
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lighting-view world-position --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --gbuffer-view base-color --lock-camera --frames 8
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --gbuffer-view base-color --lighting-view ndotl
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-lighting-views captures\s22-lighting-views
+  powershell -NoProfile -File scripts\smoke.ps1
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+Automated tests: RenderLabDataContractTests Debug and Release
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 checks
+  lighting debug CLI parse (world-position, ndotl, aliases, rejection)
+  PresentSource defaults to LightingDebug
+  DeferredLighting / LightingDebug raster: cull none, depth test/write off
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 5060 Laptop GPU, driver 32.0.15.7322, NVRHI D3D12,
+    validation=NVRHI + D3D12 debug runtime, DXR 1.1, SM 6.7, errors=0
+  HDRSceneColor created 1280x720 RGBA16_FLOAT approxBytes=7372800
+  Default present is lighting ndotl (no view flags)
+  --dump-lighting-views wrote lighting-world-position.png (magenta background + frac(abs(P)))
+    and lighting-ndotl.png (grayscale N·L, black background)
+  --gbuffer-view and --lighting-view together exit 2
+  S1.6 golden.ps1 Verify still passes (mae=0 vs committed goldens; adapter differs from golden host)
+  PIX nesting: Render / GBuffer / DeferredLighting / LightingDebug (or GBufferDebug)
+Artifacts:
+  src/renderer/HDRSceneColorTarget.h
+  src/renderer/HDRSceneColorTarget.cpp
+  src/renderer/DeferredLightingPass.h
+  src/renderer/DeferredLightingPass.cpp
+  src/renderer/LightingDebugPass.h
+  src/renderer/LightingDebugPass.cpp
+  src/shaders/deferred_lighting_vs.hlsl
+  src/shaders/deferred_lighting_ps.hlsl
+  src/shaders/lighting_debug_vs.hlsl
+  src/shaders/lighting_debug_ps.hlsl
+  tests/test_lighting_debug.cpp
+  docs/lighting.md
+  docs/capture-guide.md
+  docs/g-buffer.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  Diagnostic HDR is directional N·L only; ambient and point lights wait for S2.3
+  No tone map; HDR is not presented raw
+  No HDR golden / non-finite regression (S2.4)
+  S1.6 --output / golden remains GBuffer-only
+Next step: S2.3 - Implement directional and point-light shading
 ```
 
 Selected baseline:

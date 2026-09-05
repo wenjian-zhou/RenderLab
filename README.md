@@ -12,11 +12,11 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
-**S1.1 through S1.6 are complete**, and **S2.1 is complete**: the lighting
-contract is frozen. Device, queue, fence, and swap-chain ownership stay in
-`donut::app::DeviceManager`. The lighting pass, tone mapping, RDG, and DXR are
-not implemented. The next executable task is **S2.2: position reconstruction
-and a diagnostic light**.
+**S1.1 through S1.6 are complete**, **S2.1 is complete**, and **S2.2 is complete**:
+`HDRSceneColor` exists, deferred lighting writes a directional `N·L` diagnostic, and
+lighting debug views (`world-position`, `ndotl`) present by default as `ndotl`.
+Tone mapping, full BRDF lighting (S2.3), RDG, and DXR are not implemented. The next
+executable task is **S2.3: directional and point-light shading**.
 
 ## Plans
 
@@ -107,16 +107,18 @@ GPU, so CI stays configure + build and smoke is a documented local test. See
 
 Command-line parsing is stable:
 
-| Option | S1.6 behavior |
+| Option | Behavior |
 |---|---|
 | `--help` | print usage and exit |
 | `--frames <n>` | present `n` frames, then exit |
 | `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
 | `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
-| `--gbuffer-view <mode>` | `base-color`, `world-normal`, `roughness`, `metallic`, `ao-flags`, `linear-depth` |
-| `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory debug view; implies `--lock-camera` |
+| `--gbuffer-view <mode>` | present a GBuffer debug channel; mutually exclusive with `--lighting-view` |
+| `--lighting-view <mode>` | present `world-position` or `ndotl`; default present (no view flags) is `ndotl` |
+| `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory GBuffer debug view; implies `--lock-camera` |
+| `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
-| `--output <dir>` | golden capture: six debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
+| `--output <dir>` | S1.6 golden capture: six GBuffer debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with

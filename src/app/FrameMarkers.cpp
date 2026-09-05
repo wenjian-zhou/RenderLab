@@ -22,10 +22,14 @@ namespace renderlab::markers
     void PrintMarkerNames()
     {
         donut::log::info(
-            "Frame markers: %s, %s, %s, %s, %s",
+            "Frame markers: %s, %s, %s, %s, %s, %s, %s, %s, %s",
             kFrame,
             kSceneUpdate,
             kRender,
+            kGBuffer,
+            kDeferredLighting,
+            kGBufferDebug,
+            kLightingDebug,
             kUI,
             kPresent);
     }

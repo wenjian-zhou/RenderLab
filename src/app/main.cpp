@@ -35,7 +35,9 @@ namespace
         bool lockCamera = false;
         bool help = false;
         std::optional<std::string> gbufferView;
+        std::optional<std::string> lightingView;
         std::optional<std::string> dumpGBufferViews;
+        std::optional<std::string> dumpLightingViews;
     };
 
     struct ValidationLog
@@ -56,15 +58,22 @@ namespace
             "                      Default: cesium-milk-truck\n"
             "                      Fallback: fallback-boxes\n"
             "  --lock-camera       Disable free-camera motion and keep the S0.4 preset\n"
-            "  --gbuffer-view <m>  Debug channel: base-color, world-normal, roughness,\n"
-            "                      metallic, ao-flags, linear-depth (default: base-color)\n"
+            "  --gbuffer-view <m>  Present a GBuffer debug channel: base-color, world-normal,\n"
+            "                      roughness, metallic, ao-flags, linear-depth\n"
+            "                      Mutually exclusive with --lighting-view.\n"
+            "  --lighting-view <m> Present a lighting debug channel: world-position, ndotl\n"
+            "                      Default present (no view flags): lighting ndotl\n"
+            "                      Mutually exclusive with --gbuffer-view.\n"
             "  --dump-gbuffer-views <dir>\n"
             "                      Dump every mandatory GBuffer debug view as PNG under <dir>\n"
             "                      (visualization dump). Implies --lock-camera.\n"
+            "  --dump-lighting-views <dir>\n"
+            "                      Dump lighting debug views (world-position, ndotl) as PNG\n"
+            "                      under <dir>. Implies --lock-camera. Orthogonal to GBuffer dump.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
-            "  --output <dir>      S1.6 golden capture: dump every mandatory view plus\n"
+            "  --output <dir>      S1.6 golden capture: dump every mandatory GBuffer view plus\n"
             "                      capture-metadata.json under <dir>. Implies --lock-camera\n"
             "                      and disables the windowed --frames resize/minimize probe.\n"
             "                      Locked defaults: cesium-milk-truck, s04-default, 1280x720, frame 1.\n"
@@ -172,6 +181,17 @@ namespace
                 continue;
             }
 
+            if (EqualsOption(argument, "--lighting-view"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--lighting-view requires a channel name.";
+                    return false;
+                }
+                options.lightingView = argv[++index];
+                continue;
+            }
+
             if (EqualsOption(argument, "--dump-gbuffer-views"))
             {
                 if (index + 1 >= argc)
@@ -180,6 +200,17 @@ namespace
                     return false;
                 }
                 options.dumpGBufferViews = argv[++index];
+                continue;
+            }
+
+            if (EqualsOption(argument, "--dump-lighting-views"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--dump-lighting-views requires a directory path.";
+                    return false;
+                }
+                options.dumpLightingViews = argv[++index];
                 continue;
             }
 
@@ -254,7 +285,17 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    if (options.gbufferView.has_value() && options.lightingView.has_value())
+    {
+        std::fprintf(
+            stderr,
+            "error: --gbuffer-view and --lighting-view are mutually exclusive.\n");
+        return 2;
+    }
+
+    renderlab::PresentSource presentSource = renderlab::PresentSource::LightingDebug;
     renderlab::GBufferDebugMode gbufferView = renderlab::GBufferDebugMode::BaseColor;
+    renderlab::LightingDebugMode lightingView = renderlab::LightingDebugMode::NdotL;
     if (options.gbufferView.has_value())
     {
         if (!renderlab::ParseGBufferDebugMode(*options.gbufferView, gbufferView, parseError))
@@ -262,6 +303,16 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "error: %s\n", parseError.c_str());
             return 2;
         }
+        presentSource = renderlab::PresentSource::GBufferDebug;
+    }
+    if (options.lightingView.has_value())
+    {
+        if (!renderlab::ParseLightingDebugMode(*options.lightingView, lightingView, parseError))
+        {
+            std::fprintf(stderr, "error: %s\n", parseError.c_str());
+            return 2;
+        }
+        presentSource = renderlab::PresentSource::LightingDebug;
     }
 
     ValidationLog validationLog;
@@ -391,7 +442,9 @@ int main(int argc, char** argv)
     const uint32_t defaultHeadlessFrames = 8;
     const uint32_t defaultDumpFrames = 4;
     const bool goldenOutput = options.output.has_value();
-    const bool dumpViews = options.dumpGBufferViews.has_value() || goldenOutput;
+    const bool dumpGBuffer = options.dumpGBufferViews.has_value() || goldenOutput;
+    const bool dumpLighting = options.dumpLightingViews.has_value();
+    const bool dumpViews = dumpGBuffer || dumpLighting;
     const bool limitedFrames = options.frames.has_value() || options.headless || dumpViews;
     const uint32_t dumpFrameIndex = 1;
     uint32_t frameLimit = options.frames.value_or(
@@ -405,7 +458,9 @@ int main(int argc, char** argv)
     launchOptions.scene = std::move(resolvedScene);
     launchOptions.camera = catalog.GetCameraPreset();
     launchOptions.lockCamera = options.lockCamera || options.headless || dumpViews;
+    launchOptions.presentSource = presentSource;
     launchOptions.gbufferView = gbufferView;
+    launchOptions.lightingView = lightingView;
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
     {
@@ -414,6 +469,10 @@ int main(int argc, char** argv)
     else if (goldenOutput)
     {
         launchOptions.dumpGBufferViewsDirectory = *options.output;
+    }
+    if (options.dumpLightingViews.has_value())
+    {
+        launchOptions.dumpLightingViewsDirectory = *options.dumpLightingViews;
     }
     if (goldenOutput)
     {
@@ -437,8 +496,12 @@ int main(int argc, char** argv)
             app.GetCapabilities(),
             app.GetSceneHud(),
             app.GetGBufferTargets(),
+            app.GetHDRSceneColorTarget(),
             app.GetGBufferPassHud(),
-            app.GetGBufferDebugHud());
+            app.GetDeferredLightingPassHud(),
+            app.GetPresentSource(),
+            app.GetGBufferDebugHud(),
+            app.GetLightingDebugHud());
         if (!ui.Init(shaderFactory))
         {
             log::error("Failed to initialize the ImGui renderer.");
@@ -491,7 +554,8 @@ int main(int argc, char** argv)
              probeResize,
              &restoreAfterMinimize,
              &app,
-             dumpViews,
+             dumpGBuffer,
+             dumpLighting,
              dumpFrameIndex,
              writeMetadata,
              &goldenDirectory,
@@ -499,29 +563,43 @@ int main(int argc, char** argv)
                 presentCpuMarker.reset();
                 frameCpuMarker.reset();
 
-                if (dumpViews && !app.GetGBufferDebugHud().dumpCompleted && frameIndex >= dumpFrameIndex)
+                if (frameIndex >= dumpFrameIndex)
                 {
-                    const std::string primaryDump = app.GetGBufferDebugHud().dumpDirectory;
-                    if (!app.DumpGBufferDebugViews(primaryDump))
+                    if (dumpGBuffer && !app.GetGBufferDebugHud().dumpCompleted)
                     {
-                        dumpFailed = true;
-                        glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
-                        return;
-                    }
-                    if (!goldenDirectory.empty() && goldenDirectory != primaryDump)
-                    {
-                        if (!app.DumpGBufferDebugViews(goldenDirectory))
+                        const std::string primaryDump = app.GetGBufferDebugHud().dumpDirectory;
+                        if (!app.DumpGBufferDebugViews(primaryDump))
                         {
                             dumpFailed = true;
                             glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
                             return;
                         }
+                        if (!goldenDirectory.empty() && goldenDirectory != primaryDump)
+                        {
+                            if (!app.DumpGBufferDebugViews(goldenDirectory))
+                            {
+                                dumpFailed = true;
+                                glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                                return;
+                            }
+                        }
+                        if (writeMetadata)
+                        {
+                            const std::string metadataDir =
+                                goldenDirectory.empty() ? primaryDump : goldenDirectory;
+                            if (!app.WriteCaptureMetadata(metadataDir, frameIndex))
+                            {
+                                dumpFailed = true;
+                                glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                                return;
+                            }
+                        }
                     }
-                    if (writeMetadata)
+
+                    if (dumpLighting && !app.GetLightingDebugHud().dumpCompleted)
                     {
-                        const std::string metadataDir =
-                            goldenDirectory.empty() ? primaryDump : goldenDirectory;
-                        if (!app.WriteCaptureMetadata(metadataDir, frameIndex))
+                        const std::string lightingDump = app.GetLightingDebugHud().dumpDirectory;
+                        if (!app.DumpLightingDebugViews(lightingDump))
                         {
                             dumpFailed = true;
                             glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
@@ -590,9 +668,19 @@ int main(int argc, char** argv)
                 validationLog.errorCount.load());
         }
 
-        if (dumpViews && (dumpFailed || !app.GetGBufferDebugHud().dumpSucceeded))
+        if (dumpViews && dumpFailed)
+        {
+            log::error("Debug view dump did not complete successfully.");
+            exitCode = 1;
+        }
+        if (dumpGBuffer && !app.GetGBufferDebugHud().dumpSucceeded)
         {
             log::error("GBuffer debug view dump did not complete successfully.");
+            exitCode = 1;
+        }
+        if (dumpLighting && !app.GetLightingDebugHud().dumpSucceeded)
+        {
+            log::error("Lighting debug view dump did not complete successfully.");
             exitCode = 1;
         }
 

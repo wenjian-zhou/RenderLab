@@ -6,9 +6,9 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-08-26): **S0.1 through S2.1 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied. The next step is **S2.2 — Implement position reconstruction
-and a diagnostic light**. Step evidence and commit hashes live in
+Current progress (2026-09-05): **S0.1 through S2.2 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied. The next step is **S2.3 — Implement directional and point-light
+shading**. Step evidence and commit hashes live in
 [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## 1. Purpose and Success Definition
@@ -351,8 +351,9 @@ background policy. Document units and approximations in `docs/lighting.md`.
 
 **Goal:** validate depth and normal consumption before full BRDF complexity.
 
-**Actions:** create the HDR scene-color target; reconstruct position from depth; implement a
-normal/distance diagnostic light; add debug modes for reconstructed position and `N dot L`.
+**Actions:** create the HDR scene-color target; reconstruct position from depth via the shared
+helper; write a directional `N·L` diagnostic into `HDRSceneColor` (no ambient/point evaluation);
+add debug modes for reconstructed position and `N dot L`.
 
 **Verification:** reconstructed surfaces remain fixed as the camera moves; background pixels do not
 produce NaN/Inf; the diagnostic light agrees with GBuffer normals.

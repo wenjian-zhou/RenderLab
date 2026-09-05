@@ -1,9 +1,13 @@
 #pragma once
 
 #include "SceneCatalog.h"
+#include "renderer/DeferredLightingPass.h"
 #include "renderer/GBufferDebugPass.h"
 #include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
+#include "renderer/HDRSceneColorTarget.h"
+#include "renderer/LightingDebugPass.h"
+#include "renderer/LightingContract.h"
 #include "renderer/RendererData.h"
 
 #include <donut/app/ApplicationBase.h>
@@ -63,13 +67,28 @@ namespace renderlab
         uint32_t dumpCount = 0;
     };
 
+    struct LightingDebugHud
+    {
+        LightingDebugMode mode = LightingDebugMode::NdotL;
+        const char* channelName = "";
+        const char* decodeConvention = "";
+        std::string dumpDirectory;
+        bool dumpRequested = false;
+        bool dumpCompleted = false;
+        bool dumpSucceeded = false;
+        uint32_t dumpCount = 0;
+    };
+
     struct AppLaunchOptions
     {
         ResolvedScene scene;
         CameraPreset camera;
         bool lockCamera = false;
+        PresentSource presentSource = PresentSource::LightingDebug;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
+        LightingDebugMode lightingView = LightingDebugMode::NdotL;
         std::string dumpGBufferViewsDirectory;
+        std::string dumpLightingViewsDirectory;
         std::string goldenOutputDirectory;
         bool writeCaptureMetadata = false;
     };
@@ -82,8 +101,12 @@ namespace renderlab
             const DeviceCapabilities& capabilities,
             const SceneHudState& sceneHud,
             const GBufferTargets& gbuffer,
+            const HDRSceneColorTarget& hdrSceneColor,
             const GBufferPassHud& gbufferPassHud,
-            GBufferDebugHud& debugHud);
+            const DeferredLightingPassHud& deferredLightingHud,
+            PresentSource& presentSource,
+            GBufferDebugHud& gbufferDebugHud,
+            LightingDebugHud& lightingDebugHud);
 
     protected:
         void buildUI() override;
@@ -93,8 +116,12 @@ namespace renderlab
         DeviceCapabilities m_capabilities;
         const SceneHudState& m_sceneHud;
         const GBufferTargets& m_gbuffer;
+        const HDRSceneColorTarget& m_hdrSceneColor;
         const GBufferPassHud& m_gbufferPassHud;
-        GBufferDebugHud& m_debugHud;
+        const DeferredLightingPassHud& m_deferredLightingHud;
+        PresentSource& m_presentSource;
+        GBufferDebugHud& m_gbufferDebugHud;
+        LightingDebugHud& m_lightingDebugHud;
     };
 
     int SelectPreferredAdapterIndex(const std::vector<donut::app::AdapterInfo>& adapters);
@@ -113,10 +140,17 @@ namespace renderlab
         const DeviceCapabilities& GetCapabilities() const;
         const SceneHudState& GetSceneHud() const;
         const GBufferTargets& GetGBufferTargets() const;
+        const HDRSceneColorTarget& GetHDRSceneColorTarget() const;
         const GBufferPassHud& GetGBufferPassHud() const;
+        const DeferredLightingPassHud& GetDeferredLightingPassHud() const;
+        PresentSource& GetPresentSource();
+        const PresentSource& GetPresentSource() const;
         GBufferDebugHud& GetGBufferDebugHud();
         const GBufferDebugHud& GetGBufferDebugHud() const;
+        LightingDebugHud& GetLightingDebugHud();
+        const LightingDebugHud& GetLightingDebugHud() const;
         bool DumpGBufferDebugViews(const std::string& directory);
+        bool DumpLightingDebugViews(const std::string& directory);
         bool WriteCaptureMetadata(const std::string& directory, uint32_t frameIndex) const;
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
@@ -152,10 +186,16 @@ namespace renderlab
         SceneDrawList m_drawList;
         FrameConstants m_frameConstants = {};
         ViewConstants m_viewConstants = {};
+        LightingConstants m_lightingConstants = {};
         GBufferTargets m_gbuffer;
+        HDRSceneColorTarget m_hdrSceneColor;
         GBufferPass m_gbufferPass;
+        DeferredLightingPass m_deferredLightingPass;
         GBufferDebugPass m_gbufferDebugPass;
-        GBufferDebugHud m_debugHud;
+        LightingDebugPass m_lightingDebugPass;
+        PresentSource m_presentSource = PresentSource::LightingDebug;
+        GBufferDebugHud m_gbufferDebugHud;
+        LightingDebugHud m_lightingDebugHud;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

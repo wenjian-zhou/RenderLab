@@ -1,29 +1,29 @@
 # Capture Guide
 
-This file covers the Stage 0 / M0 checklist and PIX inspection through S1.5.
+This file covers the Stage 0 / M0 checklist and PIX inspection through S2.2.
 Do not commit generated captures. The image-regression contract and approval
 workflow live in [`image-regression.md`](image-regression.md).
 
 ## Marker Names
 
-RenderLab emits the same five names in Debug and Release:
+RenderLab emits stable marker names in Debug and Release:
 
 | Name | CPU / command-queue event | GPU command-list event |
 |---|---|---|
 | `Frame` | around the whole DeviceManager frame | parent range on the app command list |
 | `SceneUpdate` | around camera / HUD update | around `Scene::Refresh` |
-| `Render` | around the app render pass | around the back-buffer clear |
+| `Render` | around the app render pass | around GBuffer / lighting / present-source debug |
 | `UI` | around the ImGui renderer | Donut also records `ImGUI` for the actual draws |
 | `Present` | around DXGI present | standalone named range submitted just before present |
 
-Do not rename these strings. Later passes add nested markers under `Render`.
-S1.3 adds `GBuffer` under `Render` for the target clears. S1.4 writes meshes
-inside that same marker and adds a timestamp query around the clears and draws.
-S1.5 adds `GBufferDebug` under `Render`, after `GBuffer`. Do not rename
-`Frame`, `SceneUpdate`, `Render`, `GBuffer`, `UI`, or `Present`.
+Do not rename these strings. Nested markers under `Render`:
 
-A PIX 2603 GPU capture of this revision shows this hierarchy (Debug and Release
-are identical):
+- S1.3–S1.4: `GBuffer` (clears + opaque draws; timestamped)
+- S2.2: `DeferredLighting` after `GBuffer` (HDR diagnostic; timestamped)
+- Present-source XOR: `GBufferDebug` **or** `LightingDebug` (fullscreen visualization)
+
+Default present (no `--gbuffer-view` / `--lighting-view`) is lighting `ndotl`, so PIX
+usually shows `LightingDebug` rather than `GBufferDebug`.
 
 ```text
 Frame
@@ -32,8 +32,9 @@ Frame
     Frame
       SceneUpdate
       Render
-        GBuffer           (ClearRenderTargetView / ClearDepthStencilView, then DrawIndexed)
-        GBufferDebug      (fullscreen DecodeGBuffer draw to the back buffer)
+        GBuffer
+        DeferredLighting
+        LightingDebug     (or GBufferDebug when --gbuffer-view is selected)
   UI
     ImGUI             (Donut ImGui draws)
   Present
@@ -205,7 +206,28 @@ The script captures twice, compares both runs with the approved baseline, and
 checks that a deliberate channel swap fails. See
 [`image-regression.md`](image-regression.md) for one-off commands, locked inputs,
 output files, comparison rules, and CI policy. Generated files go under the
-gitignored `results/` directory.
+gitignored `results/` directory. S1.6 `--output` remains GBuffer-only.
+
+## S2.2 Deferred Lighting Diagnostic
+
+After a GPU capture of `--lock-camera` (default present = lighting `ndotl`), confirm:
+
+- Event list: `Render / GBuffer` still has clears and opaque draws
+- Event list: `Render / DeferredLighting` clears `HDRSceneColor` and draws a fullscreen triangle
+- Event list: `Render / LightingDebug` draws a fullscreen triangle to the back buffer
+- With `--gbuffer-view base-color`, `LightingDebug` is absent and `GBufferDebug` is present instead
+- `--gbuffer-view` and `--lighting-view` together fail at CLI parse time
+
+```powershell
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-lighting-views captures\s22-lighting-views
+```
+
+Expected PNGs:
+
+- `lighting-world-position.png`
+- `lighting-ndotl.png`
+
+Do not commit the PNG files or the PIX capture.
 
 ## Smoke And CI
 

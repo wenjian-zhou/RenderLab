@@ -16,6 +16,10 @@ set(RENDERLAB_SHADER_SOURCES
     shaders/gbuffer_ps.hlsl
     shaders/gbuffer_debug_vs.hlsl
     shaders/gbuffer_debug_ps.hlsl
+    shaders/deferred_lighting_vs.hlsl
+    shaders/deferred_lighting_ps.hlsl
+    shaders/lighting_debug_vs.hlsl
+    shaders/lighting_debug_ps.hlsl
     shaders/Shaders.cfg
 )
 
@@ -39,10 +43,16 @@ set(RENDERLAB_RENDERER_SOURCES
     renderer/LightingContract.h
     renderer/GBufferTargets.h
     renderer/GBufferTargets.cpp
+    renderer/HDRSceneColorTarget.h
+    renderer/HDRSceneColorTarget.cpp
     renderer/GBufferPass.h
     renderer/GBufferPass.cpp
     renderer/GBufferDebugPass.h
     renderer/GBufferDebugPass.cpp
+    renderer/DeferredLightingPass.h
+    renderer/DeferredLightingPass.cpp
+    renderer/LightingDebugPass.h
+    renderer/LightingDebugPass.cpp
     renderer/RendererData.h
     renderer/RendererData.cpp
     ${RENDERLAB_SHADER_HEADERS}

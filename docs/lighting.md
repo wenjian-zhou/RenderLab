@@ -1,8 +1,8 @@
 # Lighting Contract
 
-Status: **frozen for S2.1**
+Status: **S2.1 frozen; S2.2 implemented**
 
-Step: S2.1
+Step: S2.1 (contract) / S2.2 (HDR + diagnostic + debug views)
 
 This file is the first-version deferred lighting contract. It is a deliberately
 small physically based scope: a reference workload for later Mini RDG migration
@@ -13,9 +13,11 @@ Coordinate, matrix, reversed-Z, and color-space rules live in
 [`g-buffer.md`](g-buffer.md). This file only describes lighting spaces, the HDR
 target, lights, the first BRDF, pass I/O, debug views, and validation.
 
-S2.1 freezes the shader interface. S2.2 creates `HDRSceneColor` and proves
-reconstruction. S2.3 evaluates the BRDF. Do not add clustered lighting, IBL,
-shadows, or a second material model.
+S2.1 froze the shader interface. S2.2 creates `HDRSceneColor`, runs
+`DeferredLighting` every frame with the directional `N·L` diagnostic, and presents
+lighting debug views (`world-position` / `ndotl`) by default as `ndotl`. S2.3
+evaluates the BRDF. Do not add clustered lighting, IBL, shadows, or a second
+material model.
 
 ## 1. Spaces
 
@@ -54,8 +56,8 @@ One persistent size-dependent texture. The lighting pass does not own it.
 | Bytes | 8 B/px; 7,372,800 B at 1280×720 |
 | Resize | Same Donut sequence as GBuffer: `BackBufferResizing` → release, `BackBufferResized` → create. Minimize does not destroy it. |
 
-S2.2 creates the texture from `MakeHDRSceneColorTextureDesc`. This file only
-freezes the descriptor.
+S2.2 creates the texture from `MakeHDRSceneColorTextureDesc` via
+`HDRSceneColorTarget` (app-owned; same resize sequence as GBuffer).
 
 Do not store visualization encodings in `HDRSceneColor`. It is always
 scene-referred lighting (including the S2.2 diagnostic `N·L` light).
@@ -265,6 +267,11 @@ means 1. It will multiply direct light only.
 Visualization, presented like GBuffer debug (`debugColor` = back buffer or dump).
 Not the meaning of `HDRSceneColor`.
 
+CLI: `--lighting-view world-position|ndotl`. Mutually exclusive with
+`--gbuffer-view`. With no view flags, present defaults to lighting `ndotl`.
+Dump with `--dump-lighting-views <dir>` (orthogonal to `--dump-gbuffer-views`;
+not part of S1.6 `--output` / golden).
+
 | CLI name | Channel | Encoding | Background |
 |---|---|---|---|
 | `world-position` | Reconstructed `P` | `frac(abs(P))` | Magenta `(1, 0, 1)` |
@@ -274,6 +281,8 @@ Not the meaning of `HDRSceneColor`.
 
 S2.2 also writes a diagnostic HDR image `saturate(N·L) * color * intensity` into
 `HDRSceneColor` (background writes `backgroundRadiance`). That path is not GGX.
+GPU marker nesting under `Render`: `GBuffer`, then `DeferredLighting` (timestamped),
+then exactly one of `GBufferDebug` or `LightingDebug`.
 
 ## 11. Explicit exclusions
 
@@ -314,5 +323,6 @@ S2.1 CPU tests: struct sizes and offsets, F0 lerp, alpha floor, attenuation
 endpoints, count clamp, NDC→world reconstruction with the S0.4 camera, HDR
 descriptor flags.
 
-S2.2 GPU: reconstruction stability and `N·L`. S2.3 evaluates the BRDF. S2.4 is
-HDR regression and finite-pixel checks.
+S2.2 GPU: reconstruction stability and `N·L` (implemented). S2.2 CPU: lighting
+debug CLI parse, present-source defaults, deferred/lighting-debug raster state.
+S2.3 evaluates the BRDF. S2.4 is HDR regression and finite-pixel checks.

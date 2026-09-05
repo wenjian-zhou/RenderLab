@@ -26,6 +26,7 @@ int RunGBufferPassContractTests();
 int RunGBufferDebugPassTests();
 int RunImageCompareTests();
 int RunLightingContractTests();
+int RunLightingDebugPassTests();
 
 namespace
 {
@@ -265,6 +266,7 @@ int main()
     Check(frame.frameIndex == 12, "FrameConstants stores the frame index");
 
     g_failures += RunLightingContractTests();
+    g_failures += RunLightingDebugPassTests();
     g_failures += RunGBufferTargetContractTests();
     g_failures += RunGBufferPassContractTests();
     g_failures += RunGBufferDebugPassTests();

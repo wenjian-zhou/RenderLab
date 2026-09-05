@@ -395,9 +395,10 @@ in the diagnostics UI.
 - Channel debug views: S1.5 (complete)
 - Image regression / golden hashes: S1.6 (complete; [`image-regression.md`](image-regression.md))
 - Numeric pixel inspection: deferred; Donut `PixelReadbackPass` stalls on `mapBuffer`
-- Position reconstruction in a live pass: S2.2
-- HDR scene color texture creation: S2.2
+- Position reconstruction in a live pass: S2.2 (complete)
+- HDR scene color texture creation: S2.2 (complete)
 - Lighting contract (spaces, HDR descriptor, lights, BRDF, AO, ambient): S2.1 (complete; [`lighting.md`](lighting.md))
+- Full BRDF deferred shading: S2.3
 - Velocity, emissive GBuffer, MSAA, packed octahedral normals
 
 ## 10. Debug Visualization (S1.5)

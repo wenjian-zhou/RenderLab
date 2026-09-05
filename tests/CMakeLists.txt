@@ -5,6 +5,7 @@ add_executable(
     test_gbuffer_pass.cpp
     test_gbuffer_debug.cpp
     test_lighting_contract.cpp
+    test_lighting_debug.cpp
     test_image_compare.cpp
     image_compare.cpp
     image_compare.h
