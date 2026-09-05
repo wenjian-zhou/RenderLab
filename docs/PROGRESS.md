@@ -644,7 +644,7 @@ Next step: S2.2 - Implement position reconstruction and a diagnostic light
 Step: S2.2
 State: Complete
 Date: 2026-09-05
-Commit: (pending)
+Commit: 5b53baa74669d49ae38b78a3a5fd955a21a68635
 Commands:
   cmake --preset windows-vs2022
   cmake --build --preset windows-debug --parallel
