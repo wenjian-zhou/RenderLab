@@ -707,7 +707,7 @@ Next step: S2.3 - Implement directional and point-light shading
 Step: S2.3
 State: Complete
 Date: 2026-09-05
-Commit: (pending)
+Commit: 5688b7efd8b688ed9acb40132197406295e1ac6e
 Commands:
   cmake --preset windows-vs2022 -DSHADERMAKE_FIND_DXC=OFF -DSHADERMAKE_DXC_PATH=<local dxc>
   cmake --build --preset windows-debug --parallel
