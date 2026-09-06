@@ -32,6 +32,7 @@ namespace
         bool headless = false;
         std::optional<uint32_t> frames;
         std::optional<std::string> output;
+        std::optional<std::string> outputHdr;
         bool lockCamera = false;
         bool help = false;
         std::optional<std::string> gbufferView;
@@ -81,6 +82,9 @@ namespace
             "                      capture-metadata.json under <dir>. Implies --lock-camera\n"
             "                      and disables the windowed --frames resize/minimize probe.\n"
             "                      Locked defaults: cesium-milk-truck, s04-default, 1280x720, frame 1.\n"
+            "  --output-hdr <dir>  S2.4 HDR golden capture: hdr-scene-color.rlhdr, lighting-lit.png,\n"
+            "                      and hdr-capture-metadata.json. Implies --lock-camera and disables\n"
+            "                      the windowed --frames resize/minimize probe. Exclusive with --output.\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -177,6 +181,17 @@ namespace
                     return false;
                 }
                 options.output = argv[++index];
+                continue;
+            }
+
+            if (EqualsOption(argument, "--output-hdr"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--output-hdr requires a path argument.";
+                    return false;
+                }
+                options.outputHdr = argv[++index];
                 continue;
             }
 
@@ -300,6 +315,12 @@ int main(int argc, char** argv)
         std::fprintf(
             stderr,
             "error: --gbuffer-view and --lighting-view are mutually exclusive.\n");
+        return 2;
+    }
+
+    if (options.output.has_value() && options.outputHdr.has_value())
+    {
+        std::fprintf(stderr, "error: --output and --output-hdr are mutually exclusive.\n");
         return 2;
     }
 
@@ -452,9 +473,10 @@ int main(int argc, char** argv)
     const uint32_t defaultHeadlessFrames = 8;
     const uint32_t defaultDumpFrames = 4;
     const bool goldenOutput = options.output.has_value();
+    const bool hdrOutput = options.outputHdr.has_value();
     const bool dumpGBuffer = options.dumpGBufferViews.has_value() || goldenOutput;
     const bool dumpLighting = options.dumpLightingViews.has_value();
-    const bool dumpViews = dumpGBuffer || dumpLighting;
+    const bool dumpViews = dumpGBuffer || dumpLighting || hdrOutput;
     const bool limitedFrames = options.frames.has_value() || options.headless || dumpViews;
     const uint32_t dumpFrameIndex = 1;
     uint32_t frameLimit = options.frames.value_or(
@@ -489,8 +511,14 @@ int main(int argc, char** argv)
     {
         launchOptions.goldenOutputDirectory = *options.output;
     }
+    if (hdrOutput)
+    {
+        launchOptions.hdrOutputDirectory = *options.outputHdr;
+        launchOptions.writeHdrCaptureMetadata = true;
+    }
 
     const std::string goldenDirectory = launchOptions.goldenOutputDirectory;
+    const std::string hdrDirectory = launchOptions.hdrOutputDirectory;
     const bool writeMetadata = launchOptions.writeCaptureMetadata;
 
     int exitCode = 0;
@@ -567,9 +595,11 @@ int main(int argc, char** argv)
              &app,
              dumpGBuffer,
              dumpLighting,
+             hdrOutput,
              dumpFrameIndex,
              writeMetadata,
              &goldenDirectory,
+             &hdrDirectory,
              &dumpFailed](app::DeviceManager& manager, uint32_t frameIndex) {
                 presentCpuMarker.reset();
                 frameCpuMarker.reset();
@@ -611,6 +641,16 @@ int main(int argc, char** argv)
                     {
                         const std::string lightingDump = app.GetLightingDebugHud().dumpDirectory;
                         if (!app.DumpLightingDebugViews(lightingDump))
+                        {
+                            dumpFailed = true;
+                            glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
+                            return;
+                        }
+                    }
+
+                    if (hdrOutput && !app.HdrDumpCompleted())
+                    {
+                        if (!app.DumpHdrCapture(hdrDirectory))
                         {
                             dumpFailed = true;
                             glfwSetWindowShouldClose(manager.GetWindow(), GLFW_TRUE);
@@ -692,6 +732,11 @@ int main(int argc, char** argv)
         if (dumpLighting && !app.GetLightingDebugHud().dumpSucceeded)
         {
             log::error("Lighting debug view dump did not complete successfully.");
+            exitCode = 1;
+        }
+        if (hdrOutput && !app.HdrDumpSucceeded())
+        {
+            log::error("HDR capture dump did not complete successfully.");
             exitCode = 1;
         }
 

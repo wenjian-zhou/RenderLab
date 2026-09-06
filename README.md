@@ -12,11 +12,12 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 `856b4c2`.
 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
-**S1.1 through S1.6 are complete**, and **S2.1 through S2.3 are complete**:
+**S1.1 through S1.6 are complete**, and **S2.1 through S2.4 are complete**:
 `HDRSceneColor` holds Lambert + GGX deferred lighting (directional, point lights,
-ambient). Default present is lighting `lit` (Reinhard of HDR). Tone mapping (S3),
-HDR regression (S2.4), RDG, and DXR are not implemented. The next executable task
-is **S2.4: lighting validation and regression output**.
+ambient). Default present is lighting `lit` (Reinhard of HDR). HDR regression
+exists (`scripts/golden-hdr.ps1` vs committed `.rlhdr` goldens). Tone mapping
+(S3), RDG, and DXR are not implemented. The next executable task is **S3.1:
+freeze exposure and output-transfer policy**.
 
 ## Plans
 
@@ -29,6 +30,7 @@ is **S2.4: lighting validation and regression output**.
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
 - [Capture guide](docs/capture-guide.md) covers PIX inspection and local capture workflows.
 - [Image regression](docs/image-regression.md) is the canonical S1.6 capture and comparison contract.
+- [HDR regression](docs/hdr-regression.md) is the canonical S2.4 HDR capture and comparison contract.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
 - [GBuffer contract](docs/g-buffer.md) defines the first-version targets, encodings, lifetime, raster writes, and debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
@@ -90,7 +92,12 @@ After a Debug or Release build:
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 powershell -NoProfile -File scripts\smoke.ps1
 powershell -NoProfile -File scripts\golden.ps1
+powershell -NoProfile -File scripts\golden-hdr.ps1
 ```
+
+`scripts\golden-hdr.ps1` (default `Verify`) captures twice and compares both runs
+to the committed HDR goldens under `tests/golden-hdr/`. See
+[`docs/hdr-regression.md`](docs/hdr-regression.md).
 
 The process opens a window, loads the default scene from `scenes/`, applies the S0.4 camera
 preset, clears the GBuffer, rasterizes opaque meshes into `GBufferA`/`B`/`C`/`GBufferDepth`,
@@ -120,6 +127,7 @@ Command-line parsing is stable:
 | `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
 | `--output <dir>` | S1.6 golden capture: six GBuffer debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
+| `--output-hdr <dir>` | S2.4 HDR golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with

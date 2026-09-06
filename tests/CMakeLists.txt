@@ -7,8 +7,11 @@ add_executable(
     test_lighting_contract.cpp
     test_lighting_debug.cpp
     test_image_compare.cpp
+    test_hdr_compare.cpp
     image_compare.cpp
     image_compare.h
+    hdr_compare.cpp
+    hdr_compare.h
 )
 
 target_link_libraries(
@@ -46,6 +49,8 @@ add_executable(
     golden_compare_main.cpp
     image_compare.cpp
     image_compare.h
+    hdr_compare.cpp
+    hdr_compare.h
     stb_image_impl.cpp
 )
 
@@ -55,6 +60,8 @@ target_link_libraries(
         stb
         jsoncpp_static
 )
+
+target_include_directories(RenderLabGoldenCompare PRIVATE "${CMAKE_SOURCE_DIR}/src")
 
 if(MSVC)
     target_compile_options(RenderLabGoldenCompare PRIVATE /wd4100)

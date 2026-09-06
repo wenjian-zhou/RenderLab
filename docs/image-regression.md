@@ -4,7 +4,8 @@ Status: **frozen for Stage 1 after S1.6**
 
 This file is the first GBuffer image-regression contract. It sits on top of the
 S1.5 debug visualization dump. It does not invent a second packing, a second
-screenshot path, lighting, or tone mapping.
+screenshot path, lighting, or tone mapping. HDR lighting regression is S2.4 and
+lives in [`hdr-regression.md`](hdr-regression.md).
 
 ## 1. Locked capture
 

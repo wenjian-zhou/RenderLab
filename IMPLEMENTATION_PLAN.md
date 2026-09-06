@@ -6,10 +6,11 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-05): **S0.1 through S2.3 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied. The next step is **S2.4 — Add lighting validation and regression
-output**. Step evidence and commit hashes live in
-[`docs/PROGRESS.md`](docs/PROGRESS.md).
+Current progress (2026-09-06): **S0.1 through S2.4 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.1 — Freeze
+exposure and output-transfer policy**. The S2.4 HDR regression contract is
+[`docs/hdr-regression.md`](docs/hdr-regression.md).
+Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## 1. Purpose and Success Definition
 
@@ -377,11 +378,15 @@ ambient/background; light counts at the supported limit are bounds-safe.
 
 **Goal:** catch math, color-space, and integration regressions.
 
-**Actions:** add CPU tests for BRDF helper edge cases where practical; capture HDR and a viewable
-tonemapped diagnostic; detect non-finite pixels; save timing and configuration metadata.
+**Contract:** [`docs/hdr-regression.md`](docs/hdr-regression.md) (design frozen 2026-09-06).
 
-**Verification:** grazing angles and minimum roughness remain finite; the fixed scene repeats within
-the selected tolerance; capture inspection shows only declared GBuffer reads and HDR writes.
+**Actions:** add CPU tests for the HDR dump, finite scan, compare rule, and metadata (not a C++
+port of `EvaluateDirectBRDF`); capture `HDRSceneColor` as `.rlhdr` plus a Reinhard diagnostic PNG;
+detect non-finite RGB; save timing and configuration metadata on the sibling `--output-hdr` harness.
+
+**Verification:** grazing angles and minimum roughness remain finite on the GPU dump; the locked
+Milk Truck scene repeats within the selected tolerance; capture inspection shows only declared
+GBuffer reads and HDR writes.
 
 **Stage 2 gate:** deferred lighting consumes documented data and produces a validated HDR target.
 

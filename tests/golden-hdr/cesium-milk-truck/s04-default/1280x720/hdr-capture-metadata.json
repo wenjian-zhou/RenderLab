@@ -1,0 +1,18 @@
+{
+  "schema": "renderlab-hdr-capture-metadata/v1",
+  "step": "S2.4",
+  "sceneId": "cesium-milk-truck",
+  "cameraPreset": "s04-default",
+  "width": 1280,
+  "height": 720,
+  "frameIndex": 1,
+  "sampleCount": 1,
+  "verifyLights": false,
+  "adapterName": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "driverVersion": "32.0.15.7322",
+  "hdrFileName": "hdr-scene-color.rlhdr",
+  "diagnosticFileName": "lighting-lit.png",
+  "nonFiniteCount": 0,
+  "pixelCount": 921600,
+  "timestampValid": false
+}

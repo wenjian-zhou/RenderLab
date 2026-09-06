@@ -92,6 +92,8 @@ namespace renderlab
         std::string dumpLightingViewsDirectory;
         std::string goldenOutputDirectory;
         bool writeCaptureMetadata = false;
+        std::string hdrOutputDirectory;
+        bool writeHdrCaptureMetadata = false;
     };
 
     class RenderingLabUserInterface final : public donut::app::ImGui_Renderer
@@ -152,7 +154,11 @@ namespace renderlab
         const LightingDebugHud& GetLightingDebugHud() const;
         bool DumpGBufferDebugViews(const std::string& directory);
         bool DumpLightingDebugViews(const std::string& directory);
+        bool DumpHdrCapture(const std::string& directory);
+        bool HdrDumpCompleted() const;
+        bool HdrDumpSucceeded() const;
         bool WriteCaptureMetadata(const std::string& directory, uint32_t frameIndex) const;
+        bool WriteHdrCaptureMetadata(const std::string& directory, uint32_t frameIndex, uint64_t nonFiniteCount) const;
 
         void RenderScene(nvrhi::IFramebuffer* framebuffer) override;
         void RenderSplashScreen(nvrhi::IFramebuffer* framebuffer) override;
@@ -197,6 +203,8 @@ namespace renderlab
         PresentSource m_presentSource = PresentSource::LightingDebug;
         GBufferDebugHud m_gbufferDebugHud;
         LightingDebugHud m_lightingDebugHud;
+        bool m_hdrDumpCompleted = false;
+        bool m_hdrDumpSucceeded = false;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
     };

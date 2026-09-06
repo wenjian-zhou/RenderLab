@@ -1,8 +1,9 @@
 # Lighting Contract
 
-Status: **S2.1 frozen; S2.3 implemented**
+Status: **S2.1 frozen; S2.3 implemented; S2.4 implemented (HDR regression)**
 
-Step: S2.1 (contract) / S2.2 (HDR + diagnostic) / S2.3 (BRDF + lit debug)
+Step: S2.1 (contract) / S2.2 (HDR + diagnostic) / S2.3 (BRDF + lit debug) /
+S2.4 (HDR regression)
 
 This file is the first-version deferred lighting contract. It is a deliberately
 small physically based scope: a reference workload for later Mini RDG migration
@@ -11,14 +12,16 @@ and an optional DXR visibility input. It is not a production deferred renderer.
 Coordinate, matrix, reversed-Z, and color-space rules live in
 [`renderer-conventions.md`](renderer-conventions.md). GBuffer encodings live in
 [`g-buffer.md`](g-buffer.md). This file only describes lighting spaces, the HDR
-target, lights, the first BRDF, pass I/O, debug views, and validation.
+target, lights, the first BRDF, pass I/O, debug views, and validation. HDR
+capture and comparison live in [`hdr-regression.md`](hdr-regression.md).
 
 S2.1 froze the shader interface. S2.2 created `HDRSceneColor` and proved
 reconstruction with a directional `N·L` diagnostic. S2.3 evaluates Lambert +
 UE DefaultLit GGX into `HDRSceneColor`, presents lighting debug views
 (`world-position` / `ndotl` / `lit`) by default as `lit` (Reinhard of HDR), and
-supports `--verify-lights` for a fixed point + ambient fixture. Do not add
-clustered lighting, IBL, shadows, or a second material model.
+supports `--verify-lights` for a fixed point + ambient fixture. S2.4 captures
+and compares locked `HDRSceneColor` dumps (`--output-hdr`, `scripts/golden-hdr.ps1`).
+Do not add clustered lighting, IBL, shadows, or a second material model.
 
 ## 1. Spaces
 
@@ -350,7 +353,7 @@ Metal / roughness response checklist: `--scene fallback-boxes --lighting-view li
 | `pointLightCount > 8` | CPU clamp + diagnostic |
 | Camera moves | `frac(abs(P))` stays planted on the mesh |
 | Resize | `HDRSceneColor` recreated with GBuffer |
-| NaN / Inf | Fail the later S2.4 capture |
+| NaN / Inf | Fail the S2.4 `--output-hdr` capture ([`hdr-regression.md`](hdr-regression.md)) |
 
 S2.1 CPU tests: struct sizes and offsets, F0 lerp, alpha floor, attenuation
 endpoints, count clamp, NDC→world reconstruction with the S0.4 camera, HDR
@@ -359,4 +362,5 @@ descriptor flags.
 S2.2 GPU: reconstruction stability and `N·L` (historical). S2.3 GPU: BRDF into
 HDR + `lit` Reinhard present. S2.3 CPU: lighting debug CLI (`lit`), default
 present=`lit`, `--verify-lights` fixture constants, deferred/lighting-debug raster
-state. S2.4 is HDR regression and finite-pixel checks.
+state. S2.4 GPU/CPU: HDR regression (`--output-hdr`, `.rlhdr` finite scan, mixed
+abs/rel compare) is implemented ([`hdr-regression.md`](hdr-regression.md)).

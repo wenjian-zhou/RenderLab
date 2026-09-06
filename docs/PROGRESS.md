@@ -5,14 +5,14 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S2.4 - Add lighting validation and regression output**
-- State: **Not started**
-- Last updated: 2026-09-05
+- Active step: **S3.1 - Freeze exposure and output-transfer policy**
+- State: **S2.4 complete**
+- Last updated: 2026-09-06
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
-- Stage 2: **S2.1 through S2.3 complete**; next is S2.4
+- Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 
 ## Completed Repository Reset
 
@@ -763,6 +763,53 @@ Known limitations:
   Default scene metallic is ~0; use fallback-boxes for metal checklist
   S1.6 --output / golden remains GBuffer-only
 Next step: S2.4 - Add lighting validation and regression output
+```
+
+### S2.4 - Add lighting validation and regression output
+
+```text
+Step: S2.4
+State: Complete
+Date: 2026-09-06
+Commit: (pending)
+Commands:
+  cmake --preset windows-vs2022 -DSHADERMAKE_FIND_DXC=OFF -DSHADERMAKE_DXC_PATH=<local dxc>
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output-hdr results\s24-run
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+Automated tests: RenderLabDataContractTests Debug (0 failures)
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 / S2.3 checks
+  .rlhdr header roundtrip, finite/non-finite scan, mixed abs/rel compare, metadata identity
+  HDR self-compare (two Debug captures vs committed goldens, mae=0)
+  S1.6 golden.ps1 Verify still passes
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 5060 Laptop GPU, driver 32.0.15.7322, NVRHI D3D12
+  HDRSceneColor 1280x720 RGBA16_FLOAT; .rlhdr size=7372832 (32-byte header + 7372800 payload)
+  --output-hdr wrote three files: hdr-scene-color.rlhdr, lighting-lit.png, hdr-capture-metadata.json
+  nonFiniteCount=0; two captures mae=0 / mismatchFraction=0 vs committed goldens
+  PIX nesting: Render / GBuffer / DeferredLighting / LightingDebug (or GBufferDebug)
+  PIX was not relaunched for S2.4; nesting is unchanged from S2.3 (code + Task 9 GPU capture
+    on the same adapter/driver). DumpHdrCapture is a CPU staging readback of HDRSceneColor
+    after present; it does not add a GPU lighting pass or extra UAV.
+  HDRSceneColor remains RT+SRV, isUAV=false; DeferredLighting reads declared GBuffer SRVs
+Artifacts:
+  src/renderer/HdrDump.h
+  tests/hdr_compare.h
+  tests/hdr_compare.cpp
+  tests/test_hdr_compare.cpp
+  --output-hdr (src/app/main.cpp, RenderingLabApp::DumpHdrCapture)
+  scripts/golden-hdr.ps1
+  tests/golden-hdr/cesium-milk-truck/s04-default/1280x720/
+  docs/hdr-regression.md
+Known limitations:
+  No tone map; lit debug is Reinhard visualization only
+  Milk Truck metallic is a weak oracle; use fallback-boxes for the metal checklist
+  S1.6 --output / golden.ps1 remains GBuffer-only
+  --verify-lights / --scene fallback-boxes is not an HDR golden
+Next step: S3.1 - Freeze exposure and output-transfer policy
 ```
 
 Selected baseline:

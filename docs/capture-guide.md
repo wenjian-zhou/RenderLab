@@ -1,8 +1,9 @@
 # Capture Guide
 
-This file covers the Stage 0 / M0 checklist and PIX inspection through S2.3.
-Do not commit generated captures. The image-regression contract and approval
-workflow live in [`image-regression.md`](image-regression.md).
+This file covers the Stage 0 / M0 checklist and PIX inspection through S2.4.
+Do not commit generated captures. The GBuffer image-regression contract lives in
+[`image-regression.md`](image-regression.md). The S2.4 HDR regression contract
+lives in [`hdr-regression.md`](hdr-regression.md).
 
 ## Marker Names
 
@@ -206,7 +207,8 @@ The script captures twice, compares both runs with the approved baseline, and
 checks that a deliberate channel swap fails. See
 [`image-regression.md`](image-regression.md) for one-off commands, locked inputs,
 output files, comparison rules, and CI policy. Generated files go under the
-gitignored `results/` directory. S1.6 `--output` remains GBuffer-only.
+gitignored `results/` directory. S1.6 `--output` remains GBuffer-only. S2.4
+`--output-hdr` is specified in [`hdr-regression.md`](hdr-regression.md).
 
 ## S2.3 Deferred Lighting (BRDF)
 
@@ -232,6 +234,30 @@ Expected dump PNGs:
 
 Metal response checklist: `--scene fallback-boxes --lighting-view lit` (optional
 `--verify-lights`). Do not commit the PNG files or the PIX capture.
+
+## S2.4 HDR Golden Capture
+
+After a GPU capture of `--lock-camera` (default present = lighting `lit`), confirm
+the same PIX nesting as S2.3. `--output-hdr` does not add a GPU lighting pass:
+
+- Event list: `Render / GBuffer` still has clears and opaque draws
+- Event list: `Render / DeferredLighting` reads the declared GBuffer SRVs and writes `HDRSceneColor`
+- Event list: `Render / LightingDebug` draws a fullscreen triangle to the back buffer
+- With `--gbuffer-view base-color`, `LightingDebug` is absent and `GBufferDebug` is present instead
+- No extra lighting UAV, no second HDR target, no compute lighting
+- `--output-hdr` is a CPU staging readback of `HDRSceneColor` after DeferredLighting (hooked after present). It does not add a GPU pass or extra UAV.
+
+Dump the S2.4 HDR golden (`.rlhdr`, Reinhard `lighting-lit.png`, metadata). The
+contract is [`hdr-regression.md`](hdr-regression.md).
+
+```powershell
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output-hdr results\s24-run
+powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify
+```
+
+`golden-hdr.ps1` Verify compares two fresh captures against the committed goldens
+under `tests/golden-hdr/`. Generated files go under gitignored `results/`. Do not
+commit them or a `.wpix` capture.
 
 ## Smoke And CI
 

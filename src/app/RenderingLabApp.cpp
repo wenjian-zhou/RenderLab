@@ -5,6 +5,7 @@
 #include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
 #include "renderer/HDRSceneColorTarget.h"
+#include "renderer/HdrDump.h"
 #include "renderer/LightingDebugPass.h"
 #include "renderer/RendererData.h"
 
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string_view>
+#include <vector>
 
 #if DONUT_WITH_DX12
 #include <dxgi.h>
@@ -96,6 +98,12 @@ namespace renderlab
             }
         }
 #endif
+
+        void RemoveFileIfExists(const std::filesystem::path& path)
+        {
+            std::error_code ignore;
+            std::filesystem::remove(path, ignore);
+        }
     }
 
     int SelectPreferredAdapterIndex(const std::vector<app::AdapterInfo>& adapters)
@@ -750,6 +758,179 @@ namespace renderlab
         return m_lightingDebugHud.dumpSucceeded;
     }
 
+    bool RenderingLabApp::HdrDumpCompleted() const
+    {
+        return m_hdrDumpCompleted;
+    }
+
+    bool RenderingLabApp::HdrDumpSucceeded() const
+    {
+        return m_hdrDumpSucceeded;
+    }
+
+    bool RenderingLabApp::DumpHdrCapture(const std::string& directory)
+    {
+        auto failDump = [this](const char* message) -> bool {
+            log::error("%s", message);
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        };
+
+        if (directory.empty())
+        {
+            return failDump("--output-hdr requires a directory path.");
+        }
+        if (!m_hdrSceneColor.IsValid())
+        {
+            return failDump("Cannot dump HDRSceneColor before the target exists.");
+        }
+
+        const std::filesystem::path outputDir(directory);
+        std::error_code createError;
+        std::filesystem::create_directories(outputDir, createError);
+        if (createError)
+        {
+            log::error(
+                "Failed to create HDR dump directory '%s': %s",
+                directory.c_str(),
+                createError.message().c_str());
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        nvrhi::IDevice* device = GetDevice();
+        device->waitForIdle();
+
+        nvrhi::ITexture* hdr = m_hdrSceneColor.GetTexture();
+        const nvrhi::TextureDesc desc = hdr->getDesc();
+        nvrhi::StagingTextureHandle staging = device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read);
+        if (!staging)
+        {
+            return failDump("Failed to create a staging texture for HDRSceneColor readback.");
+        }
+
+        nvrhi::CommandListHandle commandList = device->createCommandList();
+        if (!commandList)
+        {
+            return failDump("Failed to create a command list for HDRSceneColor readback.");
+        }
+
+        commandList->open();
+        commandList->beginTrackingTextureState(
+            hdr,
+            nvrhi::TextureSubresourceSet(0, 1, 0, 1),
+            nvrhi::ResourceStates::RenderTarget);
+        commandList->copyTexture(staging, nvrhi::TextureSlice(), hdr, nvrhi::TextureSlice());
+        commandList->close();
+        device->executeCommandList(commandList);
+
+        size_t rowPitch = 0;
+        const uint8_t* mapped = static_cast<const uint8_t*>(device->mapStagingTexture(
+            staging, nvrhi::TextureSlice(), nvrhi::CpuAccessMode::Read, &rowPitch));
+        if (!mapped)
+        {
+            return failDump("Failed to map HDRSceneColor staging texture.");
+        }
+
+        const uint32_t width = desc.width;
+        const uint32_t height = desc.height;
+        std::vector<uint16_t> packed(static_cast<size_t>(width) * height * 4u);
+        const size_t rowBytes = static_cast<size_t>(width) * 8u;
+        auto* dst = reinterpret_cast<uint8_t*>(packed.data());
+        for (uint32_t row = 0; row < height; ++row)
+        {
+            std::memcpy(dst + static_cast<size_t>(row) * rowBytes, mapped + row * rowPitch, rowBytes);
+        }
+        device->unmapStagingTexture(staging);
+
+        const uint64_t nonFinite = CountNonFiniteRgb(packed.data(), width, height);
+        if (nonFinite > 0)
+        {
+            log::error(
+                "HDRSceneColor has %llu non-finite RGB texels",
+                static_cast<unsigned long long>(nonFinite));
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        std::string writeError;
+        const std::filesystem::path rlhdrPath = outputDir / "hdr-scene-color.rlhdr";
+        if (!WriteRlHdrFile(rlhdrPath, width, height, packed.data(), writeError))
+        {
+            RemoveFileIfExists(rlhdrPath);
+            log::error("%s", writeError.c_str());
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        log::info("Wrote HDRSceneColor -> %s", rlhdrPath.generic_string().c_str());
+
+        if (!m_gbuffer.IsValid() || !m_CommonPasses)
+        {
+            RemoveFileIfExists(rlhdrPath);
+            return failDump("Cannot write lighting-lit.png before GBuffer and CommonPasses exist.");
+        }
+
+        nvrhi::ITexture* dumpTarget = m_lightingDebugPass.GetOrCreateDumpTarget(width, height);
+        if (!dumpTarget)
+        {
+            RemoveFileIfExists(rlhdrPath);
+            return failDump("Failed to create LightingDebugColor for HDR capture PNG.");
+        }
+
+        commandList->open();
+        const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
+            m_gbuffer,
+            m_hdrSceneColor.GetTexture(),
+            m_viewConstants,
+            m_lightingConstants,
+            LightingDebugMode::Lit);
+        LightingDebugPassOutputs debugOutputs;
+        debugOutputs.debugColor = dumpTarget;
+        m_lightingDebugPass.Execute(commandList, debugInputs, debugOutputs);
+        commandList->close();
+        device->executeCommandList(commandList);
+
+        const std::filesystem::path pngPath =
+            outputDir / GetLightingDebugModeInfo(LightingDebugMode::Lit).dumpFileName;
+        const std::string pngPathString = pngPath.generic_string();
+        if (!engine::SaveTextureToFile(
+                device,
+                m_CommonPasses.get(),
+                dumpTarget,
+                nvrhi::ResourceStates::RenderTarget,
+                pngPathString.c_str(),
+                false))
+        {
+            RemoveFileIfExists(rlhdrPath);
+            RemoveFileIfExists(pngPath);
+            log::error("Failed to write HDR capture PNG '%s'.", pngPathString.c_str());
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        log::info("Wrote HDR capture PNG -> %s", pngPathString.c_str());
+
+        if (!WriteHdrCaptureMetadata(directory, 1, 0))
+        {
+            RemoveFileIfExists(rlhdrPath);
+            RemoveFileIfExists(pngPath);
+            RemoveFileIfExists(outputDir / "hdr-capture-metadata.json");
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        m_hdrDumpCompleted = true;
+        m_hdrDumpSucceeded = true;
+        return true;
+    }
+
     namespace
     {
         std::string JsonEscape(std::string_view text)
@@ -888,6 +1069,94 @@ namespace renderlab
             frameIndex,
             m_capabilities.adapterName.c_str(),
             m_capabilities.driverVersion.c_str());
+        return true;
+    }
+
+    bool RenderingLabApp::WriteHdrCaptureMetadata(
+        const std::string& directory,
+        uint32_t frameIndex,
+        uint64_t nonFiniteCount) const
+    {
+        if (directory.empty())
+        {
+            log::error("--output-hdr requires a directory path.");
+            return false;
+        }
+
+        const std::filesystem::path outputDir(directory);
+        std::error_code createError;
+        std::filesystem::create_directories(outputDir, createError);
+        if (createError)
+        {
+            log::error(
+                "Failed to create HDR dump directory '%s': %s",
+                directory.c_str(),
+                createError.message().c_str());
+            return false;
+        }
+
+        const std::filesystem::path metadataPath = outputDir / "hdr-capture-metadata.json";
+        std::ofstream output(metadataPath, std::ios::binary | std::ios::trunc);
+        if (!output)
+        {
+            log::error("Failed to write '%s'.", metadataPath.generic_string().c_str());
+            RemoveFileIfExists(metadataPath);
+            return false;
+        }
+
+        const uint32_t width = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetWidth() : m_backBufferWidth;
+        const uint32_t height = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetHeight() : m_backBufferHeight;
+        const uint64_t pixelCount = static_cast<uint64_t>(width) * height;
+        const DeferredLightingPassHud& lightingHud = m_deferredLightingPass.GetHud();
+        const char* diagnosticFileName = GetLightingDebugModeInfo(LightingDebugMode::Lit).dumpFileName;
+
+        output << "{\n";
+        output << "  \"schema\": \"renderlab-hdr-capture-metadata/v1\",\n";
+        output << "  \"step\": \"S2.4\",\n";
+        output << "  \"sceneId\": \"" << JsonEscape(m_options.scene.id) << "\",\n";
+        output << "  \"cameraPreset\": \"" << JsonEscape(m_options.camera.name) << "\",\n";
+        output << "  \"width\": " << width << ",\n";
+        output << "  \"height\": " << height << ",\n";
+        output << "  \"frameIndex\": " << frameIndex << ",\n";
+        output << "  \"sampleCount\": 1,\n";
+        output << "  \"verifyLights\": " << (m_options.verifyLights ? "true" : "false") << ",\n";
+        output << "  \"adapterName\": \"" << JsonEscape(m_capabilities.adapterName) << "\",\n";
+        output << "  \"driverVersion\": \"" << JsonEscape(m_capabilities.driverVersion) << "\",\n";
+        output << "  \"hdrFileName\": \"hdr-scene-color.rlhdr\",\n";
+        output << "  \"diagnosticFileName\": \"" << JsonEscape(diagnosticFileName) << "\",\n";
+        output << "  \"nonFiniteCount\": " << nonFiniteCount << ",\n";
+        output << "  \"pixelCount\": " << pixelCount << ",\n";
+        output << "  \"timestampValid\": " << (lightingHud.timestampValid ? "true" : "false");
+        if (lightingHud.timestampValid)
+        {
+            char timeBuffer[64] = {};
+            std::snprintf(timeBuffer, sizeof(timeBuffer), "%.6f", lightingHud.gpuTimeMilliseconds);
+            output << ",\n  \"deferredLightingGpuTimeMilliseconds\": " << timeBuffer << "\n";
+        }
+        else
+        {
+            output << "\n";
+        }
+        output << "}\n";
+
+        if (!output)
+        {
+            log::error("Failed while writing '%s'.", metadataPath.generic_string().c_str());
+            output.close();
+            RemoveFileIfExists(metadataPath);
+            return false;
+        }
+
+        log::info(
+            "Wrote HDR capture metadata %s (scene=%s camera=%s %ux%u frame=%u verifyLights=%s nonFinite=%llu)",
+            metadataPath.generic_string().c_str(),
+            m_options.scene.id.c_str(),
+            m_options.camera.name.c_str(),
+            width,
+            height,
+            frameIndex,
+            m_options.verifyLights ? "true" : "false",
+            static_cast<unsigned long long>(nonFiniteCount));
         return true;
     }
 

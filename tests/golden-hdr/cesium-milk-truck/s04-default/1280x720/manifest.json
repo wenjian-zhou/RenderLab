@@ -1,0 +1,30 @@
+{
+  "schema": "renderlab-hdr-golden-manifest/v1",
+  "step": "S2.4",
+  "sceneId": "cesium-milk-truck",
+  "cameraPreset": "s04-default",
+  "lockCamera": true,
+  "width": 1280,
+  "height": 720,
+  "frameIndex": 1,
+  "sampleCount": 1,
+  "verifyLights": false,
+  "relativeDirectory": "cesium-milk-truck/s04-default/1280x720",
+  "hdrFileName": "hdr-scene-color.rlhdr",
+  "diagnosticFileName": "lighting-lit.png",
+  "metadataFileName": "hdr-capture-metadata.json",
+  "byteEquality": false,
+  "relativeFloor": 0.0001,
+  "tight": {
+    "absTol": 0.0001,
+    "relTol": 0.001,
+    "maxMae": 0.0001,
+    "maxMismatchFraction": 0.002
+  },
+  "portability": {
+    "absTol": 0.0005,
+    "relTol": 0.005,
+    "maxMae": 0.001,
+    "maxMismatchFraction": 0.02
+  }
+}

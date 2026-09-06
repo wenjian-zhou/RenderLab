@@ -41,6 +41,7 @@ donut_compile_shaders(
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
     renderer/LightingContract.h
+    renderer/HdrDump.h
     renderer/GBufferTargets.h
     renderer/GBufferTargets.cpp
     renderer/HDRSceneColorTarget.h
