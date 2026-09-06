@@ -771,7 +771,7 @@ Next step: S2.4 - Add lighting validation and regression output
 Step: S2.4
 State: Complete
 Date: 2026-09-06
-Commit: (pending)
+Commit: f442f8d3afe4610abcb7057264044332bc192872
 Commands:
   cmake --preset windows-vs2022 -DSHADERMAKE_FIND_DXC=OFF -DSHADERMAKE_DXC_PATH=<local dxc>
   cmake --build --preset windows-debug --parallel
