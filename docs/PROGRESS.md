@@ -888,7 +888,7 @@ Next step: S3.2 - Implement tone mapping and present
 Step: S3.2
 State: Complete
 Date: 2026-09-07
-Commit: (pending)
+Commit: 6d0410cb1fd7bbf187ca789351eb89aa11965b92
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
