@@ -1011,7 +1011,7 @@ State: Complete
 Date: 2026-09-07
 Commit: ea109490a79f64003cc3c5c17eccd8c82ebb45a8
 M1: annotated git tag `m1` on this commit, pushed to origin (RDG migration reference)
-Follow-up review: (pending)
+Follow-up review: 7157c1a3eed5d4ca72d89449ff306ddd51eb3803
   (freeze audit: git diff-boundary check — frozen math, goldens, comparator,
   scripts, and CI are zero-diff vs 95eb0c5 and the golden tree is
   byte-identical to the S3.2 commit; NVRHI D3D12 timer semantics verified
