@@ -300,6 +300,41 @@ int RunHdrCompareTests()
     Check(IdentityMatchesLockedHdrCapture(identity, error), "Locked identity matches the S3.2 constants");
 
     {
+        // S3.3: a fresh capture resolves its timer queries during the dump, so the
+        // metadata can carry all three per-pass GPU-time fields. The loader must
+        // tolerate them and they must not affect the locked identity.
+        std::ofstream json(metaDir / kHdrMetadataFileName, std::ios::binary | std::ios::trunc);
+        json << "{\n"
+             << "  \"schema\": \"renderlab-hdr-capture-metadata/v2\",\n"
+             << "  \"step\": \"S3.2\",\n"
+             << "  \"sceneId\": \"cesium-milk-truck\",\n"
+             << "  \"cameraPreset\": \"s04-default\",\n"
+             << "  \"width\": 1280,\n"
+             << "  \"height\": 720,\n"
+             << "  \"frameIndex\": 1,\n"
+             << "  \"sampleCount\": 1,\n"
+             << "  \"exposureEV\": 0,\n"
+             << "  \"verifyLights\": false,\n"
+             << "  \"adapterName\": \"Test Adapter\",\n"
+             << "  \"driverVersion\": \"1.0\",\n"
+             << "  \"hdrFileName\": \"hdr-scene-color.rlhdr\",\n"
+             << "  \"diagnosticFileName\": \"lighting-lit.png\",\n"
+             << "  \"finalFileName\": \"final.png\",\n"
+             << "  \"nonFiniteCount\": 0,\n"
+             << "  \"pixelCount\": 921600,\n"
+             << "  \"timestampValid\": true,\n"
+             << "  \"gBufferGpuTimeMilliseconds\": 0.512,\n"
+             << "  \"deferredLightingGpuTimeMilliseconds\": 0.25,\n"
+             << "  \"postProcessGpuTimeMilliseconds\": 0.125\n"
+             << "}\n";
+    }
+    Check(LoadHdrCaptureIdentity(metaDir, identity, error),
+          "Metadata with all three GPU-time fields loads");
+    Check(identity.timestampValid, "timestampValid true is stored");
+    Check(IdentityMatchesLockedHdrCapture(identity, error),
+          "GPU-time fields do not affect the locked identity");
+
+    {
         std::ofstream json(metaDir / kHdrMetadataFileName, std::ios::binary | std::ios::trunc);
         json << "{ \"schema\": \"renderlab-capture-metadata/v1\", \"width\": 1280 }\n";
     }

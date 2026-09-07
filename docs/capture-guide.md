@@ -1,6 +1,6 @@
 # Capture Guide
 
-This file covers the Stage 0 / M0 checklist and PIX inspection through S3.2.
+This file covers the Stage 0 / M0 checklist and PIX inspection through S3.3.
 Do not commit generated captures. The GBuffer image-regression contract lives in
 [`image-regression.md`](image-regression.md). The S2.4/S3.2 HDR regression contract
 lives in [`hdr-regression.md`](hdr-regression.md).
@@ -261,6 +261,21 @@ powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify
 `golden-hdr.ps1` Verify compares two fresh captures against the committed goldens
 under `tests/golden-hdr/`. Generated files go under gitignored `results/`. Do not
 commit them or a `.wpix` capture.
+
+## S3.3 M1 Freeze Evidence
+
+The manual pipeline is frozen as the RDG migration reference at tag `m1`; the
+full reference record is [`m1-reference.md`](m1-reference.md). Freeze evidence:
+
+- One Debug PIX frame (same launch command as S3.2) whose event list shows
+  `Frame > Render > { SceneUpdate, GBuffer, DeferredLighting, PostProcess }`,
+  then `UI`/`ImGUI`, then `Present` — readable and separate segments.
+- A `--output-hdr` capture whose `hdr-capture-metadata.json` records the
+  captured frame's per-pass GPU times (`gBufferGpuTimeMilliseconds`,
+  `deferredLightingGpuTimeMilliseconds`, `postProcessGpuTimeMilliseconds`),
+  resolved during the dump (S3.3). The values go into
+  [`PROGRESS.md`](PROGRESS.md); the golden gate ignores them.
+- A windowed long run on the frozen commit finishing `errors=0`.
 
 ## Smoke And CI
 

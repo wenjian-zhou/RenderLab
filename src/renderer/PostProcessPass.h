@@ -69,6 +69,10 @@ namespace renderlab
 
         const PostProcessPassHud& GetHud() const { return m_hud; }
 
+        // Polls in-flight timer queries into the HUD without recording a new one.
+        // Call with the device idle (the capture dump does) so every query resolves.
+        void ResolvePendingTimerQueries();
+
         nvrhi::ITexture* GetOrCreateDumpTarget(uint32_t width, uint32_t height);
 
     private:

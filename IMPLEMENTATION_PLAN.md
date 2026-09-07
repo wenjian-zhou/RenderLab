@@ -6,11 +6,13 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-07): **S0.1 through S3.2 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.3 — Freeze the
-manual-pipeline reference**. The S3.1 exposure and output-transfer contract is
-[`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2 `PostProcessPass`);
-the HDR + tone-mapped-LDR golden contract is
+Current progress (2026-09-07): **S0.1 through S3.3 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
+the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
+[`docs/m1-reference.md`](docs/m1-reference.md)). The next step is **S4.1 — Define
+handles, descriptors, and pass declarations**. The S3.1 exposure and output-transfer
+contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
+`PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
@@ -393,6 +395,13 @@ GBuffer reads and HDR writes.
 **Stage 2 gate:** deferred lighting consumes documented data and produces a validated HDR target.
 
 ## 7. Stage 3 - Minimal Post Processing and M1
+
+S3.1 through S3.3 are complete. Stage 3 gate - M1 is satisfied: a stable,
+inspectable raster renderer exists and is frozen as the RDG migration
+reference (tag `m1`, [`docs/m1-reference.md`](docs/m1-reference.md); committed
+goldens are the oracle, per-pass GPU timing is exported with
+`--output-hdr`, and no raster features are added after this point unless
+RDG/DXR requires them).
 
 ### S3.1 - Freeze exposure and output-transfer policy
 

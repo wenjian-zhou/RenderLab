@@ -242,6 +242,29 @@ namespace renderlab
         return m_pipeline;
     }
 
+    void PostProcessPass::ResolvePendingTimerQueries()
+    {
+        if (!m_device)
+        {
+            return;
+        }
+        for (uint32_t offset = 0; offset < kPostProcessTimerQueryCount; ++offset)
+        {
+            const uint32_t index = (m_timerIndex + offset) % kPostProcessTimerQueryCount;
+            if (!m_timerInFlight[index])
+            {
+                continue;
+            }
+            if (!m_device->pollTimerQuery(m_timerQueries[index]))
+            {
+                continue;
+            }
+            m_hud.gpuTimeMilliseconds = m_device->getTimerQueryTime(m_timerQueries[index]) * 1000.f;
+            m_hud.timestampValid = true;
+            m_timerInFlight[index] = 0;
+        }
+    }
+
     void PostProcessPass::Execute(
         nvrhi::ICommandList* commandList,
         const PostProcessPassInputs& inputs,

@@ -13,3 +13,4 @@ pixtool.log
 *.user
 *.suo
 imgui.ini
+__pycache__/

@@ -840,6 +840,12 @@ namespace renderlab
         nvrhi::IDevice* device = GetDevice();
         device->waitForIdle();
 
+        // Resolve the captured frame's timer queries while the device is idle and
+        // before the dump's own PostProcess render begins new queries (S3.3).
+        m_gbufferPass.ResolvePendingTimerQueries();
+        m_deferredLightingPass.ResolvePendingTimerQueries();
+        m_postProcessPass.ResolvePendingTimerQueries();
+
         nvrhi::ITexture* hdr = m_hdrSceneColor.GetTexture();
         const nvrhi::TextureDesc desc = hdr->getDesc();
         nvrhi::StagingTextureHandle staging = device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read);
@@ -1183,6 +1189,7 @@ namespace renderlab
         const uint32_t width = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetWidth() : m_backBufferWidth;
         const uint32_t height = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetHeight() : m_backBufferHeight;
         const uint64_t pixelCount = static_cast<uint64_t>(width) * height;
+        const GBufferPassHud& gbufferHud = m_gbufferPass.GetHud();
         const DeferredLightingPassHud& lightingHud = m_deferredLightingPass.GetHud();
         const PostProcessPassHud& postHud = m_postProcessPass.GetHud();
         const char* diagnosticFileName = GetLightingDebugModeInfo(LightingDebugMode::Lit).dumpFileName;
@@ -1208,6 +1215,11 @@ namespace renderlab
         output << "  \"nonFiniteCount\": " << nonFiniteCount << ",\n";
         output << "  \"pixelCount\": " << pixelCount << ",\n";
         output << "  \"timestampValid\": " << (lightingHud.timestampValid ? "true" : "false");
+        if (gbufferHud.timestampValid)
+        {
+            std::snprintf(number, sizeof(number), "%.6f", gbufferHud.gpuTimeMilliseconds);
+            output << ",\n  \"gBufferGpuTimeMilliseconds\": " << number;
+        }
         if (lightingHud.timestampValid)
         {
             std::snprintf(number, sizeof(number), "%.6f", lightingHud.gpuTimeMilliseconds);

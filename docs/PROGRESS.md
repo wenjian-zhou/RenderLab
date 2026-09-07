@@ -5,16 +5,16 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S3.3 - Freeze the manual-pipeline reference**
-- State: **S3.2 complete**
+- Active step: **S4.1 - Define handles, descriptors, and pass declarations**
+- State: **S3.3 complete; Stage 3 gate / M1 satisfied** — the manual pipeline
+  is frozen as the RDG migration reference (tag `m1`)
 - Last updated: 2026-09-07
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
-- Stage 3: **S3.1 and S3.2 complete** (tone mapping + present landed; the M1
-  reference freeze is S3.3)
+- Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 
 ## Completed Repository Reset
 
@@ -1001,6 +1001,85 @@ Known limitations:
     observation window, not a contract
   The PostProcess GPU timestamp feeds the ImGui HUD only; per-pass timing export is S3.3
 Next step: S3.3 - Freeze the manual-pipeline reference
+```
+
+### S3.3 - Freeze the manual-pipeline reference
+
+```text
+Step: S3.3
+State: Complete
+Date: 2026-09-07
+Commit: (pending)
+M1: annotated git tag `m1` on this commit (RDG migration reference)
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\smoke.ps1
+  python scripts\verify_final_vs_reference.py tests\golden-hdr\cesium-milk-truck\s04-default\1280x720
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --frames 200000  (windowed probe)
+  pixtool via captures\s33-pix.cmd (quoting workaround, S3.2 precedent):
+    launch Debug\RenderLab.exe --command-line="--lock-camera --frames 16"
+    take-capture --frames=1 save-capture captures\s33-m1-debug.wpix
+  pixtool open-capture captures\s33-m1-debug.wpix save-event-list captures\s33-m1-debug-events.csv
+Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 / S2.3 / S2.4 / S3.1 / S3.2 checks
+  new: metadata carrying all three GPU-time fields (timestampValid true,
+    gBuffer 0.512 / deferred 0.25 / post 0.125) loads, stores timestampValid,
+    and does not affect the locked identity
+  golden.ps1 Verify: two Debug captures pass; channel swap fails as expected
+  golden-hdr.ps1 Verify: two Debug captures pass; R/B swap fails as expected
+  smoke.ps1: Debug and Release errors=0
+  verify_final_vs_reference.py: PASS, max diff 1 LSB, 1.11% single-LSB flips,
+    0 pixels >= 2 (matches the S3.2 baseline)
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12,
+    validation=NVRHI + D3D12 debug runtime, errors=0 (every run below)
+  Reference set frozen as-is: no golden file changed; the committed goldens
+    remain the S3.2 re-baseline (schema v2, step S3.2, no re-baseline needed —
+    the comparator ignores the timing fields)
+  Per-pass GPU time exported by --output-hdr (captured frame 1, Debug):
+    run1: gBuffer=0.029696 ms deferredLighting=0.013312 ms postProcess=0.018432 ms
+    run2: gBuffer=0.029696 ms deferredLighting=0.012288 ms postProcess=0.017408 ms
+    (timestampValid=true in both; DumpHdrCapture resolves the pending queries
+    after waitForIdle and before its own re-renders)
+  PIX one Debug frame (captures\s33-m1-debug.wpix + events CSV, not committed):
+    Frame > Render > { SceneUpdate, GBuffer, DeferredLighting, PostProcess },
+    then UI (ImGUI), then Present — readable and separate segments; GBuffer
+    holds the four clears + 5 opaque draws, DeferredLighting / PostProcess are
+    fullscreen passes
+  Windowed probe on the frozen code: --frames 200000 (~5.5 min) with the
+    built-in resize 1280x720 -> 1344x784 and minimize/restore probe, errors=0
+Artifacts:
+  src/renderer/GBufferPass.h / GBufferPass.cpp  (ResolvePendingTimerQueries)
+  src/renderer/DeferredLightingPass.h / DeferredLightingPass.cpp  (same)
+  src/renderer/PostProcessPass.h / PostProcessPass.cpp  (same)
+  src/app/RenderingLabApp.cpp  (dump-time timer resolution +
+    gBufferGpuTimeMilliseconds metadata field)
+  tests/test_hdr_compare.cpp  (GPU-time metadata fixture)
+  docs/m1-reference.md  (new: frozen reference record — reference set, pass
+    order, persistent resources/states, timing export, freeze policy)
+  docs/hdr-regression.md  (S3.3 extension note + gBuffer time field row)
+  docs/capture-guide.md  (S3.3 M1 freeze evidence section)
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  The per-pass ms values are single-frame, timestamp-quantized, and
+    machine-specific; they are recorded evidence, not a gate
+  postProcessGpuTimeMilliseconds is omitted when a view flag replaces the Final
+    present during a capture (the pass never executed that frame); gBuffer and
+    deferred still export
+  metadata timestampValid still reflects the DeferredLighting HUD only
+    (schema v2 field semantics unchanged)
+  No raw GBuffer binary dump exists by decision; the .rlhdr oracle covers
+    GBuffer float content transitively (Stage 5 has three golden layers +
+    DataContractTests)
+  S1.6 --output / capture-metadata.json is untouched (GBuffer-only contract)
+Next step: S4.1 - Define handles, descriptors, and pass declarations
 ```
 
 Selected baseline:

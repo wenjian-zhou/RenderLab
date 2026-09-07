@@ -1,6 +1,7 @@
 # HDR Regression (S2.4 + S3.2 LDR golden)
 
-Status: **frozen after S2.4; extended by S3.2** (final.png + schema v2)
+Status: **frozen after S2.4; extended by S3.2 (final.png + schema v2) and by
+S3.3 (dump-time timer resolution + the optional gBuffer GPU-time field)**
 
 This file is the Stage 2/3 HDR and tone-mapped capture and comparison contract.
 Lighting spaces, BRDF, and `HDRSceneColor` live in [`lighting.md`](lighting.md).
@@ -217,6 +218,7 @@ Required fields and types:
 | `nonFiniteCount` | uint32 | `0` on any file that was actually written |
 | `pixelCount` | uint32 | `921600` |
 | `timestampValid` | bool | best-effort; `false` on frame 1 is allowed |
+| `gBufferGpuTimeMilliseconds` | number | optional (S3.3); same rule as the deferred field; ignored by compare |
 | `deferredLightingGpuTimeMilliseconds` | number | present only when `timestampValid` is true; JSON floating number, not an integer token requirement |
 | `postProcessGpuTimeMilliseconds` | number | optional, same rule as the deferred field; ignored by compare |
 
@@ -232,6 +234,14 @@ this is how a capture taken at a non-zero `--exposure-ev` fails the golden
 cleanly.
 
 GPU time does not fail the capture when the timer query is still pending.
+
+S3.3 resolves that pending state inside the dump itself: `DumpHdrCapture`
+calls `waitForIdle` and then resolves every in-flight timer query **before**
+the dump's own re-renders begin new queries. A fresh capture therefore
+normally carries all three GPU-time fields with `timestampValid: true`,
+measured on the captured frame (frame 1). The committed golden predates S3.3
+and legitimately omits the fields; the comparator ignores them either way, so
+no re-baseline was needed. Schema stays `v2` and `step` stays `S3.2`.
 
 The approved HDR adapter is the machine that mints the committed `.rlhdr`. The
 S2.4 baseline (RTX 5060 Laptop GPU) and the S3.2 re-baseline (RTX 4070 SUPER)

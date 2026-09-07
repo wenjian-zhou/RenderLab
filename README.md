@@ -20,9 +20,12 @@ contract tests. **S3.2 is complete**: `Scene -> GBuffer -> Deferred ->
 Tone Map -> Present` is the normal path (default present is the tone-mapped
 final; `--exposure-ev` is the manual exposure knob; debug views are preserved),
 and `scripts/golden-hdr.ps1` verifies both the pre-exposure `.rlhdr` oracle and
-the tone-mapped `final.png` LDR oracle against committed goldens. RDG and DXR
-are not implemented. The next executable task is **S3.3: freeze the M1
-reference renderer**.
+the tone-mapped `final.png` LDR oracle against committed goldens. **S3.3 /
+M1 is complete**: the manual raster pipeline is frozen as the RDG migration
+reference (tag `m1`, recorded in [docs/m1-reference.md](docs/m1-reference.md));
+`--output-hdr` metadata now exports the captured frame's per-pass GPU times.
+RDG and DXR are not implemented. The next executable task is
+**S4.1: define RDG handles, descriptors, and pass declarations**.
 
 ## Plans
 
@@ -41,6 +44,7 @@ reference renderer**.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [Lighting contract](docs/lighting.md) is the S2.1 deferred lighting interface.
 - [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic), implemented by the S3.2 pass.
+- [M1 reference](docs/m1-reference.md) records the frozen manual pipeline: reference set, pass order, resource states, and re-verification.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 
@@ -134,7 +138,7 @@ Command-line parsing is stable:
 | `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
 | `--output <dir>` | S1.6 golden capture: six GBuffer debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
-| `--output-hdr <dir>` | S2.4/S3.2 golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `final.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe |
+| `--output-hdr <dir>` | S2.4/S3.2 golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `final.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe; metadata records the captured frame's per-pass GPU times (S3.3) |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with

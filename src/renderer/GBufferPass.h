@@ -66,6 +66,10 @@ namespace renderlab
 
         const GBufferPassHud& GetHud() const { return m_hud; }
 
+        // Polls in-flight timer queries into the HUD without recording a new one.
+        // Call with the device idle (the capture dump does) so every query resolves.
+        void ResolvePendingTimerQueries();
+
     private:
         struct PipelineKey
         {
