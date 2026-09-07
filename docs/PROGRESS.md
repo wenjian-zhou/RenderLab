@@ -820,7 +820,9 @@ Step: S3.1
 State: Complete
 Date: 2026-09-07
 Commit: cf471109a48d5548fe7a37d34589e91e38f0b872
-Follow-up review: (pending)
+Follow-up review: 350d0a9d844670a7898d473d26aa3674ba914341 (HLSL select() for vector
+  conditions; literal cross-check script; dxc smoke compile; entry-clamp and
+  FromAP1 documentation)
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
