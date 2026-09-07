@@ -15,9 +15,11 @@ This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
 **S1.1 through S1.6 are complete**, and **S2.1 through S2.4 are complete**:
 `HDRSceneColor` holds Lambert + GGX deferred lighting (directional, point lights,
 ambient). Default present is lighting `lit` (Reinhard of HDR). HDR regression
-exists (`scripts/golden-hdr.ps1` vs committed `.rlhdr` goldens). Tone mapping
-(S3), RDG, and DXR are not implemented. The next executable task is **S3.1:
-freeze exposure and output-transfer policy**.
+exists (`scripts/golden-hdr.ps1` vs committed `.rlhdr` goldens). **S3.1 is complete**:
+exposure and the UE 5.8.1 Filmic output-transfer contract are frozen in
+[docs/postprocess.md](docs/postprocess.md) with CPU contract tests; the tone-map
+pass itself, RDG, and DXR are not implemented. The next executable task is
+**S3.2: implement tone mapping and present**.
 
 ## Plans
 
@@ -35,6 +37,7 @@ freeze exposure and output-transfer policy**.
 - [GBuffer contract](docs/g-buffer.md) defines the first-version targets, encodings, lifetime, raster writes, and debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [Lighting contract](docs/lighting.md) is the S2.1 deferred lighting interface.
+- [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic).
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 

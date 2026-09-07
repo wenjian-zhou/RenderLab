@@ -8,6 +8,8 @@ set(RENDERLAB_SHADER_HEADERS
     shaders/lighting_cb.h
     shaders/lighting_debug_cb.h
     shaders/lighting.hlsli
+    shaders/postprocess_cb.h
+    shaders/postprocess.hlsli
 )
 
 set(RENDERLAB_SHADER_SOURCES
@@ -41,6 +43,7 @@ donut_compile_shaders(
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
     renderer/LightingContract.h
+    renderer/PostProcessContract.h
     renderer/HdrDump.h
     renderer/GBufferTargets.h
     renderer/GBufferTargets.cpp

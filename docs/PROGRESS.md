@@ -5,14 +5,15 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S3.1 - Freeze exposure and output-transfer policy**
-- State: **S2.4 complete**
-- Last updated: 2026-09-06
+- Active step: **S3.2 - Implement tone mapping and present**
+- State: **S3.1 complete**
+- Last updated: 2026-09-07
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
+- Stage 3: **S3.1 complete** (contract freeze; the tone-map pass is S3.2)
 
 ## Completed Repository Reset
 
@@ -810,6 +811,62 @@ Known limitations:
   S1.6 --output / golden.ps1 remains GBuffer-only
   --verify-lights / --scene fallback-boxes is not an HDR golden
 Next step: S3.1 - Freeze exposure and output-transfer policy
+```
+
+### S3.1 - Freeze exposure and output-transfer policy
+
+```text
+Step: S3.1
+State: Complete
+Date: 2026-09-07
+Commit: (pending)
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\smoke.ps1
+  python scripts\postprocess_reference.py
+Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 / S2.3 / S2.4 checks
+  TonemapConstants layout: 16 bytes, exposureEV @ 0, pads @ 4/8/12; default EV 0
+  EV scale: 0 -> 1, +1 -> 2, -1 -> 0.5, +3 -> 8, -2.5 -> 2^-2.5
+  frozen UE 5.8.1 constants: film curve 0.88/0.55/0.26/0/0.04, blue correction 0.6,
+    expand gamut 1.0, RRT sweeteners, desaturation 0.96/0.93, YC weight 1.75
+  base-matrix literal spot checks; composite matrices match the float64 reference:
+    working<->AP1 incl. Bradford D65->D60 CAT, blue-correct conjugates, expand matrix
+  full-chain battery: 19 vectors vs scripts/postprocess_reference.py (tol 1e-5;
+    fp32-vs-float64 observed delta < 6e-8)
+  black -> exactly 0; FilmToneMap keeps AP1 0.18 neutral at 0.18; whole-chain mid-gray
+    fixed point; gray ramp 0.001..100 monotonic; EV+1 equals doubling the input
+GPU validation/capture: not applicable; S3.1 is a contract freeze (S2.1 precedent).
+  Post-change regression on the current adapter: golden.ps1 and golden-hdr.ps1 Verify
+  pass (two captures each, mae=0, channel swap fails as expected); smoke.ps1 Debug and
+  Release errors=0 (NVIDIA GeForce RTX 4070 SUPER, validation=NVRHI + D3D12 debug
+  runtime in Debug).
+Artifacts:
+  docs/postprocess.md
+  src/shaders/postprocess_cb.h
+  src/shaders/postprocess.hlsli
+  src/renderer/PostProcessContract.h
+  tests/test_postprocess_contract.cpp
+  scripts/postprocess_reference.py
+  src/CMakeLists.txt
+  tests/CMakeLists.txt
+  tests/test_renderer_data.cpp
+  docs/renderer-conventions.md
+  docs/lighting.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  postprocess.hlsli is not yet included by a compiled shader; S3.2 wires it into PostProcessPass
+  --exposure-ev CLI parsing lands in S3.2; kExposureEvCli is reserved in the contract
+  No GPU tone-map pass, no LDR golden, no UI or present-path change in this step
+  The curve is verified on CPU against the float64 reference; GPU evaluation is S3.2
+Next step: S3.2 - Implement tone mapping and present
 ```
 
 Selected baseline:

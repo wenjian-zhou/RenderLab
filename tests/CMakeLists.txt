@@ -8,6 +8,7 @@ add_executable(
     test_lighting_debug.cpp
     test_image_compare.cpp
     test_hdr_compare.cpp
+    test_postprocess_contract.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp

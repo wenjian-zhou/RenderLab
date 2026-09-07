@@ -28,6 +28,7 @@ int RunImageCompareTests();
 int RunLightingContractTests();
 int RunLightingDebugPassTests();
 int RunHdrCompareTests();
+int RunPostProcessContractTests();
 
 namespace
 {
@@ -273,6 +274,7 @@ int main()
     g_failures += RunGBufferDebugPassTests();
     g_failures += RunImageCompareTests();
     g_failures += RunHdrCompareTests();
+    g_failures += RunPostProcessContractTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

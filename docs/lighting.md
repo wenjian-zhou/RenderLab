@@ -51,7 +51,7 @@ One persistent size-dependent texture. The lighting pass does not own it.
 | Debug name | `HDRSceneColor` |
 | NVRHI format | `RGBA16_FLOAT` |
 | Color space | Linear Rec.709 / sRGB primaries, D65, scene-referred |
-| Units | Simplified scene units. Exposure-independent. S3 is the only output transfer. |
+| Units | Simplified scene units. Exposure-independent. S3 is the only output transfer ([`postprocess.md`](postprocess.md)). |
 | Alpha | Unused. Write `1`. |
 | Clear | `(0, 0, 0, 1)` |
 | Usage | Render target + shader resource. No UAV. |

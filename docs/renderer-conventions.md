@@ -184,12 +184,15 @@ and the D3D12 swap-chain convention already used by the application
 | GBufferA RGB | Linear values written to an sRGB RTV | Same. Hardware applies the sRGB OETF on store and the EOTF on an sRGB SRV load. |
 | Metallic, roughness, AO, normals | Linear UNORM or float | See [`g-buffer.md`](g-buffer.md) |
 | Deferred lighting output (S2) | Linear HDR | Scene-referred RGB in simplified scene units. See [`lighting.md`](lighting.md). Exposure-independent. |
-| Tone map / present (S3) | Display-referred | The only output transfer. UI composition stays on the sRGB back buffer. |
+| Tone map / present (S3) | Display-referred | The only output transfer is the hardware sRGB OETF on the `SRGBA8_UNORM` back buffer; the tone-map pass writes display-referred linear values. Curve, exposure, and UI composition are frozen in [`postprocess.md`](postprocess.md). UI composition stays on the sRGB back buffer. |
 | ImGui | Donut ImGui path | Not a GBuffer consumer |
 
 Rules:
 
-1. There is exactly one place that converts HDR linear to display sRGB: the S3 tone-map pass.
+1. There is exactly one linear-to-sRGB transfer in the pipeline: the hardware sRGB
+   OETF on store to the `SRGBA8_UNORM` back buffer. The S3 tone-map pass writes
+   display-referred linear values and performs no encoding of its own
+   ([`postprocess.md`](postprocess.md) section 5).
 2. GBuffer debug views (S1.5) apply a visualization encoding. That encoding is not the
    lighting path. Modes, remap, and linearized-depth display live in
    [`g-buffer.md`](g-buffer.md) section 10.
@@ -216,8 +219,8 @@ and handedness. Image tests must lock the camera.
 ## 8. What This File Does Not Freeze
 
 - Light intensity numeric defaults beyond the S2.1 scene-unit rule ([`lighting.md`](lighting.md))
-- Tone-mapper and back-buffer transfer ownership details beyond "exactly one output
-  transfer" (S3.1)
+- Post-process pass scheduling, exposure CLI, and the S3.2 LDR golden
+  ([`postprocess.md`](postprocess.md))
 - DXR ray space: world space, using the same instance transforms as raster (Stage 6)
 - MSAA: sample count is 1 until a later ADR
 - Velocity, TAA, emissive GBuffer, clustered lights, and material graphs (excluded before M4)

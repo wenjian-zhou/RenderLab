@@ -6,10 +6,10 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-06): **S0.1 through S2.4 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.1 — Freeze
-exposure and output-transfer policy**. The S2.4 HDR regression contract is
-[`docs/hdr-regression.md`](docs/hdr-regression.md).
+Current progress (2026-09-07): **S0.1 through S3.1 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.2 — Implement
+tone mapping and present**. The S3.1 exposure and output-transfer contract is
+[`docs/postprocess.md`](docs/postprocess.md).
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## 1. Purpose and Success Definition
@@ -396,9 +396,7 @@ GBuffer reads and HDR writes.
 
 **Goal:** define exactly where HDR becomes display-referred output.
 
-**Actions:** choose manual exposure, one tone mapper, back-buffer format, and hardware-versus-shader
-sRGB encoding responsibility; document the policy; explicitly postpone automatic exposure,
-bloom, color grading, FXAA, and TAA.
+**Contract:** [`docs/postprocess.md`](docs/postprocess.md) (design frozen 2026-09-07).
 
 **Verification:** there is exactly one gamma/output transfer; the UI composition space is known.
 
