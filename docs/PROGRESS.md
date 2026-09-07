@@ -889,7 +889,7 @@ Step: S3.2
 State: Complete
 Date: 2026-09-07
 Commit: 6d0410cb1fd7bbf187ca789351eb89aa11965b92
-Follow-up review: (pending) (UE 5.8.1 structural cross-check of the whole chain:
+Follow-up review: 83ea4d358a3c47c3eb181cbb6c4b59a8b79eb72f (UE 5.8.1 structural cross-check of the whole chain:
   apply order, exposure position pre-chain, FilmToneMap and ACESCommon helpers
   line-by-line, identity defaults ToneCurveAmount=1 / InverseGamma.y=1; new
   end-to-end verifier scripts\verify_final_vs_reference.py: EV 0 and EV +1
