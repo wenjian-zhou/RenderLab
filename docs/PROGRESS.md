@@ -820,6 +820,7 @@ Step: S3.1
 State: Complete
 Date: 2026-09-07
 Commit: cf471109a48d5548fe7a37d34589e91e38f0b872
+Follow-up review: (pending)
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
@@ -829,6 +830,9 @@ Commands:
   powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
   powershell -NoProfile -File scripts\smoke.ps1
   python scripts\postprocess_reference.py
+  python scripts\postprocess_crosscheck.py
+  dxc -T ps_6_0 -E PostprocessHlslSmokePS -I src\shaders out\tmp-s31\postprocess_hlsl_smoke.hlsl
+    (temporary pixel-shader entry that includes postprocess.hlsli and calls the chain)
 Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
   existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 / S2.3 / S2.4 checks
   TonemapConstants layout: 16 bytes, exposureEV @ 0, pads @ 4/8/12; default EV 0
@@ -841,6 +845,10 @@ Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
     fp32-vs-float64 observed delta < 6e-8)
   black -> exactly 0; FilmToneMap keeps AP1 0.18 neutral at 0.18; whole-chain mid-gray
     fixed point; gray ramp 0.001..100 monotonic; EV+1 equals doubling the input
+  postprocess_crosscheck.py: 11 matrices + AP1_RGB2Y + 18 scalar literals identical
+    across UE 5.8.1 sources, PostProcessContract.h, and postprocess.hlsli
+    (UE matrices compared transposed); review pass 2026-09-07
+  dxc ps_6_0 smoke compile of postprocess.hlsli via a temporary entry (review pass)
 GPU validation/capture: not applicable; S3.1 is a contract freeze (S2.1 precedent).
   Post-change regression on the current adapter: golden.ps1 and golden-hdr.ps1 Verify
   pass (two captures each, mae=0, channel swap fails as expected); smoke.ps1 Debug and
@@ -862,7 +870,9 @@ Artifacts:
   IMPLEMENTATION_PLAN.md
   docs/PROGRESS.md
 Known limitations:
-  postprocess.hlsli is not yet included by a compiled shader; S3.2 wires it into PostProcessPass
+  postprocess.hlsli is not yet included by a repo shader; it is dxc smoke-compiled
+    (ps_6_0, temporary entry) and literal-checked against UE until S3.2 wires it
+    into PostProcessPass
   --exposure-ev CLI parsing lands in S3.2; kExposureEvCli is reserved in the contract
   No GPU tone-map pass, no LDR golden, no UI or present-path change in this step
   The curve is verified on CPU against the float64 reference; GPU evaluation is S3.2

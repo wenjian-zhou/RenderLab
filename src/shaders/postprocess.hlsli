@@ -257,16 +257,16 @@ float3 FilmToneMapAP1(float3 colorAP1)
     float3 shoulderColor = (1.0 + kFilmWhiteClip)
         - (2.0 * shoulderScale) / (1.0 + exp((2.0 * kFilmSlope / shoulderScale) * (logColor - shoulderMatch)));
 
-    toeColor = (logColor < toeMatch) ? toeColor : straightColor;
-    shoulderColor = (logColor > shoulderMatch) ? shoulderColor : straightColor;
+    toeColor = select(logColor < toeMatch, toeColor, straightColor);
+    shoulderColor = select(logColor > shoulderMatch, shoulderColor, straightColor);
 
     float3 t = saturate((logColor - toeMatch) / (shoulderMatch - toeMatch));
     t = (shoulderMatch < toeMatch) ? 1.0 - t : t;
     t = (3.0 - 2.0 * t) * t * t;
 
     // Guarded endpoints: t <= 0 selects toe, t >= 1 selects shoulder.
-    float3 toneColor = (t <= 0.0) ? toeColor
-        : ((t >= 1.0) ? shoulderColor : lerp(toeColor, shoulderColor, t));
+    float3 toneColor = select(t <= 0.0, toeColor,
+        select(t >= 1.0, shoulderColor, lerp(toeColor, shoulderColor, t)));
 
     toneColor = lerp(dot(toneColor, kAP1RGB2Y).xxx, toneColor, kPostDesaturate);
     return max(toneColor, 0.0);
