@@ -1009,8 +1009,8 @@ Next step: S3.3 - Freeze the manual-pipeline reference
 Step: S3.3
 State: Complete
 Date: 2026-09-07
-Commit: (pending)
-M1: annotated git tag `m1` on this commit (RDG migration reference)
+Commit: ea109490a79f64003cc3c5c17eccd8c82ebb45a8
+M1: annotated git tag `m1` on this commit, pushed to origin (RDG migration reference)
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
