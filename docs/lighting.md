@@ -18,10 +18,12 @@ capture and comparison live in [`hdr-regression.md`](hdr-regression.md).
 S2.1 froze the shader interface. S2.2 created `HDRSceneColor` and proved
 reconstruction with a directional `N·L` diagnostic. S2.3 evaluates Lambert +
 UE DefaultLit GGX into `HDRSceneColor`, presents lighting debug views
-(`world-position` / `ndotl` / `lit`) by default as `lit` (Reinhard of HDR), and
+(`world-position` / `ndotl` / `lit`) via `--lighting-view`, and
 supports `--verify-lights` for a fixed point + ambient fixture. S2.4 captures
 and compares locked `HDRSceneColor` dumps (`--output-hdr`, `scripts/golden-hdr.ps1`).
-Do not add clustered lighting, IBL, shadows, or a second material model.
+Since S3.2 the default present (no view flags) is the tone-mapped final, not
+the Reinhard `lit` view; the debug views are unchanged. Do not add clustered
+lighting, IBL, shadows, or a second material model.
 
 ## 1. Spaces
 
@@ -286,7 +288,8 @@ Visualization, presented like GBuffer debug (`debugColor` = back buffer or dump)
 Not the meaning of `HDRSceneColor`.
 
 CLI: `--lighting-view world-position|ndotl|lit`. Mutually exclusive with
-`--gbuffer-view`. With no view flags, present defaults to lighting `lit`.
+`--gbuffer-view`. Since S3.2, with no view flags the present is the tone-mapped
+final (`PostProcessPass`), not lighting `lit`.
 Dump with `--dump-lighting-views <dir>` (orthogonal to `--dump-gbuffer-views`;
 not part of S1.6 `--output` / golden).
 

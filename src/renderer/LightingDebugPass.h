@@ -21,8 +21,14 @@ namespace renderlab
     enum class PresentSource : uint32_t
     {
         GBufferDebug = 0,
-        LightingDebug = 1
+        LightingDebug = 1,
+        Final = 2
     };
+
+    // S3.2: the default present is the tone-mapped Final path
+    // (Scene -> GBuffer -> Deferred -> tone map -> Present). --gbuffer-view /
+    // --lighting-view and the ImGui selector override it.
+    inline constexpr PresentSource kDefaultPresentSource = PresentSource::Final;
 
     // Inputs named for later RDG migration.
     // world-position / ndotl reconstruct from GBuffer; lit reads HDRSceneColor (Reinhard).

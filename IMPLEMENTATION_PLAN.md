@@ -6,10 +6,12 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-07): **S0.1 through S3.1 complete**; Stage 0 / M0 is satisfied;
-Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.2 — Implement
-tone mapping and present**. The S3.1 exposure and output-transfer contract is
-[`docs/postprocess.md`](docs/postprocess.md).
+Current progress (2026-09-07): **S0.1 through S3.2 complete**; Stage 0 / M0 is satisfied;
+Stage 1 is satisfied; Stage 2 gate is satisfied. The next step is **S3.3 — Freeze the
+manual-pipeline reference**. The S3.1 exposure and output-transfer contract is
+[`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2 `PostProcessPass`);
+the HDR + tone-mapped-LDR golden contract is
+[`docs/hdr-regression.md`](docs/hdr-regression.md).
 Step evidence and commit hashes live in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## 1. Purpose and Success Definition
@@ -405,6 +407,10 @@ GBuffer reads and HDR writes.
 ### S3.2 - Implement tone mapping and present
 
 **Goal:** complete the first end-to-end renderer.
+
+**Contract:** [`docs/postprocess.md`](docs/postprocess.md) (S3.1 freeze; the curve math
+is not redesigned here). The LDR golden extension is in
+[`docs/hdr-regression.md`](docs/hdr-regression.md).
 
 **Actions:** add `PostProcessPass`, exposure parameter, tone-map shader/fullscreen pass, UI overlay,
 resize handling, marker, and timestamp; make normal rendering select the final output while retaining

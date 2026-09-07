@@ -9,6 +9,7 @@ add_executable(
     test_image_compare.cpp
     test_hdr_compare.cpp
     test_postprocess_contract.cpp
+    test_postprocess_pass.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp

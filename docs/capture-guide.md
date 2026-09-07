@@ -1,8 +1,8 @@
 # Capture Guide
 
-This file covers the Stage 0 / M0 checklist and PIX inspection through S2.4.
+This file covers the Stage 0 / M0 checklist and PIX inspection through S3.2.
 Do not commit generated captures. The GBuffer image-regression contract lives in
-[`image-regression.md`](image-regression.md). The S2.4 HDR regression contract
+[`image-regression.md`](image-regression.md). The S2.4/S3.2 HDR regression contract
 lives in [`hdr-regression.md`](hdr-regression.md).
 
 ## Marker Names
@@ -13,7 +13,7 @@ RenderLab emits stable marker names in Debug and Release:
 |---|---|---|
 | `Frame` | around the whole DeviceManager frame | parent range on the app command list |
 | `SceneUpdate` | around camera / HUD update | around `Scene::Refresh` |
-| `Render` | around the app render pass | around GBuffer / lighting / present-source debug |
+| `Render` | around the app render pass | around GBuffer / lighting / post-process / present-source debug |
 | `UI` | around the ImGui renderer | Donut also records `ImGUI` for the actual draws |
 | `Present` | around DXGI present | standalone named range submitted just before present |
 
@@ -21,10 +21,13 @@ Do not rename these strings. Nested markers under `Render`:
 
 - S1.3–S1.4: `GBuffer` (clears + opaque draws; timestamped)
 - S2.2+: `DeferredLighting` after `GBuffer` (HDR lighting; timestamped)
-- Present-source XOR: `GBufferDebug` **or** `LightingDebug` (fullscreen visualization)
+- S3.2: `PostProcess` after `DeferredLighting` (exposure + tone map; timestamped)
+- Present-source XOR: `PostProcess` **or** `GBufferDebug` **or** `LightingDebug`
+  (fullscreen visualization)
 
-Default present (no `--gbuffer-view` / `--lighting-view`) is lighting `lit`, so PIX
-usually shows `LightingDebug` rather than `GBufferDebug`.
+Default present (no `--gbuffer-view` / `--lighting-view`) is `PostProcess`
+(the tone-mapped final), so PIX normally shows `PostProcess` rather than
+`GBufferDebug` / `LightingDebug`.
 
 ```text
 Frame
@@ -35,7 +38,7 @@ Frame
       Render
         GBuffer
         DeferredLighting
-        LightingDebug     (or GBufferDebug when --gbuffer-view is selected)
+        PostProcess     (default; or GBufferDebug / LightingDebug when a view flag is selected)
   UI
     ImGUI             (Donut ImGui draws)
   Present

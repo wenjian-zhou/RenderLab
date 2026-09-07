@@ -1,6 +1,7 @@
 #include "FrameMarkers.h"
 #include "RenderingLabApp.h"
 #include "SceneCatalog.h"
+#include "renderer/PostProcessPass.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -37,6 +38,7 @@ namespace
         bool help = false;
         std::optional<std::string> gbufferView;
         std::optional<std::string> lightingView;
+        std::optional<float> exposureEV;
         std::optional<std::string> dumpGBufferViews;
         std::optional<std::string> dumpLightingViews;
         bool verifyLights = false;
@@ -64,8 +66,12 @@ namespace
             "                      roughness, metallic, ao-flags, linear-depth\n"
             "                      Mutually exclusive with --lighting-view.\n"
             "  --lighting-view <m> Present a lighting debug channel: world-position, ndotl, lit\n"
-            "                      Default present (no view flags): lighting lit (Reinhard of HDR)\n"
+            "                      Default present (no view flags): final tone-mapped output\n"
             "                      Mutually exclusive with --gbuffer-view.\n"
+            "  --exposure-ev <f>   Manual exposure in EV stops applied by the tone map\n"
+            "                      (scale 2^EV; 0 = x1, +1 = 2x brighter, default 0, no clamp).\n"
+            "                      Affects the final present and final.png only; debug views and\n"
+            "                      hdr-scene-color.rlhdr stay exposure-independent.\n"
             "  --verify-lights     Upload the S2.3 verification light fixture (default directional\n"
             "                      + one point light + weak ambient). Default fill stays contract\n"
             "                      defaults when this flag is omitted.\n"
@@ -82,9 +88,11 @@ namespace
             "                      capture-metadata.json under <dir>. Implies --lock-camera\n"
             "                      and disables the windowed --frames resize/minimize probe.\n"
             "                      Locked defaults: cesium-milk-truck, s04-default, 1280x720, frame 1.\n"
-            "  --output-hdr <dir>  S2.4 HDR golden capture: hdr-scene-color.rlhdr, lighting-lit.png,\n"
-            "                      and hdr-capture-metadata.json. Implies --lock-camera and disables\n"
-            "                      the windowed --frames resize/minimize probe. Exclusive with --output.\n"
+            "  --output-hdr <dir>  S2.4/S3.2 HDR golden capture: hdr-scene-color.rlhdr,\n"
+            "                      lighting-lit.png, final.png (tone-mapped, exposureEV pinned in\n"
+            "                      metadata), and hdr-capture-metadata.json. Implies --lock-camera\n"
+            "                      and disables the windowed --frames resize/minimize probe.\n"
+            "                      Exclusive with --output.\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -206,6 +214,22 @@ namespace
                 continue;
             }
 
+            if (EqualsOption(argument, renderlab::kExposureEvCli))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = std::string(renderlab::kExposureEvCli) + " requires a finite float value.";
+                    return false;
+                }
+                float exposureEV = renderlab::kDefaultExposureEV;
+                if (!renderlab::ParseExposureEv(argv[++index], exposureEV, error))
+                {
+                    return false;
+                }
+                options.exposureEV = exposureEV;
+                continue;
+            }
+
             if (EqualsOption(argument, "--lighting-view"))
             {
                 if (index + 1 >= argc)
@@ -324,7 +348,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    renderlab::PresentSource presentSource = renderlab::PresentSource::LightingDebug;
+    renderlab::PresentSource presentSource = renderlab::kDefaultPresentSource;
     renderlab::GBufferDebugMode gbufferView = renderlab::GBufferDebugMode::BaseColor;
     renderlab::LightingDebugMode lightingView = renderlab::LightingDebugMode::Lit;
     if (options.gbufferView.has_value())
@@ -494,6 +518,7 @@ int main(int argc, char** argv)
     launchOptions.gbufferView = gbufferView;
     launchOptions.lightingView = lightingView;
     launchOptions.verifyLights = options.verifyLights;
+    launchOptions.exposureEV = options.exposureEV.value_or(renderlab::kDefaultExposureEV);
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
     {
@@ -538,6 +563,7 @@ int main(int argc, char** argv)
             app.GetHDRSceneColorTarget(),
             app.GetGBufferPassHud(),
             app.GetDeferredLightingPassHud(),
+            app.GetPostProcessPassHud(),
             app.GetPresentSource(),
             app.GetGBufferDebugHud(),
             app.GetLightingDebugHud());

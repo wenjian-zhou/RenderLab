@@ -1,5 +1,6 @@
 #pragma once
 
+#include "image_compare.h"
 #include "renderer/HdrDump.h"
 
 #include <cstdint>
@@ -16,10 +17,15 @@ namespace renderlab::hdrgolden
     inline constexpr uint32_t kSampleCount = 1;
     inline constexpr const char* kSceneId = "cesium-milk-truck";
     inline constexpr const char* kCameraPreset = "s04-default";
-    inline constexpr const char* kSchema = "renderlab-hdr-capture-metadata/v1";
-    inline constexpr const char* kStep = "S2.4";
+    inline constexpr const char* kSchema = "renderlab-hdr-capture-metadata/v2";
+    inline constexpr const char* kStep = "S3.2";
     inline constexpr const char* kHdrFileName = "hdr-scene-color.rlhdr";
     inline constexpr const char* kDiagnosticFileName = "lighting-lit.png";
+    // S3.2 display-referred LDR oracle: the tone-mapped output through the same
+    // hardware OETF path as the presented back buffer (docs/postprocess.md section 9).
+    inline constexpr const char* kFinalFileName = "final.png";
+    // The golden capture pins the manual exposure knob at EV 0 (scale 1).
+    inline constexpr float kExposureEV = 0.0f;
     inline constexpr const char* kHdrMetadataFileName = "hdr-capture-metadata.json";
     inline constexpr const char* kReportFileName = "compare-report.json";
     inline constexpr const char* kRelativeDirectory = "cesium-milk-truck/s04-default/1280x720";
@@ -34,6 +40,16 @@ namespace renderlab::hdrgolden
     inline constexpr float kPortabilityRelTol = 5e-3f;
     inline constexpr double kPortabilityMaxMae = 1e-3;
     inline constexpr double kPortabilityMaxMismatchFraction = 0.02;
+
+    // final.png 8-bit rules, reusing the S1.6 gbuffer-golden default tolerances
+    // (tests/image_compare.cpp ViewRule defaults). Same-adapter captures were
+    // mae 0, so the defaults are also the floor.
+    inline constexpr uint32_t kFinalPixelThreshold = 2;
+    inline constexpr double kFinalMaxMae = 1.0;
+    inline constexpr double kFinalMaxMismatchFraction = 0.002;
+    inline constexpr uint32_t kFinalPortabilityPixelThreshold = 8;
+    inline constexpr double kFinalPortabilityMaxMae = 8.0;
+    inline constexpr double kFinalPortabilityMaxMismatchFraction = 0.05;
 
     struct HdrRgbImage
     {
@@ -69,12 +85,14 @@ namespace renderlab::hdrgolden
         std::string driverVersion;
         std::string hdrFileName;
         std::string diagnosticFileName;
+        std::string finalFileName;
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t frameIndex = 0;
         uint32_t sampleCount = 0;
         uint32_t nonFiniteCount = 0;
         uint32_t pixelCount = 0;
+        float exposureEV = 0.f;
         bool verifyLights = true;
         bool hasMetadata = false;
         bool timestampValid = false;
@@ -89,8 +107,12 @@ namespace renderlab::hdrgolden
         HdrCaptureIdentity candidate;
         HdrCompareStats tight;
         HdrCompareStats portability;
+        golden::CompareStats finalTight;
+        golden::CompareStats finalPortability;
         bool passedTight = false;
         bool passedPortability = false;
+        bool finalPassedTight = false;
+        bool finalPassedPortability = false;
         std::string summary;
     };
 

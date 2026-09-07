@@ -8,6 +8,7 @@
 #include "renderer/HDRSceneColorTarget.h"
 #include "renderer/LightingDebugPass.h"
 #include "renderer/LightingContract.h"
+#include "renderer/PostProcessPass.h"
 #include "renderer/RendererData.h"
 
 #include <donut/app/ApplicationBase.h>
@@ -85,9 +86,10 @@ namespace renderlab
         CameraPreset camera;
         bool lockCamera = false;
         bool verifyLights = false;
-        PresentSource presentSource = PresentSource::LightingDebug;
+        PresentSource presentSource = kDefaultPresentSource;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
         LightingDebugMode lightingView = LightingDebugMode::Lit;
+        float exposureEV = kDefaultExposureEV;
         std::string dumpGBufferViewsDirectory;
         std::string dumpLightingViewsDirectory;
         std::string goldenOutputDirectory;
@@ -107,6 +109,7 @@ namespace renderlab
             const HDRSceneColorTarget& hdrSceneColor,
             const GBufferPassHud& gbufferPassHud,
             const DeferredLightingPassHud& deferredLightingHud,
+            const PostProcessPassHud& postProcessHud,
             PresentSource& presentSource,
             GBufferDebugHud& gbufferDebugHud,
             LightingDebugHud& lightingDebugHud);
@@ -122,6 +125,7 @@ namespace renderlab
         const HDRSceneColorTarget& m_hdrSceneColor;
         const GBufferPassHud& m_gbufferPassHud;
         const DeferredLightingPassHud& m_deferredLightingHud;
+        const PostProcessPassHud& m_postProcessHud;
         PresentSource& m_presentSource;
         GBufferDebugHud& m_gbufferDebugHud;
         LightingDebugHud& m_lightingDebugHud;
@@ -146,6 +150,7 @@ namespace renderlab
         const HDRSceneColorTarget& GetHDRSceneColorTarget() const;
         const GBufferPassHud& GetGBufferPassHud() const;
         const DeferredLightingPassHud& GetDeferredLightingPassHud() const;
+        const PostProcessPassHud& GetPostProcessPassHud() const;
         PresentSource& GetPresentSource();
         const PresentSource& GetPresentSource() const;
         GBufferDebugHud& GetGBufferDebugHud();
@@ -200,7 +205,9 @@ namespace renderlab
         DeferredLightingPass m_deferredLightingPass;
         GBufferDebugPass m_gbufferDebugPass;
         LightingDebugPass m_lightingDebugPass;
-        PresentSource m_presentSource = PresentSource::LightingDebug;
+        PostProcessPass m_postProcessPass;
+        PresentSource m_presentSource = kDefaultPresentSource;
+        TonemapConstants m_tonemapConstants = MakeDefaultTonemapConstants();
         GBufferDebugHud m_gbufferDebugHud;
         LightingDebugHud m_lightingDebugHud;
         bool m_hdrDumpCompleted = false;

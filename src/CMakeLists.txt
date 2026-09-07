@@ -22,6 +22,8 @@ set(RENDERLAB_SHADER_SOURCES
     shaders/deferred_lighting_ps.hlsl
     shaders/lighting_debug_vs.hlsl
     shaders/lighting_debug_ps.hlsl
+    shaders/postprocess_vs.hlsl
+    shaders/postprocess_ps.hlsl
     shaders/Shaders.cfg
 )
 
@@ -57,6 +59,8 @@ set(RENDERLAB_RENDERER_SOURCES
     renderer/DeferredLightingPass.cpp
     renderer/LightingDebugPass.h
     renderer/LightingDebugPass.cpp
+    renderer/PostProcessPass.h
+    renderer/PostProcessPass.cpp
     renderer/RendererData.h
     renderer/RendererData.cpp
     ${RENDERLAB_SHADER_HEADERS}

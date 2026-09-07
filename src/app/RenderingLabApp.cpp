@@ -170,6 +170,7 @@ namespace renderlab
         const HDRSceneColorTarget& hdrSceneColor,
         const GBufferPassHud& gbufferPassHud,
         const DeferredLightingPassHud& deferredLightingHud,
+        const PostProcessPassHud& postProcessHud,
         PresentSource& presentSource,
         GBufferDebugHud& gbufferDebugHud,
         LightingDebugHud& lightingDebugHud)
@@ -180,6 +181,7 @@ namespace renderlab
         , m_hdrSceneColor(hdrSceneColor)
         , m_gbufferPassHud(gbufferPassHud)
         , m_deferredLightingHud(deferredLightingHud)
+        , m_postProcessHud(postProcessHud)
         , m_presentSource(presentSource)
         , m_gbufferDebugHud(gbufferDebugHud)
         , m_lightingDebugHud(lightingDebugHud)
@@ -202,7 +204,7 @@ namespace renderlab
             return;
         }
 
-        ImGui::TextUnformatted("S2.3 deferred lighting (Lambert + GGX) + debug views");
+        ImGui::TextUnformatted("S3.2 deferred lighting (Lambert + GGX) + tone map + debug views");
         ImGui::Separator();
         ImGui::Text("Adapter: %s", m_capabilities.adapterName.c_str());
         ImGui::Text("Driver: %s", m_capabilities.driverVersion.c_str());
@@ -274,10 +276,23 @@ namespace renderlab
             {
                 ImGui::TextUnformatted("  DeferredLighting GPU time=pending");
             }
+            if (m_postProcessHud.timestampValid)
+            {
+                ImGui::Text("  PostProcess GPU time=%.3f ms", m_postProcessHud.gpuTimeMilliseconds);
+            }
+            else
+            {
+                ImGui::TextUnformatted("  PostProcess GPU time=pending");
+            }
         }
 
         ImGui::Separator();
         ImGui::TextUnformatted("Present source (mutually exclusive)");
+        if (ImGui::RadioButton("Final (tone-mapped)", m_presentSource == PresentSource::Final))
+        {
+            m_presentSource = PresentSource::Final;
+        }
+        ImGui::SameLine();
         if (ImGui::RadioButton("Lighting debug", m_presentSource == PresentSource::LightingDebug))
         {
             m_presentSource = PresentSource::LightingDebug;
@@ -288,7 +303,13 @@ namespace renderlab
             m_presentSource = PresentSource::GBufferDebug;
         }
 
-        if (m_presentSource == PresentSource::LightingDebug)
+        if (m_presentSource == PresentSource::Final)
+        {
+            ImGui::TextUnformatted(
+                "Scene -> GBuffer -> DeferredLighting -> exposure + tone map (docs/postprocess.md).");
+            ImGui::TextUnformatted("Key 0 selects the tone-mapped final.");
+        }
+        else if (m_presentSource == PresentSource::LightingDebug)
         {
             const char* currentChannel =
                 m_lightingDebugHud.channelName ? m_lightingDebugHud.channelName : "N dot L";
@@ -345,7 +366,11 @@ namespace renderlab
 
         if (!ImGui::GetIO().WantCaptureKeyboard)
         {
-            if (ImGui::IsKeyPressed(ImGuiKey_1))
+            if (ImGui::IsKeyPressed(ImGuiKey_0))
+            {
+                m_presentSource = PresentSource::Final;
+            }
+            else if (ImGui::IsKeyPressed(ImGuiKey_1))
             {
                 m_gbufferDebugHud.mode = GBufferDebugMode::BaseColor;
                 m_presentSource = PresentSource::GBufferDebug;
@@ -440,6 +465,7 @@ namespace renderlab
         m_sceneHud.cameraTarget = m_options.camera.target;
         m_sceneHud.verticalFovDegrees = m_options.camera.verticalFovDegrees;
         m_presentSource = m_options.presentSource;
+        m_tonemapConstants.exposureEV = m_options.exposureEV;
         m_gbufferDebugHud.mode = m_options.gbufferView;
         m_gbufferDebugHud.dumpDirectory = m_options.dumpGBufferViewsDirectory;
         m_gbufferDebugHud.dumpRequested = !m_gbufferDebugHud.dumpDirectory.empty();
@@ -504,6 +530,12 @@ namespace renderlab
             return false;
         }
 
+        if (!m_postProcessPass.Init(GetDevice(), *m_shaderFactory))
+        {
+            log::error("Failed to initialize the post-process pass.");
+            return false;
+        }
+
         BeginLoadingScene(m_fileSystem, m_options.scene.virtualPath);
         if (!IsSceneLoaded() || !m_scene)
         {
@@ -542,6 +574,11 @@ namespace renderlab
     const DeferredLightingPassHud& RenderingLabApp::GetDeferredLightingPassHud() const
     {
         return m_deferredLightingPass.GetHud();
+    }
+
+    const PostProcessPassHud& RenderingLabApp::GetPostProcessPassHud() const
+    {
+        return m_postProcessPass.GetHud();
     }
 
     PresentSource& RenderingLabApp::GetPresentSource()
@@ -916,10 +953,49 @@ namespace renderlab
 
         log::info("Wrote HDR capture PNG -> %s", pngPathString.c_str());
 
+        nvrhi::ITexture* finalDumpTarget = m_postProcessPass.GetOrCreateDumpTarget(width, height);
+        if (!finalDumpTarget)
+        {
+            RemoveFileIfExists(rlhdrPath);
+            RemoveFileIfExists(pngPath);
+            return failDump("Failed to create PostProcessColor for the HDR capture final PNG.");
+        }
+
+        commandList->open();
+        const PostProcessPassInputs postInputs =
+            MakePostProcessPassInputs(m_hdrSceneColor.GetTexture(), m_tonemapConstants);
+        PostProcessPassOutputs postOutputs;
+        postOutputs.finalColor = finalDumpTarget;
+        m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+        commandList->close();
+        device->executeCommandList(commandList);
+
+        const std::filesystem::path finalPngPath = outputDir / kFinalImageFileName;
+        const std::string finalPngPathString = finalPngPath.generic_string();
+        if (!engine::SaveTextureToFile(
+                device,
+                m_CommonPasses.get(),
+                finalDumpTarget,
+                nvrhi::ResourceStates::RenderTarget,
+                finalPngPathString.c_str(),
+                false))
+        {
+            RemoveFileIfExists(rlhdrPath);
+            RemoveFileIfExists(pngPath);
+            RemoveFileIfExists(finalPngPath);
+            log::error("Failed to write HDR capture final PNG '%s'.", finalPngPathString.c_str());
+            m_hdrDumpCompleted = true;
+            m_hdrDumpSucceeded = false;
+            return false;
+        }
+
+        log::info("Wrote HDR capture final PNG -> %s", finalPngPathString.c_str());
+
         if (!WriteHdrCaptureMetadata(directory, 1, 0))
         {
             RemoveFileIfExists(rlhdrPath);
             RemoveFileIfExists(pngPath);
+            RemoveFileIfExists(finalPngPath);
             RemoveFileIfExists(outputDir / "hdr-capture-metadata.json");
             m_hdrDumpCompleted = true;
             m_hdrDumpSucceeded = false;
@@ -1108,35 +1184,41 @@ namespace renderlab
         const uint32_t height = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetHeight() : m_backBufferHeight;
         const uint64_t pixelCount = static_cast<uint64_t>(width) * height;
         const DeferredLightingPassHud& lightingHud = m_deferredLightingPass.GetHud();
+        const PostProcessPassHud& postHud = m_postProcessPass.GetHud();
         const char* diagnosticFileName = GetLightingDebugModeInfo(LightingDebugMode::Lit).dumpFileName;
+        char number[64] = {};
 
         output << "{\n";
-        output << "  \"schema\": \"renderlab-hdr-capture-metadata/v1\",\n";
-        output << "  \"step\": \"S2.4\",\n";
+        output << "  \"schema\": \"renderlab-hdr-capture-metadata/v2\",\n";
+        output << "  \"step\": \"S3.2\",\n";
         output << "  \"sceneId\": \"" << JsonEscape(m_options.scene.id) << "\",\n";
         output << "  \"cameraPreset\": \"" << JsonEscape(m_options.camera.name) << "\",\n";
         output << "  \"width\": " << width << ",\n";
         output << "  \"height\": " << height << ",\n";
         output << "  \"frameIndex\": " << frameIndex << ",\n";
         output << "  \"sampleCount\": 1,\n";
+        std::snprintf(number, sizeof(number), "%.9g", m_tonemapConstants.exposureEV);
+        output << "  \"exposureEV\": " << number << ",\n";
         output << "  \"verifyLights\": " << (m_options.verifyLights ? "true" : "false") << ",\n";
         output << "  \"adapterName\": \"" << JsonEscape(m_capabilities.adapterName) << "\",\n";
         output << "  \"driverVersion\": \"" << JsonEscape(m_capabilities.driverVersion) << "\",\n";
         output << "  \"hdrFileName\": \"hdr-scene-color.rlhdr\",\n";
         output << "  \"diagnosticFileName\": \"" << JsonEscape(diagnosticFileName) << "\",\n";
+        output << "  \"finalFileName\": \"" << kFinalImageFileName << "\",\n";
         output << "  \"nonFiniteCount\": " << nonFiniteCount << ",\n";
         output << "  \"pixelCount\": " << pixelCount << ",\n";
         output << "  \"timestampValid\": " << (lightingHud.timestampValid ? "true" : "false");
         if (lightingHud.timestampValid)
         {
-            char timeBuffer[64] = {};
-            std::snprintf(timeBuffer, sizeof(timeBuffer), "%.6f", lightingHud.gpuTimeMilliseconds);
-            output << ",\n  \"deferredLightingGpuTimeMilliseconds\": " << timeBuffer << "\n";
+            std::snprintf(number, sizeof(number), "%.6f", lightingHud.gpuTimeMilliseconds);
+            output << ",\n  \"deferredLightingGpuTimeMilliseconds\": " << number;
         }
-        else
+        if (postHud.timestampValid)
         {
-            output << "\n";
+            std::snprintf(number, sizeof(number), "%.6f", postHud.gpuTimeMilliseconds);
+            output << ",\n  \"postProcessGpuTimeMilliseconds\": " << number;
         }
+        output << "\n";
         output << "}\n";
 
         if (!output)
@@ -1148,7 +1230,8 @@ namespace renderlab
         }
 
         log::info(
-            "Wrote HDR capture metadata %s (scene=%s camera=%s %ux%u frame=%u verifyLights=%s nonFinite=%llu)",
+            "Wrote HDR capture metadata %s (scene=%s camera=%s %ux%u frame=%u verifyLights=%s "
+            "exposureEV=%g nonFinite=%llu)",
             metadataPath.generic_string().c_str(),
             m_options.scene.id.c_str(),
             m_options.camera.name.c_str(),
@@ -1156,6 +1239,7 @@ namespace renderlab
             height,
             frameIndex,
             m_options.verifyLights ? "true" : "false",
+            static_cast<double>(m_tonemapConstants.exposureEV),
             static_cast<unsigned long long>(nonFiniteCount));
         return true;
     }
@@ -1236,7 +1320,15 @@ namespace renderlab
                 if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid() && debugColor)
                 {
                     UpdateDebugHud();
-                    if (m_presentSource == PresentSource::LightingDebug)
+                    if (m_presentSource == PresentSource::Final)
+                    {
+                        const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
+                            m_hdrSceneColor.GetTexture(), m_tonemapConstants);
+                        PostProcessPassOutputs postOutputs;
+                        postOutputs.finalColor = debugColor;
+                        m_postProcessPass.Execute(m_commandList, postInputs, postOutputs);
+                    }
+                    else if (m_presentSource == PresentSource::LightingDebug)
                     {
                         const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
                             m_gbuffer,
@@ -1305,6 +1397,7 @@ namespace renderlab
     {
         // Drop size-dependent pass resources, then texture handles, before
         // DeviceManager_DX12::ResizeSwapChain waits for idle and runs NVRHI garbage collection.
+        m_postProcessPass.ReleaseSizeDependentResources();
         m_lightingDebugPass.ReleaseSizeDependentResources();
         m_gbufferDebugPass.ReleaseSizeDependentResources();
         m_deferredLightingPass.ReleaseSizeDependentResources();

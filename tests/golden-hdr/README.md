@@ -1,9 +1,13 @@
-# S2.4 HDR Golden
+# S2.4 / S3.2 HDR + Tone-Mapped Golden
 
-This directory contains the approved S2.4 HDR regression baseline.
-The `.rlhdr`, Reinhard `lighting-lit.png` thumbnail, and adjacent
-`hdr-capture-metadata.json` are review artifacts; do not replace them from an
-unverified run.
+This directory contains the approved HDR regression baseline. The `.rlhdr`
+(pre-exposure `HDRSceneColor`), the Reinhard `lighting-lit.png` thumbnail, the
+S3.2 tone-mapped `final.png`, and the adjacent `hdr-capture-metadata.json` are
+review artifacts; do not replace them from an unverified run.
+
+The S3.2 re-baseline (schema v2, `final.png`, `exposureEV` pinned at 0) was
+minted on the same adapter that now owns the S2.4 baseline content: the
+re-captured `.rlhdr` is byte-identical to the S2.4 original.
 
 [`manifest.json`](manifest.json) is a descriptive, machine-readable summary of
 the baseline. The comparator's rules are implemented in `tests/hdr_compare.cpp`.

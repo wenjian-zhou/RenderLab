@@ -15,7 +15,8 @@ namespace
             "Usage: RenderLabGoldenCompare [--mode gbuffer|hdr] --candidate <dir> --reference <dir> [--channel-swap]\n"
             "\n"
             "Default --mode is gbuffer (S1.6 PNG goldens).\n"
-            "--mode hdr compares hdr-scene-color.rlhdr using docs/hdr-regression.md.\n"
+            "--mode hdr compares hdr-scene-color.rlhdr plus final.png (S3.2 tone-mapped LDR\n"
+            "oracle) using docs/hdr-regression.md.\n"
             "Exit codes: 0 pass, 1 regression, 2 portability, 3 error.\n"
             "gbuffer --channel-swap: candidate roughness vs reference base-color (must fail).\n"
             "hdr --channel-swap: swap candidate R/B after decode and compare (must fail).\n");

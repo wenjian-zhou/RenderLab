@@ -5,15 +5,16 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S3.2 - Implement tone mapping and present**
-- State: **S3.1 complete**
+- Active step: **S3.3 - Freeze the manual-pipeline reference**
+- State: **S3.2 complete**
 - Last updated: 2026-09-07
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
-- Stage 3: **S3.1 complete** (contract freeze; the tone-map pass is S3.2)
+- Stage 3: **S3.1 and S3.2 complete** (tone mapping + present landed; the M1
+  reference freeze is S3.3)
 
 ## Completed Repository Reset
 
@@ -879,6 +880,120 @@ Known limitations:
   No GPU tone-map pass, no LDR golden, no UI or present-path change in this step
   The curve is verified on CPU against the float64 reference; GPU evaluation is S3.2
 Next step: S3.2 - Implement tone mapping and present
+```
+
+### S3.2 - Implement tone mapping and present
+
+```text
+Step: S3.2
+State: Complete
+Date: 2026-09-07
+Commit: (pending)
+Commands:
+  cmake --build --preset windows-debug --parallel
+  cmake --build --preset windows-release --parallel
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\smoke.ps1
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output-hdr results\s32-baseline-a
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --output-hdr results\s32-baseline-b
+  .\out\build\windows-vs2022\bin\Debug\RenderLabGoldenCompare.exe --mode hdr --candidate results\s32-baseline-a --reference results\s32-baseline-b
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --lock-camera --exposure-ev <ev> --output-hdr results\s32-ev-<ev>  (ev in -3, -1, 1, 3)
+  python scripts\ldr_stats.py results\s32-ev--3 results\s32-ev--1 results\s32-baseline-a results\s32-ev-1 results\s32-ev-3
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless --frames 10000
+  .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --frames 200000  (windowed ~5.5 min; auto resize + minimize/restore probe)
+  pixtool launch ... --command-line="--lock-camera --frames 16" take-capture --frames=1 save-capture captures\s32-final.wpix
+  pixtool open-capture captures\s32-final.wpix save-event-list captures\s32-final-events.csv
+  pixtool open-capture captures\s32-final.wpix save-screenshot captures\s32-final-screenshot.png
+Automated tests: RenderLabDataContractTests Debug and Release (0 failures)
+  existing S1.2 / S1.3 / S1.4 / S1.5 / S1.6 / S2.1 / S2.3 / S2.4 / S3.1 checks
+  post-process raster/depth contract: cull none, depth test/write off
+  ParseExposureEv accepts 0 / -3 / +2.5 / 1e1 / -0.0 and unclamped +/-15; rejects
+    empty / abc / 2.5x / nan / inf / -inf / 1e400 without modifying the output value
+  PresentSource::Final is 2; kDefaultPresentSource == Final (app and test share the
+    renderer-layer constant; the old vacuous local-variable default check is now real)
+  HDR metadata v2: exposureEV and finalFileName required; EV 1 loads but is rejected
+    against the locked EV 0; EV as a JSON string / 1e400 / missing field are errors;
+    wrong finalFileName rejected against the locked capture
+  final.png directory compare: missing final.png is an error; 2x2 final.png is not the
+    locked resolution; R/B-swapped final.png is a regression and fails the tight 8-bit
+    rule; matching fixture final.png passes
+  committed goldens self-compare passes including the final.png tight rule
+GPU validation/capture:
+  Debug: NVIDIA GeForce RTX 4070 SUPER, driver 32.0.15.7688, NVRHI D3D12,
+    validation=NVRHI + D3D12 debug runtime, errors=0 (every run below)
+  Default present (no view flags) is the tone-mapped final; --gbuffer-view /
+    --lighting-view unchanged and still mutually exclusive (exit 2); ImGui radio +
+    hotkey 0 select Final
+  --exposure-ev edge cases: abc / nan / inf / 1e400 / missing value exit 2;
+    --exposure-ev 1 --gbuffer-view base-color exits 0 (inert for debug views)
+  EV sweep -3/-1/0/+1/+3 (scripts\ldr_stats.py; linear Rec.709 luma decoded from
+    final.png): mean Y 0.005778 / 0.035744 / 0.061226 / 0.085432 / 0.127462
+    (monotonic; median 0 is the black scene background)
+    single-stop mid/low-luma ratios (mask Y < 0.5): -1 -> 0 = 1.829, 0 -> +1 = 1.902
+    (inside the 1.6-2.4 observation band); two-stop: -3 -> -1 = 6.19 (toe lifts above
+    the naive 4x), +1 -> +3 = 3.15 (shoulder compresses below the naive 4x)
+  highlight rolloff at EV +3: a naive exposure+hard-clip would flatten 11.81% of
+    pixels (any scene channel x 2^3 > 1.0, computed from the committed .rlhdr); the
+    tone-mapped final.png saturates only 1.67% pure white while 10.78% of pixels
+    stay bright (Y >= 0.5) but graded
+  golden-hdr re-baseline (S1.6 precedent; schema v2 + final.png force it): two Debug
+    captures bit-identical (mae 0 / mismatch 0 for both .rlhdr and final.png); the
+    new .rlhdr is also byte-identical to the S2.4 baseline minted on the
+    RTX 5060 Laptop GPU, so the deferred path is deterministic across both adapters;
+    approved adapter is now the RTX 4070 SUPER; golden-hdr.ps1 Verify passes
+    (two fresh captures + R/B swap fails as expected)
+  PIX (captures\s32-final.wpix event list): Frame > Render > { SceneUpdate, GBuffer,
+    DeferredLighting, PostProcess }, then UI (ImGUI), then Present
+  UI composes over the tone-mapped output: the PIX presented-frame screenshot
+    differs from final.png only inside the ImGui panel bounding box
+    (rows 16..667, cols 16..495); outside it the max-channel diff is 0 for every pixel
+  resize + minimize + long runs: windowed --frames runs resize 1280x720 -> 1344x784
+    then minimize + restore; a 200000-frame windowed run (~5.5 min) and a headless
+    10000-frame run both finished errors=0
+Artifacts:
+  src/shaders/postprocess_vs.hlsl
+  src/shaders/postprocess_ps.hlsl
+  src/shaders/Shaders.cfg
+  src/renderer/PostProcessPass.h
+  src/renderer/PostProcessPass.cpp
+  src/renderer/LightingDebugPass.h  (PresentSource::Final + kDefaultPresentSource)
+  src/app/FrameMarkers.h
+  src/app/FrameMarkers.cpp  (kPostProcess)
+  src/app/RenderingLabApp.h
+  src/app/RenderingLabApp.cpp
+  src/app/main.cpp
+  src/CMakeLists.txt
+  tests/hdr_compare.h
+  tests/hdr_compare.cpp
+  tests/golden_compare_main.cpp
+  tests/test_postprocess_pass.cpp
+  tests/test_lighting_debug.cpp
+  tests/test_hdr_compare.cpp
+  tests/test_renderer_data.cpp
+  tests/CMakeLists.txt
+  scripts/golden-hdr.ps1
+  scripts/ldr_stats.py
+  tests/golden-hdr/cesium-milk-truck/s04-default/1280x720/  (re-baselined: final.png
+    added, metadata v2, manifest final rules; .rlhdr and lighting-lit.png unchanged bytes)
+  docs/postprocess.md
+  docs/hdr-regression.md
+  docs/capture-guide.md
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  The LDR golden pins EV 0; a capture at any other EV fails the identity check by
+    design (clean "Exposure mismatch" regression before pixel compare)
+  final.png covers the tone-mapped output only; the ImGui overlay itself has no golden
+  The final.png portability band reuses the S1.6 default tolerances from same-adapter
+    mae=0 captures and was not exercised on a second GPU
+  ldr_stats.py is evidence tooling, not a gate; the 1.6-2.4 single-stop band is an
+    observation window, not a contract
+  The PostProcess GPU timestamp feeds the ImGui HUD only; per-pass timing export is S3.3
+Next step: S3.3 - Freeze the manual-pipeline reference
 ```
 
 Selected baseline:

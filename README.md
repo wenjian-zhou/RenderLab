@@ -14,12 +14,15 @@ The final legacy snapshot is preserved on branch `backup/legacy-d3d12-20260818` 
 This branch is a Donut/NVRHI planning baseline. **S0.5 / M0 is complete**,
 **S1.1 through S1.6 are complete**, and **S2.1 through S2.4 are complete**:
 `HDRSceneColor` holds Lambert + GGX deferred lighting (directional, point lights,
-ambient). Default present is lighting `lit` (Reinhard of HDR). HDR regression
-exists (`scripts/golden-hdr.ps1` vs committed `.rlhdr` goldens). **S3.1 is complete**:
-exposure and the UE 5.8.1 Filmic output-transfer contract are frozen in
-[docs/postprocess.md](docs/postprocess.md) with CPU contract tests; the tone-map
-pass itself, RDG, and DXR are not implemented. The next executable task is
-**S3.2: implement tone mapping and present**.
+ambient). **S3.1 is complete**: exposure and the UE 5.8.1 Filmic output-transfer
+contract are frozen in [docs/postprocess.md](docs/postprocess.md) with CPU
+contract tests. **S3.2 is complete**: `Scene -> GBuffer -> Deferred ->
+Tone Map -> Present` is the normal path (default present is the tone-mapped
+final; `--exposure-ev` is the manual exposure knob; debug views are preserved),
+and `scripts/golden-hdr.ps1` verifies both the pre-exposure `.rlhdr` oracle and
+the tone-mapped `final.png` LDR oracle against committed goldens. RDG and DXR
+are not implemented. The next executable task is **S3.3: freeze the M1
+reference renderer**.
 
 ## Plans
 
@@ -32,12 +35,12 @@ pass itself, RDG, and DXR are not implemented. The next executable task is
 - [Build environment](docs/build-environment.md) records the validated Windows toolchain.
 - [Capture guide](docs/capture-guide.md) covers PIX inspection and local capture workflows.
 - [Image regression](docs/image-regression.md) is the canonical S1.6 capture and comparison contract.
-- [HDR regression](docs/hdr-regression.md) is the canonical S2.4 HDR capture and comparison contract.
+- [HDR regression](docs/hdr-regression.md) is the canonical S2.4/S3.2 HDR + tone-mapped-LDR capture and comparison contract.
 - [Renderer conventions](docs/renderer-conventions.md) freeze handedness, matrices, reversed-Z, and color space.
 - [GBuffer contract](docs/g-buffer.md) defines the first-version targets, encodings, lifetime, raster writes, and debug views.
 - [Renderer data contracts](docs/renderer-data.md) are the S1.2 frame/view/instance/material layouts.
 - [Lighting contract](docs/lighting.md) is the S2.1 deferred lighting interface.
-- [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic).
+- [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic), implemented by the S3.2 pass.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 
@@ -124,13 +127,14 @@ Command-line parsing is stable:
 | `--scene <id\|path>` | load a scene id or a path relative to `scenes/` |
 | `--lock-camera` | disable free-camera motion and keep the S0.4 preset |
 | `--gbuffer-view <mode>` | present a GBuffer debug channel; mutually exclusive with `--lighting-view` |
-| `--lighting-view <mode>` | present `world-position`, `ndotl`, or `lit`; default present (no view flags) is `lit` |
+| `--lighting-view <mode>` | present `world-position`, `ndotl`, or `lit`; default present (no view flags) is the tone-mapped final |
+| `--exposure-ev <float>` | manual exposure in EV stops for the tone map (`2^EV`, default `0`, no clamp; non-finite values exit 2); affects the final present and `final.png` only |
 | `--verify-lights` | upload the S2.3 verification fixture (directional + 1 point + weak ambient) |
 | `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory GBuffer debug view; implies `--lock-camera` |
 | `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
 | `--output <dir>` | S1.6 golden capture: six GBuffer debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
-| `--output-hdr <dir>` | S2.4 HDR golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe |
+| `--output-hdr <dir>` | S2.4/S3.2 golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `final.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe |
 | `--dx12` / `--d3d12` | accepted no-ops; D3D12 is the only backend |
 
 The default scene is `cesium-milk-truck`. A tiny committed fallback is available with

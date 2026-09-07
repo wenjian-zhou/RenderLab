@@ -10,6 +10,7 @@ namespace renderlab::markers
     inline constexpr const char* kRender = "Render";
     inline constexpr const char* kGBuffer = "GBuffer";
     inline constexpr const char* kDeferredLighting = "DeferredLighting";
+    inline constexpr const char* kPostProcess = "PostProcess";
     inline constexpr const char* kGBufferDebug = "GBufferDebug";
     inline constexpr const char* kLightingDebug = "LightingDebug";
     inline constexpr const char* kUI = "UI";

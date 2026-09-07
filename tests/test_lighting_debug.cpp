@@ -71,11 +71,12 @@ int RunLightingDebugPassTests()
 
     Check(static_cast<uint32_t>(PresentSource::GBufferDebug) == 0u, "PresentSource GBufferDebug is 0");
     Check(static_cast<uint32_t>(PresentSource::LightingDebug) == 1u, "PresentSource LightingDebug is 1");
+    Check(static_cast<uint32_t>(PresentSource::Final) == 2u, "PresentSource Final is 2");
 
-    // Default present: lighting debug with lit (Reinhard of HDR).
-    PresentSource present = PresentSource::LightingDebug;
-    LightingDebugMode defaultView = LightingDebugMode::Lit;
-    Check(present == PresentSource::LightingDebug, "Default present source is lighting debug");
+    // Default present: the S3.2 tone-mapped Final path; AppLaunchOptions and this
+    // check share kDefaultPresentSource (renderer layer), so this is a real default check.
+    Check(kDefaultPresentSource == PresentSource::Final, "Default present source is Final (tone-mapped)");
+    const LightingDebugMode defaultView = LightingDebugMode::Lit;
     Check(defaultView == LightingDebugMode::Lit, "Default lighting view is lit");
 
     const LightingConstants verify = MakeVerifyLightsLightingConstants();

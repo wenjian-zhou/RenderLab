@@ -41,6 +41,7 @@ function Invoke-Capture([string]$Config, [string]$OutputDir) {
     $required = @(
         'hdr-scene-color.rlhdr',
         'lighting-lit.png',
+        'final.png',
         'hdr-capture-metadata.json'
     )
     foreach ($name in $required) {

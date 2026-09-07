@@ -111,6 +111,23 @@ namespace renderlab::hdrgolden
             return true;
         }
 
+        bool RequireJsonFloat(const Json::Value& root, const char* key, float& value, std::string& error)
+        {
+            if (!root.isMember(key) || !root[key].isNumeric())
+            {
+                error = std::string("hdr-capture-metadata.json is missing or invalid '") + key + "'.";
+                return false;
+            }
+            const double parsed = root[key].asDouble();
+            if (!std::isfinite(parsed))
+            {
+                error = std::string("hdr-capture-metadata.json '") + key + "' is not finite.";
+                return false;
+            }
+            value = static_cast<float>(parsed);
+            return true;
+        }
+
         std::string JsonEscape(std::string_view text)
         {
             std::string out;
@@ -294,12 +311,14 @@ namespace renderlab::hdrgolden
             !RequireJsonString(root, "driverVersion", loaded.driverVersion, error) ||
             !RequireJsonString(root, "hdrFileName", loaded.hdrFileName, error) ||
             !RequireJsonString(root, "diagnosticFileName", loaded.diagnosticFileName, error) ||
+            !RequireJsonString(root, "finalFileName", loaded.finalFileName, error) ||
             !RequireJsonUint(root, "width", loaded.width, error) ||
             !RequireJsonUint(root, "height", loaded.height, error) ||
             !RequireJsonUint(root, "frameIndex", loaded.frameIndex, error) ||
             !RequireJsonUint(root, "sampleCount", loaded.sampleCount, error) ||
             !RequireJsonUint(root, "nonFiniteCount", loaded.nonFiniteCount, error) ||
             !RequireJsonUint(root, "pixelCount", loaded.pixelCount, error) ||
+            !RequireJsonFloat(root, "exposureEV", loaded.exposureEV, error) ||
             !RequireJsonBool(root, "verifyLights", loaded.verifyLights, error) ||
             !RequireJsonBool(root, "timestampValid", loaded.timestampValid, error))
         {
@@ -373,6 +392,22 @@ namespace renderlab::hdrgolden
         {
             error = "diagnosticFileName mismatch: '" + identity.diagnosticFileName + "' vs '" +
                 kDiagnosticFileName + "'.";
+            return false;
+        }
+        if (identity.finalFileName != kFinalFileName)
+        {
+            error = "finalFileName mismatch: '" + identity.finalFileName + "' vs '" +
+                kFinalFileName + "'.";
+            return false;
+        }
+        if (identity.exposureEV != kExposureEV)
+        {
+            char expected[32] = {};
+            char actual[32] = {};
+            std::snprintf(expected, sizeof(expected), "%g", static_cast<double>(kExposureEV));
+            std::snprintf(actual, sizeof(actual), "%g", static_cast<double>(identity.exposureEV));
+            error = std::string("Exposure mismatch: expected EV ") + expected + ", got " + actual +
+                " (the locked capture pins exposureEV).";
             return false;
         }
         if (identity.verifyLights)
@@ -487,6 +522,38 @@ namespace renderlab::hdrgolden
         result.passedPortability = StatsPass(
             result.portability, kPortabilityMaxMae, kPortabilityMaxMismatchFraction);
 
+        golden::RgbImage referenceFinal;
+        golden::RgbImage candidateFinal;
+        if (!golden::LoadPngRgb(referenceDir / kFinalFileName, referenceFinal, error))
+        {
+            result.verdict = Verdict::Error;
+            result.summary = error;
+            return result;
+        }
+        if (!golden::LoadPngRgb(candidateDir / kFinalFileName, candidateFinal, error))
+        {
+            result.verdict = Verdict::Error;
+            result.summary = error;
+            return result;
+        }
+
+        if (candidateFinal.width != kWidth || candidateFinal.height != kHeight ||
+            referenceFinal.width != kWidth || referenceFinal.height != kHeight)
+        {
+            result.verdict = Verdict::Error;
+            result.summary = "final.png is not the locked 1280x720 golden resolution.";
+            return result;
+        }
+
+        result.finalTight =
+            golden::CompareRgb(candidateFinal, referenceFinal, kFinalPixelThreshold);
+        result.finalPortability =
+            golden::CompareRgb(candidateFinal, referenceFinal, kFinalPortabilityPixelThreshold);
+        result.finalPassedTight =
+            golden::StatsPass(result.finalTight, kFinalMaxMae, kFinalMaxMismatchFraction);
+        result.finalPassedPortability = golden::StatsPass(
+            result.finalPortability, kFinalPortabilityMaxMae, kFinalPortabilityMaxMismatchFraction);
+
         if (!result.identityMatches)
         {
             result.verdict = Verdict::Regression;
@@ -495,28 +562,30 @@ namespace renderlab::hdrgolden
                 : identityError;
             return result;
         }
-        if (result.passedTight)
+        if (result.passedTight && result.finalPassedTight)
         {
             result.verdict = Verdict::Pass;
             result.summary = result.adapterMatches
-                ? "HDR dump is within the renderer-regression tolerances."
-                : "HDR dump is within the renderer-regression tolerances on a different adapter/driver.";
+                ? "HDR dump and final.png are within the renderer-regression tolerances."
+                : "HDR dump and final.png are within the renderer-regression tolerances on a "
+                  "different adapter/driver.";
             return result;
         }
-        if (!result.adapterMatches && result.passedPortability)
+        if (!result.adapterMatches && result.passedPortability && result.finalPassedPortability)
         {
             result.verdict = Verdict::Portability;
             result.summary =
-                "Adapter/driver differs from the approved golden environment and the HDR dump exceeds the "
-                "tight renderer tolerances but stays within the portability band. This is not classified "
-                "as a renderer regression.";
+                "Adapter/driver differs from the approved golden environment and the HDR dump or "
+                "final.png exceeds the tight renderer tolerances but both stay within the "
+                "portability band. This is not classified as a renderer regression.";
             return result;
         }
 
         result.verdict = Verdict::Regression;
         result.summary = result.adapterMatches
-            ? "HDR dump exceeds renderer-regression tolerances on the approved adapter/driver."
-            : "HDR dump exceeds both renderer-regression and portability tolerances.";
+            ? "HDR dump or final.png exceeds renderer-regression tolerances on the approved "
+              "adapter/driver."
+            : "HDR dump or final.png exceeds both renderer-regression and portability tolerances.";
         return result;
     }
 
@@ -568,7 +637,14 @@ namespace renderlab::hdrgolden
         out << "  \"passedPortability\": " << (result.passedPortability ? "true" : "false") << ",\n";
         out << "  \"mae\": " << result.tight.mae << ",\n";
         out << "  \"mismatchCount\": " << result.tight.mismatchCount << ",\n";
-        out << "  \"mismatchFraction\": " << result.tight.mismatchFraction << "\n";
+        out << "  \"mismatchFraction\": " << result.tight.mismatchFraction << ",\n";
+        out << "  \"finalPassedTight\": " << (result.finalPassedTight ? "true" : "false") << ",\n";
+        out << "  \"finalPassedPortability\": "
+            << (result.finalPassedPortability ? "true" : "false") << ",\n";
+        out << "  \"finalMae\": " << result.finalTight.mae << ",\n";
+        out << "  \"finalMismatchCount\": " << result.finalTight.mismatchCount << ",\n";
+        out << "  \"finalMismatchFraction\": " << result.finalTight.mismatchFraction << ",\n";
+        out << "  \"finalMaxAbs\": " << result.finalTight.maxAbs << "\n";
         out << "}\n";
         return out.str();
     }

@@ -1,6 +1,8 @@
 #include "hdr_compare.h"
 #include "renderer/HdrDump.h"
 
+#include <stb_image_write.h>
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -51,11 +53,13 @@ namespace
         const char* hdrFileName = kHdrFileName,
         const char* diagnosticFileName = kDiagnosticFileName,
         uint32_t nonFiniteCount = 0,
-        uint32_t pixelCount = 921600)
+        uint32_t pixelCount = 921600,
+        const char* exposureEVLiteral = "0",
+        const char* finalFileName = kFinalFileName)
     {
         std::ostringstream json;
         json << "{\n"
-             << "  \"schema\": \"renderlab-hdr-capture-metadata/v1\",\n"
+             << "  \"schema\": \"renderlab-hdr-capture-metadata/v2\",\n"
              << "  \"step\": \"" << step << "\",\n"
              << "  \"sceneId\": \"cesium-milk-truck\",\n"
              << "  \"cameraPreset\": \"s04-default\",\n"
@@ -63,11 +67,13 @@ namespace
              << "  \"height\": 720,\n"
              << "  \"frameIndex\": 1,\n"
              << "  \"sampleCount\": 1,\n"
+             << "  \"exposureEV\": " << exposureEVLiteral << ",\n"
              << "  \"verifyLights\": " << verifyLightsLiteral << ",\n"
              << "  \"adapterName\": \"Test Adapter\",\n"
              << "  \"driverVersion\": \"1.0\",\n"
              << "  \"hdrFileName\": \"" << hdrFileName << "\",\n"
              << "  \"diagnosticFileName\": \"" << diagnosticFileName << "\",\n"
+             << "  \"finalFileName\": \"" << finalFileName << "\",\n"
              << "  \"nonFiniteCount\": " << nonFiniteCount << ",\n"
              << "  \"pixelCount\": " << pixelCount << ",\n"
              << "  \"timestampValid\": false\n"
@@ -80,6 +86,27 @@ namespace
     {
         std::filesystem::create_directories(directory);
         WriteTextFile(directory / kHdrMetadataFileName, json);
+    }
+
+    // Fixture final.png: channels differ so an R/B swap is a real comparison failure.
+    bool WriteFixtureFinalPng(const std::filesystem::path& path, uint32_t width, uint32_t height, bool swapRB)
+    {
+        std::vector<uint8_t> rgb(static_cast<std::size_t>(width) * height * 3u);
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            for (uint32_t x = 0; x < width; ++x)
+            {
+                const std::size_t index = (static_cast<std::size_t>(y) * width + x) * 3u;
+                const uint8_t r = static_cast<uint8_t>(x & 0xFFu);
+                const uint8_t g = static_cast<uint8_t>(y & 0xFFu);
+                const uint8_t b = 64u;
+                rgb[index + 0] = swapRB ? b : r;
+                rgb[index + 1] = g;
+                rgb[index + 2] = swapRB ? r : b;
+            }
+        }
+        return stbi_write_png(
+            path.string().c_str(), int(width), int(height), 3, rgb.data(), int(width) * 3) != 0;
     }
 
     std::filesystem::path FindHdrGoldenDirectory()
@@ -113,7 +140,7 @@ namespace
 
 int RunHdrCompareTests()
 {
-    std::printf("RenderLab S2.4 HDR dump / compare tests\n");
+    std::printf("RenderLab S2.4/S3.2 HDR dump / compare tests\n");
     std::fflush(stdout);
 
     Check(sizeof(RlHdrHeader) == 32, "RlHdrHeader is 32 bytes");
@@ -241,19 +268,21 @@ int RunHdrCompareTests()
     {
         std::ofstream json(metaDir / kHdrMetadataFileName, std::ios::binary | std::ios::trunc);
         json << "{\n"
-             << "  \"schema\": \"renderlab-hdr-capture-metadata/v1\",\n"
-             << "  \"step\": \"S2.4\",\n"
+             << "  \"schema\": \"renderlab-hdr-capture-metadata/v2\",\n"
+             << "  \"step\": \"S3.2\",\n"
              << "  \"sceneId\": \"cesium-milk-truck\",\n"
              << "  \"cameraPreset\": \"s04-default\",\n"
              << "  \"width\": 1280,\n"
              << "  \"height\": 720,\n"
              << "  \"frameIndex\": 1,\n"
              << "  \"sampleCount\": 1,\n"
+             << "  \"exposureEV\": 0,\n"
              << "  \"verifyLights\": false,\n"
              << "  \"adapterName\": \"Test Adapter\",\n"
              << "  \"driverVersion\": \"1.0\",\n"
              << "  \"hdrFileName\": \"hdr-scene-color.rlhdr\",\n"
              << "  \"diagnosticFileName\": \"lighting-lit.png\",\n"
+             << "  \"finalFileName\": \"final.png\",\n"
              << "  \"nonFiniteCount\": 0,\n"
              << "  \"pixelCount\": 921600,\n"
              << "  \"timestampValid\": false\n"
@@ -261,12 +290,14 @@ int RunHdrCompareTests()
     }
     HdrCaptureIdentity identity;
     Check(LoadHdrCaptureIdentity(metaDir, identity, error), "Valid HDR metadata loads");
-    Check(identity.step == kStep, "Valid HDR metadata stores step S2.4");
+    Check(identity.step == kStep, "Valid HDR metadata stores the step");
     Check(identity.hdrFileName == kHdrFileName, "Valid HDR metadata stores hdrFileName");
     Check(identity.diagnosticFileName == kDiagnosticFileName, "Valid HDR metadata stores diagnosticFileName");
+    Check(identity.finalFileName == kFinalFileName, "Valid HDR metadata stores finalFileName");
+    Check(identity.exposureEV == 0.f, "Valid HDR metadata stores exposureEV 0");
     Check(identity.nonFiniteCount == 0, "Valid HDR metadata stores nonFiniteCount");
     Check(identity.pixelCount == 921600u, "Valid HDR metadata stores pixelCount");
-    Check(IdentityMatchesLockedHdrCapture(identity, error), "Locked identity matches S2.4 constants");
+    Check(IdentityMatchesLockedHdrCapture(identity, error), "Locked identity matches the S3.2 constants");
 
     {
         std::ofstream json(metaDir / kHdrMetadataFileName, std::ios::binary | std::ios::trunc);
@@ -277,19 +308,21 @@ int RunHdrCompareTests()
     {
         std::ofstream json(metaDir / kHdrMetadataFileName, std::ios::binary | std::ios::trunc);
         json << "{\n"
-             << "  \"schema\": \"renderlab-hdr-capture-metadata/v1\",\n"
-             << "  \"step\": \"S2.4\",\n"
+             << "  \"schema\": \"renderlab-hdr-capture-metadata/v2\",\n"
+             << "  \"step\": \"S3.2\",\n"
              << "  \"sceneId\": \"cesium-milk-truck\",\n"
              << "  \"cameraPreset\": \"s04-default\",\n"
              << "  \"width\": 1280.0,\n"
              << "  \"height\": 720,\n"
              << "  \"frameIndex\": 1,\n"
              << "  \"sampleCount\": 1,\n"
+             << "  \"exposureEV\": 0,\n"
              << "  \"verifyLights\": false,\n"
              << "  \"adapterName\": \"Test Adapter\",\n"
              << "  \"driverVersion\": \"1.0\",\n"
              << "  \"hdrFileName\": \"hdr-scene-color.rlhdr\",\n"
              << "  \"diagnosticFileName\": \"lighting-lit.png\",\n"
+             << "  \"finalFileName\": \"final.png\",\n"
              << "  \"nonFiniteCount\": 0,\n"
              << "  \"pixelCount\": 921600,\n"
              << "  \"timestampValid\": false\n"
@@ -325,7 +358,42 @@ int RunHdrCompareTests()
     Check(!IdentityMatchesLockedHdrCapture(identity, error),
           "Wrong diagnosticFileName is rejected against the locked capture");
 
-    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName, 0, 1));
+    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName, 0, 921600, "1"));
+    Check(LoadHdrCaptureIdentity(metaDir, identity, error), "Exposure EV 1 still loads");
+    Check(identity.exposureEV == 1.f, "Exposure EV 1 is stored");
+    Check(!IdentityMatchesLockedHdrCapture(identity, error),
+          "Exposure EV 1 is rejected against the locked capture (pinned EV 0)");
+
+    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName, 0, 921600, "\"0\""));
+    Check(!LoadHdrCaptureIdentity(metaDir, identity, error), "Exposure EV as a JSON string is an error");
+
+    {
+        // Strip the exposureEV line to prove the field is required, not defaulted.
+        std::istringstream lines(MakeHdrIdentityJson());
+        std::string withoutExposure;
+        std::string line;
+        while (std::getline(lines, line))
+        {
+            if (line.find("\"exposureEV\"") != std::string::npos)
+            {
+                continue;
+            }
+            withoutExposure += line + "\n";
+        }
+        WriteTextFile(metaDir / kHdrMetadataFileName, withoutExposure);
+    }
+    Check(!LoadHdrCaptureIdentity(metaDir, identity, error), "Missing exposureEV is an error");
+
+    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName, 0, 921600, "0", "other.png"));
+    Check(LoadHdrCaptureIdentity(metaDir, identity, error), "Wrong finalFileName still loads");
+    Check(!IdentityMatchesLockedHdrCapture(identity, error),
+          "Wrong finalFileName is rejected against the locked capture");
+
+    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName, 0, 921600, "1e400"));
+    Check(!LoadHdrCaptureIdentity(metaDir, identity, error), "Exposure EV 1e400 (overflows to inf) is an error");
+
+    WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName,
+                                                 kDiagnosticFileName, 0, 1));
     Check(!LoadHdrCaptureIdentity(metaDir, identity, error), "pixelCount not equal to width*height is an error");
 
     RlHdrImage finiteDump;
@@ -363,9 +431,12 @@ int RunHdrCompareTests()
     std::vector<uint16_t> lockedZeros(static_cast<std::size_t>(kWidth) * kHeight * 4u, 0);
     Check(WriteRlHdrFile(refDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
           "Write locked-size zero rlhdr");
+    Check(WriteFixtureFinalPng(refDir / kFinalFileName, kWidth, kHeight, false),
+          "Write locked-size fixture final.png");
 
     HdrDirectoryCompareResult dirResult = CompareHdrDirectories(refDir, refDir);
     Check(dirResult.verdict == Verdict::Pass, "Matching 1280x720 zero dumps pass");
+    Check(dirResult.finalPassedTight, "Matching fixture final.png passes the tight 8-bit rule");
 
     const std::filesystem::path missingJsonDir = hdrDirs / "missing-json";
     std::filesystem::create_directories(missingJsonDir);
@@ -377,6 +448,13 @@ int RunHdrCompareTests()
     dirResult = CompareHdrDirectories(missingDumpDir, refDir);
     Check(dirResult.verdict == Verdict::Error, "Valid metadata with missing rlhdr is an error");
 
+    const std::filesystem::path missingFinalDir = hdrDirs / "missing-final";
+    WriteHdrMetadata(missingFinalDir, MakeHdrIdentityJson());
+    Check(WriteRlHdrFile(missingFinalDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
+          "Write missing-final candidate dump");
+    dirResult = CompareHdrDirectories(missingFinalDir, refDir);
+    Check(dirResult.verdict == Verdict::Error, "Valid metadata with missing final.png is an error");
+
     const std::filesystem::path smallDumpDir = hdrDirs / "small-dump";
     WriteHdrMetadata(smallDumpDir, MakeHdrIdentityJson());
     Check(WriteRlHdrFile(smallDumpDir / kHdrFileName, 2, 2, finiteDump.rgba16.data(), error),
@@ -384,10 +462,21 @@ int RunHdrCompareTests()
     dirResult = CompareHdrDirectories(smallDumpDir, refDir);
     Check(dirResult.verdict == Verdict::Error, "2x2 HDR dump is not the locked resolution");
 
+    const std::filesystem::path smallFinalDir = hdrDirs / "small-final";
+    WriteHdrMetadata(smallFinalDir, MakeHdrIdentityJson());
+    Check(WriteRlHdrFile(smallFinalDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
+          "Write small-final candidate dump");
+    Check(WriteFixtureFinalPng(smallFinalDir / kFinalFileName, 2, 2, false),
+          "Write 2x2 candidate final.png");
+    dirResult = CompareHdrDirectories(smallFinalDir, refDir);
+    Check(dirResult.verdict == Verdict::Error, "2x2 final.png is not the locked resolution");
+
     const std::filesystem::path verifyDir = hdrDirs / "verify-lights";
     WriteHdrMetadata(verifyDir, MakeHdrIdentityJson(kStep, "1280", "true"));
     Check(WriteRlHdrFile(verifyDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
           "Write verifyLights candidate dump");
+    Check(WriteFixtureFinalPng(verifyDir / kFinalFileName, kWidth, kHeight, false),
+          "Write verifyLights candidate final.png");
     dirResult = CompareHdrDirectories(verifyDir, refDir);
     Check(dirResult.verdict == Verdict::Regression, "verifyLights true directory compare is a regression");
 
@@ -395,8 +484,33 @@ int RunHdrCompareTests()
     WriteHdrMetadata(wrongStepDir, MakeHdrIdentityJson("S1.6"));
     Check(WriteRlHdrFile(wrongStepDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
           "Write wrong-step candidate dump");
+    Check(WriteFixtureFinalPng(wrongStepDir / kFinalFileName, kWidth, kHeight, false),
+          "Write wrong-step candidate final.png");
     dirResult = CompareHdrDirectories(wrongStepDir, refDir);
     Check(dirResult.verdict == Verdict::Regression, "Wrong step directory compare is a regression");
+
+    const std::filesystem::path wrongExposureDir = hdrDirs / "wrong-exposure";
+    WriteHdrMetadata(wrongExposureDir,
+                     MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName, kDiagnosticFileName,
+                                         0, 921600, "1"));
+    Check(WriteRlHdrFile(wrongExposureDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
+          "Write EV 1 candidate dump");
+    Check(WriteFixtureFinalPng(wrongExposureDir / kFinalFileName, kWidth, kHeight, false),
+          "Write EV 1 candidate final.png");
+    dirResult = CompareHdrDirectories(wrongExposureDir, refDir);
+    Check(dirResult.verdict == Verdict::Regression,
+          "Exposure EV 1 directory compare is a regression (locked EV 0)");
+
+    const std::filesystem::path swappedFinalDir = hdrDirs / "swapped-final";
+    WriteHdrMetadata(swappedFinalDir, MakeHdrIdentityJson());
+    Check(WriteRlHdrFile(swappedFinalDir / kHdrFileName, kWidth, kHeight, lockedZeros.data(), error),
+          "Write swapped-final candidate dump");
+    Check(WriteFixtureFinalPng(swappedFinalDir / kFinalFileName, kWidth, kHeight, true),
+          "Write R/B-swapped candidate final.png");
+    dirResult = CompareHdrDirectories(swappedFinalDir, refDir);
+    Check(dirResult.verdict == Verdict::Regression, "R/B-swapped final.png is a regression");
+    Check(!dirResult.finalPassedTight && dirResult.finalTight.mismatchCount > 0,
+          "R/B-swapped final.png fails the tight 8-bit rule");
 
     WriteHdrMetadata(metaDir, MakeHdrIdentityJson(kStep, "1280", "false", "", kHdrFileName,
                                                  kDiagnosticFileName, 1));
@@ -423,6 +537,7 @@ int RunHdrCompareTests()
         Check(self.verdict == Verdict::Pass, "Comparing approved HDR goldens to themselves passes");
         Check(self.adapterMatches, "HDR self-compare records matching adapter metadata");
         Check(self.identityMatches, "HDR self-compare records matching scene/camera/resolution/frame");
+        Check(self.finalPassedTight, "HDR self-compare passes the final.png tight 8-bit rule");
     }
 
     return g_failures;

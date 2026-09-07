@@ -1,15 +1,17 @@
-# HDR Regression (S2.4)
+# HDR Regression (S2.4 + S3.2 LDR golden)
 
-Status: **frozen after S2.4**
+Status: **frozen after S2.4; extended by S3.2** (final.png + schema v2)
 
-This file is the Stage 2 HDR capture and comparison contract. Lighting spaces,
-BRDF, and `HDRSceneColor` live in [`lighting.md`](lighting.md). GBuffer PNG
-regression stays in [`image-regression.md`](image-regression.md) and is not
-extended by this step.
+This file is the Stage 2/3 HDR and tone-mapped capture and comparison contract.
+Lighting spaces, BRDF, and `HDRSceneColor` live in [`lighting.md`](lighting.md).
+The tone curve and output transfer live in [`postprocess.md`](postprocess.md).
+GBuffer PNG regression stays in [`image-regression.md`](image-regression.md) and
+is not extended by this step.
 
 S2.4 exists to catch math, color-space, and integration regressions in the
-deferred HDR target. It does not introduce a tone mapper, change default present,
-or replace S1.6.
+deferred HDR target. S3.2 extends the same capture bundle with a
+display-referred LDR oracle (`final.png`) without touching the pre-exposure
+`.rlhdr` oracle.
 
 ## 1. Locked capture
 
@@ -33,7 +35,9 @@ Same identity as S1.6. Default lights. Not `--verify-lights`.
 4. Is orthogonal to `--gbuffer-view`, `--lighting-view`, `--dump-gbuffer-views`, and `--dump-lighting-views`.
 5. Readbacks `HDRSceneColor` after DeferredLighting on frame 1. It does not blit through `SaveTextureToFile`.
 6. Scans RGB for non-finite values. On any NaN or Inf: log, exit non-zero, **write no files** under `<dir>`.
-7. On success, writes the three files in section 2.
+7. On success, writes the four files in section 2. `final.png` is rendered by
+   `PostProcessPass` into a `SRGBA8_UNORM` dump target — the same hardware OETF
+   path as the presented back buffer — at the capture's `--exposure-ev`.
 
 HDR tests should use `--headless --lock-camera --output-hdr <dir>`.
 
@@ -47,9 +51,10 @@ On a successful capture, `<dir>` contains exactly:
 
 | File | Role | Compared |
 |---|---|---|
-| `hdr-scene-color.rlhdr` | Scene-referred `HDRSceneColor` dump | Yes |
+| `hdr-scene-color.rlhdr` | Scene-referred `HDRSceneColor` dump (pre-exposure) | Yes, float rule (section 6) |
 | `lighting-lit.png` | Reinhard `hdr/(1+hdr)` thumbnail | No |
-| `hdr-capture-metadata.json` | Identity, adapter, lighting, finite counts, optional GPU time | Identity only |
+| `final.png` | S3.2 tone-mapped final through the hardware OETF, at the capture's exposureEV | Yes, 8-bit rule (section 6) |
+| `hdr-capture-metadata.json` | Identity, adapter, lighting, exposure, finite counts, optional GPU time | Identity only |
 
 Committed references live in
 [`tests/golden-hdr/cesium-milk-truck/s04-default/1280x720/`](../tests/golden-hdr/cesium-milk-truck/s04-default/1280x720/)
@@ -145,6 +150,25 @@ table, `tests/hdr_compare.h`, and
 Portability is used only when `adapterName` or `driverVersion` differ from the
 approved metadata.
 
+### 6a. final.png 8-bit rule (S3.2)
+
+`final.png` is compared with the S1.6 GBuffer-golden mechanism
+(`tests/image_compare.cpp` `LoadPngRgb` / `CompareRgb` / `StatsPass`) and the
+S1.6 default tolerances; the two same-adapter approval captures were mae 0 /
+mismatch 0, so the defaults are also the floor. A pixel mismatches when any RGB
+channel differs by more than `pixelThreshold` (0-255 units). `maxAbs` is
+reported, not gated.
+
+| Band | pixelThreshold | maxMae | maxMismatchFraction |
+|---|---:|---:|---:|
+| Tight | 2 | 1.0 | 0.002 |
+| Portability | 8 | 8.0 | 0.05 |
+
+The overall verdict combines both oracles: **pass** requires the `.rlhdr` float
+rule **and** the `final.png` tight rule; the portability band applies only when
+the adapter/driver differs and **both** oracles stay within it. Identity fields
+(section 7) still fail as **regression** even when all pixels match.
+
 The C++ rules in the HDR compare sources are authoritative once implemented.
 A human `manifest.json` under the golden directory mirrors them.
 
@@ -152,11 +176,11 @@ Pixel failures:
 
 | Situation | Verdict | Exit code |
 |---|---|---:|
-| Within tight tolerances | `pass` | 0 |
-| Adapter/driver match the approved golden and the dump exceeds tight tolerances | `regression` | 1 |
-| Adapter/driver differ, tight fails, portability band still holds | `portability` | 2 |
-| Adapter/driver differ and the dump exceeds the portability band | `regression` | 1 |
-| IO / missing files / invalid `.rlhdr` / invalid JSON / non-finite RGB | `error` | 3 |
+| Both `.rlhdr` and `final.png` within tight tolerances | `pass` | 0 |
+| Adapter/driver match the approved golden and either oracle exceeds tight tolerances | `regression` | 1 |
+| Adapter/driver differ, tight fails, both oracles still within the portability band | `portability` | 2 |
+| Adapter/driver differ and either oracle exceeds the portability band | `regression` | 1 |
+| IO / missing files / invalid `.rlhdr` / missing `final.png` / invalid JSON / non-finite RGB | `error` | 3 |
 
 `--mode hdr --channel-swap` swaps candidate R and B after decode and must
 **fail** (non-zero). `golden-hdr.ps1 Verify` requires that failure.
@@ -168,43 +192,51 @@ is an **error**.
 ## 7. Metadata
 
 `--output-hdr` writes `hdr-capture-metadata.json`. Schema
-`renderlab-hdr-capture-metadata/v1`. Do not reuse `capture-metadata.json` or
-schema `renderlab-capture-metadata/v1`.
+`renderlab-hdr-capture-metadata/v2` (S3.2; v1 is rejected). Do not reuse
+`capture-metadata.json` or schema `renderlab-capture-metadata/v1`.
 
 Required fields and types:
 
 | Key | Type | Locked value / rule |
 |---|---|---|
-| `schema` | string | `renderlab-hdr-capture-metadata/v1` |
-| `step` | string | `S2.4` |
+| `schema` | string | `renderlab-hdr-capture-metadata/v2` |
+| `step` | string | `S3.2` |
 | `sceneId` | string | `cesium-milk-truck` |
 | `cameraPreset` | string | `s04-default` |
 | `width` | uint32 | `1280` |
 | `height` | uint32 | `720` |
 | `frameIndex` | uint32 | `1` |
 | `sampleCount` | uint32 | `1` |
+| `exposureEV` | number (finite) | `0` for the approved golden; a JSON number, integer or real token both accepted |
 | `verifyLights` | bool | `false` |
 | `adapterName` | string | capturing GPU; first approved capture defines the baseline |
 | `driverVersion` | string | capturing driver |
 | `hdrFileName` | string | `hdr-scene-color.rlhdr` |
 | `diagnosticFileName` | string | `lighting-lit.png` |
+| `finalFileName` | string | `final.png` |
 | `nonFiniteCount` | uint32 | `0` on any file that was actually written |
 | `pixelCount` | uint32 | `921600` |
 | `timestampValid` | bool | best-effort; `false` on frame 1 is allowed |
 | `deferredLightingGpuTimeMilliseconds` | number | present only when `timestampValid` is true; JSON floating number, not an integer token requirement |
+| `postProcessGpuTimeMilliseconds` | number | optional, same rule as the deferred field; ignored by compare |
 
 The comparator parses the complete document with jsoncpp. Trailing garbage,
 wrong types, and integral reals such as `1280.0` for uint32 fields are
-**error**. Empty metadata is not a wildcard.
+**error**. Empty metadata is not a wildcard. A non-finite `exposureEV` token
+(e.g. an overflow to Inf) is an **error**.
 
 Present identity fields that do not match the locked scene, camera, resolution,
-frame, schema, sample count, or `verifyLights: false` are a **regression**, even
-if the `.rlhdr` pixels match.
+frame, schema, sample count, `verifyLights: false`, `exposureEV: 0`, or
+`finalFileName: final.png` are a **regression**, even if all pixels match —
+this is how a capture taken at a non-zero `--exposure-ev` fails the golden
+cleanly.
 
 GPU time does not fail the capture when the timer query is still pending.
 
-The approved HDR adapter is the machine that mints the first committed
-`.rlhdr`. It is not required to match the S1.6 GBuffer golden adapter.
+The approved HDR adapter is the machine that mints the committed `.rlhdr`. The
+S2.4 baseline (RTX 5060 Laptop GPU) and the S3.2 re-baseline (RTX 4070 SUPER)
+produced a bit-identical `.rlhdr`, so the deferred path is deterministic across
+those two adapters. It is not required to match the S1.6 GBuffer golden adapter.
 
 ## 8. Weak lighting oracle
 
@@ -237,11 +269,14 @@ CPU tests. GPU HDR comparison is a documented local/self-hosted test.
 
 ## 10. PIX evidence (not automated)
 
-One local PIX frame is recorded in [`PROGRESS.md`](PROGRESS.md) when S2.4
-completes. Confirm under `Render`:
+One local PIX frame is recorded in [`PROGRESS.md`](PROGRESS.md) when S2.4 and
+S3.2 complete. Confirm under `Render`:
 
 - `GBuffer` reads as already documented (clears + opaque draws)
 - `DeferredLighting` reads the declared GBuffer SRVs and writes `HDRSceneColor`
+- S3.2: `PostProcess` follows `DeferredLighting`, reads `HDRSceneColor`, and
+  writes the back buffer (or the `PostProcessColor` dump target during a
+  capture); `UI` / `ImGUI` then draw on top of the tone-mapped output
 - No extra lighting UAVs, no second HDR target, no compute lighting
 
 This is evidence, not a CI gate.
@@ -249,9 +284,11 @@ This is evidence, not a CI gate.
 ## 11. Explicit exclusions
 
 - Extending `--output` or `scripts\golden.ps1`
-- TinyEXR, DDS, PFM, or PNG as the HDR oracle
+- TinyEXR, DDS, PFM, or PNG as the **HDR** oracle (`final.png` is the separate
+  display-referred LDR oracle, not a replacement for `.rlhdr`)
 - Comparing `lighting-lit.png`
 - C++ `EvaluateDirectBRDF` / dual-maintained GGX
 - A second golden for `--verify-lights` or `fallback-boxes`
-- Tone mapping, exposure, or changing default present (S3)
+- Automatic exposure, bloom, color grading, FXAA/TAA, HDR display output
+  (postprocess.md section 8)
 - Requiring a valid DeferredLighting timestamp on frame 1
