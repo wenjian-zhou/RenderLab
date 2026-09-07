@@ -16,6 +16,11 @@ Implementations:
 - Constant buffer: [`../src/shaders/postprocess_cb.h`](../src/shaders/postprocess_cb.h)
 - Independent float64 reference and test-vector generator:
   [`../scripts/postprocess_reference.py`](../scripts/postprocess_reference.py)
+- End-to-end GPU-vs-reference verifier (review tool):
+  [`../scripts/verify_final_vs_reference.py`](../scripts/verify_final_vs_reference.py)
+  evaluates the reference chain on a captured `.rlhdr`, replicates the D3D12
+  `R8G8B8A8_UNORM_SRGB` store conversion, and compares against the capture's
+  `final.png` pixel-by-pixel
 - Tests: [`../tests/test_postprocess_contract.cpp`](../tests/test_postprocess_contract.cpp)
 
 ## 1. Scope
