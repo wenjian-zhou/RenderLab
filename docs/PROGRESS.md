@@ -819,7 +819,7 @@ Next step: S3.1 - Freeze exposure and output-transfer policy
 Step: S3.1
 State: Complete
 Date: 2026-09-07
-Commit: (pending)
+Commit: cf471109a48d5548fe7a37d34589e91e38f0b872
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
