@@ -239,7 +239,9 @@ S3.3 resolves that pending state inside the dump itself: `DumpHdrCapture`
 calls `waitForIdle` and then resolves every in-flight timer query **before**
 the dump's own re-renders begin new queries. A fresh capture therefore
 normally carries all three GPU-time fields with `timestampValid: true`,
-measured on the captured frame (frame 1). The committed golden predates S3.3
+measured on the captured frame (frame 1). Each timing field is gated on its
+own pass's resolved flag; the JSON `timestampValid` field still mirrors the
+DeferredLighting pass (S3.2 definition). The committed golden predates S3.3
 and legitimately omits the fields; the comparator ignores them either way, so
 no re-baseline was needed. Schema stays `v2` and `step` stays `S3.2`.
 

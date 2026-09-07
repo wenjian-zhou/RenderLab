@@ -18,7 +18,7 @@ GBuffer encoding in [`g-buffer.md`](g-buffer.md); the lighting contract in
 ## 1. Reference set (the oracle)
 
 The committed goldens **are** the M1 reference; nothing new was minted for the
-freeze (S3.2 re-baselined the HDR golden days before the freeze and is fresh).
+freeze (S3.2 re-baselined the HDR golden on the same day; it is fresh).
 
 | Layer | Files | Contract |
 |---|---|---|
@@ -77,9 +77,13 @@ Frame (CPU)
   Present                standalone GPU range + DXGI present
 ```
 
-The three timed passes run unconditionally; only the present-source branch is
-exclusive. If `HDRSceneColor` or the framebuffer color is missing the frame
-falls back to GBufferDebug-only or a clear (`RenderScene` error paths).
+In the normal path all three timed passes execute; only the present-source
+branch is exclusive. `GBufferPass::Execute` is called every frame and
+validates its own outputs; `DeferredLightingPass::Execute` additionally
+requires valid `m_gbuffer` and `m_hdrSceneColor` targets, and the
+present-source pass requires a framebuffer color. When the HDR target is
+missing, a selected GBuffer view still presents via `GBufferDebug`; any other
+present source falls back to a clear (`RenderScene` guard paths).
 
 ## 4. Persistent resources and states
 
@@ -124,7 +128,8 @@ the values live.
 passes **before** the dump's own re-renders begin new queries, so
 `hdr-capture-metadata.json` records the captured frame's (frame 1) per-pass
 times — `gBufferGpuTimeMilliseconds`, `deferredLightingGpuTimeMilliseconds`,
-`postProcessGpuTimeMilliseconds`. The comparator ignores these fields; they
+`postProcessGpuTimeMilliseconds` (when a view flag replaces the Final present
+during a capture, the post field is omitted — that pass never ran). The comparator ignores these fields; they
 are evidence, not a gate ([`hdr-regression.md`](hdr-regression.md) §7).
 
 ## 6. Freeze policy

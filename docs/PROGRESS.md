@@ -1011,6 +1011,21 @@ State: Complete
 Date: 2026-09-07
 Commit: ea109490a79f64003cc3c5c17eccd8c82ebb45a8
 M1: annotated git tag `m1` on this commit, pushed to origin (RDG migration reference)
+Follow-up review: (pending)
+  (freeze audit: git diff-boundary check — frozen math, goldens, comparator,
+  scripts, and CI are zero-diff vs 95eb0c5 and the golden tree is
+  byte-identical to the S3.2 commit; NVRHI D3D12 timer semantics verified
+  from source — the query fence is assigned at command-list submission and
+  waitForIdle waits every queue to its last submitted instance, so the
+  post-idle polls provably resolve, with a WaitForFence fallback inside
+  getTimerQueryTime; frame-1 timing semantics traced through both poll
+  cases; PIX subtree counts confirmed — 4 clears + 5 draws under GBuffer,
+  fullscreen draws under DeferredLighting/PostProcess, 3 ResolveQueryData;
+  supplementary runs: RenderLabGoldenCompare --mode hdr fresh-vs-fresh
+  (both sides with timing fields) pass, verify_final_vs_reference.py on a
+  fresh capture pass; docs precision fixes: pass-guard wording in
+  m1-reference.md, same-day re-baseline note, per-pass timing-field gating
+  in hdr-regression.md)
 Commands:
   cmake --build --preset windows-debug --parallel
   cmake --build --preset windows-release --parallel
