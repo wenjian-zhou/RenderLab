@@ -6,11 +6,14 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-07): **S0.1 through S3.3 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-08): **S0.1 through S4.1 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
-[`docs/m1-reference.md`](docs/m1-reference.md)). The next step is **S4.1 — Define
-handles, descriptors, and pass declarations**. The S3.1 exposure and output-transfer
+[`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
+model (typed handles with version and graph identity, neutral descriptors, pass
+declarations) lives in `src/rdg` with zero NVRHI dependencies
+([`docs/rdg.md`](docs/rdg.md), [`docs/adr/ADR-003-rdg-boundary.md`](docs/adr/ADR-003-rdg-boundary.md)).
+The next step is **S4.2 — Implement resource versioning**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -448,6 +451,12 @@ migration reference.
 
 Stage 4 is GPU-independent by design. Build and test graph semantics before letting the graph touch
 NVRHI resources.
+
+S4.1 is complete: the logical model — typed handles with version and graph identity,
+neutral descriptors, pass records with explicit read/write declarations, collected
+error categories — lives in `src/rdg` (`RenderLabRdg`, zero NVRHI dependencies;
+[`docs/rdg.md`](docs/rdg.md), [`docs/adr/ADR-003-rdg-boundary.md`](docs/adr/ADR-003-rdg-boundary.md)).
+Next is S4.2.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

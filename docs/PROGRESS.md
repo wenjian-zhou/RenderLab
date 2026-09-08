@@ -5,16 +5,18 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.1 - Define handles, descriptors, and pass declarations**
-- State: **S3.3 complete; Stage 3 gate / M1 satisfied** — the manual pipeline
-  is frozen as the RDG migration reference (tag `m1`)
-- Last updated: 2026-09-07
+- Active step: **S4.2 - Implement resource versioning**
+- State: **S4.1 complete; Stage 4 in progress** — the RDG logical model (typed
+  handles, descriptors, pass declarations) lives in `src/rdg` with zero NVRHI
+  dependencies (docs/rdg.md, ADR-003)
+- Last updated: 2026-09-08
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
+- Stage 4: **S4.1 complete**; S4.2 through S4.6 pending
 
 ## Completed Repository Reset
 
@@ -1095,6 +1097,76 @@ Known limitations:
     DataContractTests)
   S1.6 --output / capture-metadata.json is untouched (GBuffer-only contract)
 Next step: S4.1 - Define handles, descriptors, and pass declarations
+```
+
+### S4.1 - Define handles, descriptors, and pass declarations
+
+```text
+Step: S4.1
+State: Complete
+Date: 2026-09-08
+Commit: (pending)
+Design: grill round confirmed all nine open decisions (handle fields incl.
+  graphId, forgeable POD handles, PassBuilder declaration surface, neutral
+  Format enum, PassFlags subset, import/export semantics, collected-error
+  reporting, module/test placement, M1-shaped graph test)
+Commands:
+  git log --oneline -8; git status; git describe --tags
+    (baseline: 9e3f4da clean on main; m1-4-g9e3f4da)
+  cmake --build --preset windows-debug --parallel      (0 errors, 0 warnings)
+  cmake --build --preset windows-release --parallel     (0 errors, 0 warnings)
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  powershell -NoProfile -File scripts\smoke.ps1
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+Automated tests: RenderLabDataContractTests Debug and Release (0 failures);
+  87 new RDG checks (34 handle + 53 declaration):
+  graph-id uniqueness and reserved 0; minted-handle fields; null / cross-graph /
+  stale-version (forged mismatch and out-of-range index) / type-mismatch (both
+  directions) rejected deterministically at every entry point (read, write,
+  export); validation order null > owning graph > kind > version; per-call
+  structured errors naming pass and resource; verbatim declaration recording
+  (duplicates and same-resource read+write); texture/buffer descriptor
+  validation (name, extent, format, element size/count); import/export flag
+  semantics including idempotent export and export of a null handle; desc
+  operator== pooling-key shape; addPass name/flag validation with invalid
+  PassBuilder no-ops; per-declaration rejection isolation; interleaved
+  PassBuilder targeting; M1-shaped graph (6 resources, 3 passes, BackBuffer
+  imported + exported) constructed with no GPU device
+GPU validation/capture: not applicable (pure CPU model step); smoke.ps1
+  errors=0 and both golden verifies pass unchanged, proving zero renderer
+  impact on the frozen M1 pipeline
+Artifacts:
+  src/rdg/Handle.h
+  src/rdg/ResourceDesc.h
+  src/rdg/Pass.h
+  src/rdg/GraphBuilder.h
+  src/rdg/GraphBuilder.cpp  (new module: renderlab::rdg, RenderLabRdg static
+    lib linked against ProjectOptions only - zero NVRHI/Donut)
+  src/CMakeLists.txt  (RenderLabRdg target)
+  tests/test_rdg_handles.cpp
+  tests/test_rdg_declarations.cpp
+  tests/CMakeLists.txt  (suites added to RenderLabDataContractTests + Rdg link)
+  tests/test_renderer_data.cpp  (suite registration)
+  docs/rdg.md  (new: model and boundary contract)
+  docs/adr/ADR-003-rdg-boundary.md  (new: RDG boundary decision)
+  README.md
+  IMPLEMENTATION_PLAN.md
+  docs/PROGRESS.md
+Known limitations:
+  No S4.1 production path bumps a version (writes minting new handles is
+    S4.2), so the stale category is exercised with forged handles by design;
+    runtime type-mismatch likewise only fires on forged handles (honest use
+    is caught at compile time by the distinct handle types)
+  Exporting a never-written resource is not validated yet (needs S4.2
+    produce tracking); export currently only sets the flag
+  Declarations are recorded verbatim: no dedup, no same-pass read/write
+    conflict rules (S4.2/S4.3 semantics)
+  No render-side consumer exists; the renderer stays untouched (M1 freeze)
+    until S5.4
+  PassBuilder read/write return void (no chaining); revisit if a need appears
+Next step: S4.2 - Implement resource versioning
 ```
 
 Selected baseline:

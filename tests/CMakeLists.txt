@@ -10,6 +10,8 @@ add_executable(
     test_hdr_compare.cpp
     test_postprocess_contract.cpp
     test_postprocess_pass.cpp
+    test_rdg_handles.cpp
+    test_rdg_declarations.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp
@@ -20,6 +22,7 @@ target_link_libraries(
     RenderLabDataContractTests
     PRIVATE
         RenderLab::Renderer
+        RenderLab::Rdg
         stb
         jsoncpp_static
 )

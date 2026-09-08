@@ -24,8 +24,14 @@ the tone-mapped `final.png` LDR oracle against committed goldens. **S3.3 /
 M1 is complete**: the manual raster pipeline is frozen as the RDG migration
 reference (tag `m1`, recorded in [docs/m1-reference.md](docs/m1-reference.md));
 `--output-hdr` metadata now exports the captured frame's per-pass GPU times.
-RDG and DXR are not implemented. The next executable task is
-**S4.1: define RDG handles, descriptors, and pass declarations**.
+**S4.1 is complete**: the RDG logical model — typed handles carrying version and
+graph identity, neutral resource descriptors, pass records with explicit read/write
+declarations and collected error categories — lives in `src/rdg`
+(`RenderLabRdg`, zero NVRHI/Donut dependencies; [docs/rdg.md](docs/rdg.md),
+[ADR-003](docs/adr/ADR-003-rdg-boundary.md)), and `RenderLabDataContractTests`
+constructs graphs, including an M1-shaped one, with no GPU device. RDG execution
+and DXR are not implemented. The next executable task is
+**S4.2: implement resource versioning**.
 
 ## Plans
 
@@ -46,8 +52,10 @@ RDG and DXR are not implemented. The next executable task is
 - [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic), implemented by the S3.2 pass.
 - [M1 reference](docs/m1-reference.md) records the frozen manual pipeline: reference set, pass order, resource states, and re-verification.
 - [UE RDG survey](docs/ue-rdg-survey.md) records how UE 5.8.1's render dependency graph is designed (handles, passes, culling, validation) with file:line citations; it feeds the Stage 4 mini-RDG design and ADR-003.
+- [RDG model and boundary](docs/rdg.md) is the Stage 4 mini-RDG logical model: handles, descriptors, pass declarations, and the failure taxonomy.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
+- [ADR-003](docs/adr/ADR-003-rdg-boundary.md) records the RDG boundary decision: Stage 4 is a pure logical CPU model with zero NVRHI dependencies.
 
 If these documents disagree, `IMPLEMENTATION_PLAN.md` controls execution scope, while
 `NEW_PLAN.md` controls high-level intent.

@@ -42,6 +42,40 @@ donut_compile_shaders(
         cstdint
 )
 
+set(RENDERLAB_RDG_SOURCES
+    rdg/Handle.h
+    rdg/ResourceDesc.h
+    rdg/Pass.h
+    rdg/GraphBuilder.h
+    rdg/GraphBuilder.cpp
+)
+
+# The Stage 4 RDG compiler model is a pure logical CPU model: it must not
+# include or link Donut/NVRHI (ADR-003). ProjectOptions only.
+add_library(RenderLabRdg STATIC ${RENDERLAB_RDG_SOURCES})
+add_library(RenderLab::Rdg ALIAS RenderLabRdg)
+
+target_include_directories(RenderLabRdg PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+target_link_libraries(
+    RenderLabRdg
+    PUBLIC
+        RenderLab::ProjectOptions
+)
+
+set_target_properties(
+    RenderLabRdg
+    PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+        FOLDER RenderLab
+)
+
+if(MSVC)
+    target_compile_options(RenderLabRdg PRIVATE /wd4100)
+endif()
+
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
     renderer/LightingContract.h
