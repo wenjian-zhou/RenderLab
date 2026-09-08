@@ -45,6 +45,7 @@ RDG and DXR are not implemented. The next executable task is
 - [Lighting contract](docs/lighting.md) is the S2.1 deferred lighting interface.
 - [Post-process contract](docs/postprocess.md) is the S3.1 exposure and output-transfer policy (UE 5.8.1 Filmic), implemented by the S3.2 pass.
 - [M1 reference](docs/m1-reference.md) records the frozen manual pipeline: reference set, pass order, resource states, and re-verification.
+- [UE RDG survey](docs/ue-rdg-survey.md) records how UE 5.8.1's render dependency graph is designed (handles, passes, culling, validation) with file:line citations; it feeds the Stage 4 mini-RDG design and ADR-003.
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 
