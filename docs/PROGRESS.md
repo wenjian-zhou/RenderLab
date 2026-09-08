@@ -1105,7 +1105,7 @@ Next step: S4.1 - Define handles, descriptors, and pass declarations
 Step: S4.1
 State: Complete
 Date: 2026-09-08
-Commit: (pending)
+Commit: a4bcbcb06f4816cb6c389207361a148ae2fd8f94
 Design: grill round confirmed all nine open decisions (handle fields incl.
   graphId, forgeable POD handles, PassBuilder declaration surface, neutral
   Format enum, PassFlags subset, import/export semantics, collected-error
