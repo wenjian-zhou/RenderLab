@@ -33,6 +33,57 @@ static const uint MaterialFlag_HasNormalTexture     = 1u << 2;
 static const uint MaterialFlag_HasOcclusionTexture  = 1u << 3;
 static const uint MaterialFlag_TwoSided             = 1u << 4;
 
+#ifdef __cplusplus
+// C++-only typed aliases for the flag constants above. HLSL has no scoped
+// enums and keeps using the prefixed names; the alias bits are identical
+// (docs/code-style.md enum rules).
+enum class RendererViewFlag : uint32_t
+{
+    None = 0,
+    Mirrored = RendererViewFlag_Mirrored
+};
+
+enum class MaterialFlag : uint32_t
+{
+    None = 0,
+    HasBaseColorTexture  = MaterialFlag_HasBaseColorTexture,
+    HasMetalRoughTexture = MaterialFlag_HasMetalRoughTexture,
+    HasNormalTexture     = MaterialFlag_HasNormalTexture,
+    HasOcclusionTexture  = MaterialFlag_HasOcclusionTexture,
+    TwoSided             = MaterialFlag_TwoSided
+};
+
+constexpr RendererViewFlag operator|(RendererViewFlag a, RendererViewFlag b)
+{
+    return static_cast<RendererViewFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+constexpr RendererViewFlag operator&(RendererViewFlag a, RendererViewFlag b)
+{
+    return static_cast<RendererViewFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr MaterialFlag operator|(MaterialFlag a, MaterialFlag b)
+{
+    return static_cast<MaterialFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+constexpr MaterialFlag operator&(MaterialFlag a, MaterialFlag b)
+{
+    return static_cast<MaterialFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr RendererViewFlag& operator|=(RendererViewFlag& a, RendererViewFlag b)
+{
+    return a = a | b;
+}
+
+constexpr MaterialFlag& operator|=(MaterialFlag& a, MaterialFlag b)
+{
+    return a = a | b;
+}
+#endif
+
 // sizeof = 16. Offset table: frameIndex @ 0.
 struct FrameConstants
 {

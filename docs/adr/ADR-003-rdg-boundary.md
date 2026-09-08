@@ -112,7 +112,7 @@ Selected: a small neutral owned enum covering the frozen M1 formats
 Diverged. Errors are collected with a category and the involved pass and
 resource names — the shape S4.6's compile error categories need — so a
 rejected declaration is data a test can assert on. The Debug trap is
-explicit (`assertNoErrors()`), not implicit in every call.
+explicit (`AssertNoErrors()`), not implicit in every call.
 
 ### 8. Skipped wholesale
 

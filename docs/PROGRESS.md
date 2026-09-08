@@ -17,6 +17,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1 complete**; S4.2 through S4.6 pending
+- Style pass 2026-09-08 (between S4.1 and S4.2): adopted
+  [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
+  (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
+  material flags moved to the shared-header two-layer `enum class` pattern
+  (identical bits; HLSL keeps the prefixed constants)
 
 ## Completed Repository Reset
 

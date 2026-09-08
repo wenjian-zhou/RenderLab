@@ -87,9 +87,9 @@ A resource enters the graph three ways, mirroring UE's semantics (survey
 
 | API | Flag | Meaning |
 |---|---|---|
-| `createTexture` / `createBuffer` | — | graph-internal logical allocation |
-| `importTexture` / `importBuffer` | `Imported` | physical counterpart exists outside the graph (UE `bExternal`); in S4.1 the descriptor describes it for S5.1 mapping |
-| `exportTexture` / `exportBuffer` | `Exported` | output leaves the graph (UE `bExtracted`); sets the flag only |
+| `CreateTexture` / `CreateBuffer` | — | graph-internal logical allocation |
+| `ImportTexture` / `ImportBuffer` | `Imported` | physical counterpart exists outside the graph (UE `bExternal`); in S4.1 the descriptor describes it for S5.1 mapping |
+| `ExportTexture` / `ExportBuffer` | `Exported` | output leaves the graph (UE `bExtracted`); sets the flag only |
 
 `imported || exported` marks a cull root; S4.4 consumes that rule. Exporting
 is idempotent, and an imported resource may also be written (back-buffer
@@ -97,14 +97,14 @@ precedent); the full legality semantics arrive with S4.2 produce tracking.
 
 ## 4. Passes and declarations
 
-`GraphBuilder::addPass(name, flags)` appends a `PassRecord` and returns a
+`GraphBuilder::AddPass(name, flags)` appends a `PassRecord` and returns a
 `PassBuilder` — a value holding the builder and the pass index (never a
 pointer into storage that can reallocate). Declarations hang off the pass:
 
 ```cpp
-auto pass = builder.addPass("DeferredLighting", PassFlags::Raster);
-pass.read(gbufferA);
-pass.write(hdrSceneColor);
+auto pass = builder.AddPass("DeferredLighting", PassFlags::Raster);
+pass.Read(gbufferA);
+pass.Write(hdrSceneColor);
 ```
 
 - `PassFlags` starts as `None | Raster | NeverCull`. `Raster` is
@@ -121,11 +121,11 @@ pass.write(hdrSceneColor);
 
 ## 5. Failure taxonomy
 
-Every mutating call (`create*`, `import*`, `addPass`, `read`, `write`,
-`export*`) validates immediately. A rejected call records one or more
+Every mutating call (`Create*`, `Import*`, `AddPass`, `Read`, `Write`,
+`Export*`) validates immediately. A rejected call records one or more
 structured errors and leaves the graph unchanged by that call. Errors are
 **collected, never thrown**, and never implicitly asserted — the explicit
-`GraphBuilder::assertNoErrors()` is the Debug trap for non-test callers.
+`GraphBuilder::AssertNoErrors()` is the Debug trap for non-test callers.
 S4.6 builds the compile error categories on this structure.
 
 ```text
@@ -161,8 +161,8 @@ forged handles — which is exactly what the failure-matrix tests construct.
 
 - `GraphBuilder` is stack-scoped and non-copyable; pass `PassBuilder`
   values around freely, but they are valid only while their builder lives.
-- A `PassBuilder` returned from a rejected `addPass` is invalid
-  (`isValid() == false`); its `read`/`write` are no-ops, so a partially
+- A `PassBuilder` returned from a rejected `AddPass` is invalid
+  (`IsValid() == false`); its `Read`/`Write` are no-ops, so a partially
   rejected graph remains explorable.
 - Declarations may be interleaved across passes; each `PassBuilder` keeps
   targeting its own pass record.

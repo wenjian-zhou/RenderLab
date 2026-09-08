@@ -175,7 +175,7 @@ int main()
     Check(Near(metalParams.baseColorFactor, metalColor, 1e-6f), "Metal baseColor is linear factor");
     Check(Near(metalParams.roughness, 0.2f, 1e-6f), "Metal roughness is perceptual 0.2");
     Check(Near(metalParams.metallic, 1.f, 1e-6f), "Metal metallic is 1");
-    Check((dielectricParams.flags & MaterialFlag_HasBaseColorTexture) == 0, "Missing baseColorTexture uses factor only");
+    Check((dielectricParams.flags & static_cast<uint32_t>(MaterialFlag::HasBaseColorTexture)) == 0, "Missing baseColorTexture uses factor only");
     Check(dielectricParams.occlusionStrength == 0.f, "Missing occlusionTexture forces strength 0 so AO = 1");
     Check(unused[0].fallback == FallbackTextureKind::WhiteOpaque, "Optional baseColor uses white fallback");
     Check(unused[2].fallback == FallbackTextureKind::FlatNormal, "Optional normal uses flat-normal fallback");
@@ -251,7 +251,7 @@ int main()
     viewDesc.viewportHeight = 720.f;
     const ViewConstants view = MakeViewConstants(viewDesc);
     Check(IsMirroredView(viewDesc.worldToView), "FirstPersonCamera world-to-view linear determinant is negative");
-    Check((view.flags & RendererViewFlag_Mirrored) != 0, "View flags record mirrored / frontCounterClockwise");
+    Check((view.flags & static_cast<uint32_t>(RendererViewFlag::Mirrored)) != 0, "View flags record mirrored / frontCounterClockwise");
     Check(Near(view.zNear, 0.1f, 1e-6f), "zNear is 0.1");
     Check(Near(view.verticalFovRadians, radians(45.f), 1e-6f), "FOV 45 deg is converted to radians");
     const float expectedYScale = 1.f / std::tan(0.5f * radians(45.f));

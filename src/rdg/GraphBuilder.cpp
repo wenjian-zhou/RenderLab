@@ -32,35 +32,35 @@ namespace renderlab::rdg
     {
     }
 
-    void PassBuilder::read(TextureHandle handle)
+    void PassBuilder::Read(TextureHandle handle)
     {
         if (m_builder != nullptr)
         {
-            m_builder->declareAccess(m_passIndex, handle, AccessMode::Read);
+            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Read);
         }
     }
 
-    void PassBuilder::read(BufferHandle handle)
+    void PassBuilder::Read(BufferHandle handle)
     {
         if (m_builder != nullptr)
         {
-            m_builder->declareAccess(m_passIndex, handle, AccessMode::Read);
+            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Read);
         }
     }
 
-    void PassBuilder::write(TextureHandle handle)
+    void PassBuilder::Write(TextureHandle handle)
     {
         if (m_builder != nullptr)
         {
-            m_builder->declareAccess(m_passIndex, handle, AccessMode::Write);
+            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Write);
         }
     }
 
-    void PassBuilder::write(BufferHandle handle)
+    void PassBuilder::Write(BufferHandle handle)
     {
         if (m_builder != nullptr)
         {
-            m_builder->declareAccess(m_passIndex, handle, AccessMode::Write);
+            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Write);
         }
     }
 
@@ -69,29 +69,29 @@ namespace renderlab::rdg
     {
     }
 
-    TextureHandle GraphBuilder::createTexture(const TextureDesc& desc)
+    TextureHandle GraphBuilder::CreateTexture(const TextureDesc& desc)
     {
-        return createTextureResource(desc, false);
+        return CreateTextureResource(desc, false);
     }
 
-    TextureHandle GraphBuilder::importTexture(const TextureDesc& desc)
+    TextureHandle GraphBuilder::ImportTexture(const TextureDesc& desc)
     {
-        return createTextureResource(desc, true);
+        return CreateTextureResource(desc, true);
     }
 
-    BufferHandle GraphBuilder::createBuffer(const BufferDesc& desc)
+    BufferHandle GraphBuilder::CreateBuffer(const BufferDesc& desc)
     {
-        return createBufferResource(desc, false);
+        return CreateBufferResource(desc, false);
     }
 
-    BufferHandle GraphBuilder::importBuffer(const BufferDesc& desc)
+    BufferHandle GraphBuilder::ImportBuffer(const BufferDesc& desc)
     {
-        return createBufferResource(desc, true);
+        return CreateBufferResource(desc, true);
     }
 
-    TextureHandle GraphBuilder::createTextureResource(const TextureDesc& desc, bool imported)
+    TextureHandle GraphBuilder::CreateTextureResource(const TextureDesc& desc, bool imported)
     {
-        if (!validateTextureDesc(desc))
+        if (!ValidateTextureDesc(desc))
         {
             return TextureHandle{};
         }
@@ -101,9 +101,9 @@ namespace renderlab::rdg
         return TextureHandle{index, 0u, m_graphId};
     }
 
-    BufferHandle GraphBuilder::createBufferResource(const BufferDesc& desc, bool imported)
+    BufferHandle GraphBuilder::CreateBufferResource(const BufferDesc& desc, bool imported)
     {
-        if (!validateBufferDesc(desc))
+        if (!ValidateBufferDesc(desc))
         {
             return BufferHandle{};
         }
@@ -113,12 +113,12 @@ namespace renderlab::rdg
         return BufferHandle{index, 0u, m_graphId};
     }
 
-    bool GraphBuilder::validateTextureDesc(const TextureDesc& desc)
+    bool GraphBuilder::ValidateTextureDesc(const TextureDesc& desc)
     {
         bool valid = true;
         if (desc.name.empty())
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidName,
                 "texture descriptor name must not be empty",
                 Error::kNoPass,
@@ -128,7 +128,7 @@ namespace renderlab::rdg
         }
         if (desc.width == 0 || desc.height == 0)
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidDescriptor,
                 std::format(
                     "texture '{}' has width {} and height {}; both must be nonzero",
@@ -142,7 +142,7 @@ namespace renderlab::rdg
         }
         if (desc.format == Format::Unknown)
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidDescriptor,
                 std::format("texture '{}' has Format::Unknown", desc.name),
                 Error::kNoPass,
@@ -153,12 +153,12 @@ namespace renderlab::rdg
         return valid;
     }
 
-    bool GraphBuilder::validateBufferDesc(const BufferDesc& desc)
+    bool GraphBuilder::ValidateBufferDesc(const BufferDesc& desc)
     {
         bool valid = true;
         if (desc.name.empty())
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidName,
                 "buffer descriptor name must not be empty",
                 Error::kNoPass,
@@ -168,7 +168,7 @@ namespace renderlab::rdg
         }
         if (desc.bytesPerElement == 0)
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidDescriptor,
                 std::format("buffer '{}' has bytesPerElement 0", desc.name),
                 Error::kNoPass,
@@ -178,7 +178,7 @@ namespace renderlab::rdg
         }
         if (desc.numElements == 0)
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidDescriptor,
                 std::format("buffer '{}' has numElements 0", desc.name),
                 Error::kNoPass,
@@ -189,18 +189,18 @@ namespace renderlab::rdg
         return valid;
     }
 
-    PassBuilder GraphBuilder::addPass(std::string_view name, PassFlags flags)
+    PassBuilder GraphBuilder::AddPass(std::string_view name, PassFlags flags)
     {
         bool valid = true;
         if (name.empty())
         {
-            addError(ErrorCategory::InvalidName, "pass name must not be empty", Error::kNoPass, "", "");
+            AddError(ErrorCategory::InvalidName, "pass name must not be empty", Error::kNoPass, "", "");
             valid = false;
         }
         const uint32_t unknownBits = static_cast<uint32_t>(flags) & ~kKnownPassFlagBits;
         if (unknownBits != 0)
         {
-            addError(
+            AddError(
                 ErrorCategory::InvalidPassFlags,
                 std::format("pass '{}' has unknown flag bits 0x{:X}", name, unknownBits),
                 Error::kNoPass,
@@ -217,19 +217,19 @@ namespace renderlab::rdg
         return PassBuilder{*this, index};
     }
 
-    void GraphBuilder::declareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode)
+    void GraphBuilder::DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode)
     {
-        declareAccessInternal(
+        DeclareAccessInternal(
             passIndex, ResourceKind::Texture, handle.index, handle.version, handle.graphId, mode);
     }
 
-    void GraphBuilder::declareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode)
+    void GraphBuilder::DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode)
     {
-        declareAccessInternal(
+        DeclareAccessInternal(
             passIndex, ResourceKind::Buffer, handle.index, handle.version, handle.graphId, mode);
     }
 
-    void GraphBuilder::declareAccessInternal(
+    void GraphBuilder::DeclareAccessInternal(
         uint32_t passIndex,
         ResourceKind kind,
         uint32_t index,
@@ -238,36 +238,36 @@ namespace renderlab::rdg
         AccessMode mode)
     {
         assert(passIndex < m_passes.size());
-        const ResourceRecord* record = resolveHandle(
+        const ResourceRecord* record = ResolveHandle(
             kind, index, version, graphId, passIndex, m_passes[passIndex].name, ToString(mode));
         if (record == nullptr)
         {
-            return; // rejected; resolveHandle recorded the error
+            return; // rejected; ResolveHandle recorded the error
         }
         m_passes[passIndex].accesses.push_back(ResourceAccess{kind, index, version, mode});
     }
 
-    void GraphBuilder::exportTexture(TextureHandle handle)
+    void GraphBuilder::ExportTexture(TextureHandle handle)
     {
-        exportResource(ResourceKind::Texture, handle.index, handle.version, handle.graphId);
+        ExportResource(ResourceKind::Texture, handle.index, handle.version, handle.graphId);
     }
 
-    void GraphBuilder::exportBuffer(BufferHandle handle)
+    void GraphBuilder::ExportBuffer(BufferHandle handle)
     {
-        exportResource(ResourceKind::Buffer, handle.index, handle.version, handle.graphId);
+        ExportResource(ResourceKind::Buffer, handle.index, handle.version, handle.graphId);
     }
 
-    void GraphBuilder::exportResource(ResourceKind kind, uint32_t index, uint32_t version, uint32_t graphId)
+    void GraphBuilder::ExportResource(ResourceKind kind, uint32_t index, uint32_t version, uint32_t graphId)
     {
         const ResourceRecord* record =
-            resolveHandle(kind, index, version, graphId, Error::kNoPass, "", "export declaration");
+            ResolveHandle(kind, index, version, graphId, Error::kNoPass, "", "export declaration");
         if (record != nullptr)
         {
             m_resources[index].exported = true;
         }
     }
 
-    const ResourceRecord* GraphBuilder::resolveHandle(
+    const ResourceRecord* GraphBuilder::ResolveHandle(
         ResourceKind kind,
         uint32_t index,
         uint32_t version,
@@ -282,7 +282,7 @@ namespace renderlab::rdg
             passName.empty() ? std::string(operation) : std::format("{} on pass '{}'", operation, passName);
         if (index == kNullHandleIndex)
         {
-            addError(
+            AddError(
                 ErrorCategory::NullHandle,
                 std::format("null {} handle in {}", ToString(kind), context),
                 passIndex,
@@ -292,7 +292,7 @@ namespace renderlab::rdg
         }
         if (graphId != m_graphId)
         {
-            addError(
+            AddError(
                 ErrorCategory::ForeignGraph,
                 std::format(
                     "{} handle (index {}, version {}) in {} belongs to graph {}, not this graph {}",
@@ -309,7 +309,7 @@ namespace renderlab::rdg
         }
         if (index >= m_resources.size())
         {
-            addError(
+            AddError(
                 ErrorCategory::StaleVersion,
                 std::format(
                     "{} handle index {} in {} is out of range (this graph has {} resources)",
@@ -325,7 +325,7 @@ namespace renderlab::rdg
         const ResourceRecord& record = m_resources[index];
         if (record.kind != kind)
         {
-            addError(
+            AddError(
                 ErrorCategory::TypeMismatch,
                 std::format(
                     "{} handle in {} targets resource '{}' (index {}), which is a {}",
@@ -341,7 +341,7 @@ namespace renderlab::rdg
         }
         if (version != record.currentVersion)
         {
-            addError(
+            AddError(
                 ErrorCategory::StaleVersion,
                 std::format(
                     "{} handle version {} in {} does not match current version {} of resource '{}'",
@@ -358,24 +358,24 @@ namespace renderlab::rdg
         return &record;
     }
 
-    void GraphBuilder::assertNoErrors() const
+    void GraphBuilder::AssertNoErrors() const
     {
         assert(m_errors.empty() && "GraphBuilder recorded RDG declaration errors");
     }
 
-    const PassRecord& GraphBuilder::pass(uint32_t passIndex) const
+    const PassRecord& GraphBuilder::GetPass(uint32_t passIndex) const
     {
         assert(passIndex < m_passes.size());
         return m_passes[passIndex];
     }
 
-    const ResourceRecord& GraphBuilder::resource(uint32_t resourceIndex) const
+    const ResourceRecord& GraphBuilder::GetResource(uint32_t resourceIndex) const
     {
         assert(resourceIndex < m_resources.size());
         return m_resources[resourceIndex];
     }
 
-    void GraphBuilder::addError(
+    void GraphBuilder::AddError(
         ErrorCategory category,
         std::string message,
         uint32_t passIndex,

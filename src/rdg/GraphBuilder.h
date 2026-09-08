@@ -53,18 +53,18 @@ namespace renderlab::rdg
 
     class GraphBuilder;
 
-    // Declaration scope for one pass, returned by GraphBuilder::addPass. A
+    // Declaration scope for one pass, returned by GraphBuilder::AddPass. A
     // default PassBuilder is invalid; read/write on it are no-ops.
     class PassBuilder
     {
     public:
-        bool isValid() const { return m_builder != nullptr; }
-        uint32_t passIndex() const { return m_passIndex; }
+        bool IsValid() const { return m_builder != nullptr; }
+        uint32_t PassIndex() const { return m_passIndex; }
 
-        void read(TextureHandle handle);
-        void read(BufferHandle handle);
-        void write(TextureHandle handle);
-        void write(BufferHandle handle);
+        void Read(TextureHandle handle);
+        void Read(BufferHandle handle);
+        void Write(TextureHandle handle);
+        void Write(BufferHandle handle);
 
     private:
         friend class GraphBuilder;
@@ -80,7 +80,7 @@ namespace renderlab::rdg
     // records, explicit read/write declarations. No execution, no
     // compilation, no NVRHI. Errors are collected, never thrown: a rejected
     // call records Error(s) and leaves the graph unchanged by that call;
-    // assertNoErrors() is the explicit Debug trap for non-test callers.
+    // AssertNoErrors() is the explicit Debug trap for non-test callers.
     class GraphBuilder
     {
     public:
@@ -89,45 +89,45 @@ namespace renderlab::rdg
         GraphBuilder(const GraphBuilder&) = delete;
         GraphBuilder& operator=(const GraphBuilder&) = delete;
 
-        uint32_t graphId() const { return m_graphId; }
+        uint32_t GetGraphId() const { return m_graphId; }
 
-        TextureHandle createTexture(const TextureDesc& desc);
-        BufferHandle createBuffer(const BufferDesc& desc);
-        TextureHandle importTexture(const TextureDesc& desc);
-        BufferHandle importBuffer(const BufferDesc& desc);
+        TextureHandle CreateTexture(const TextureDesc& desc);
+        BufferHandle CreateBuffer(const BufferDesc& desc);
+        TextureHandle ImportTexture(const TextureDesc& desc);
+        BufferHandle ImportBuffer(const BufferDesc& desc);
 
-        PassBuilder addPass(std::string_view name, PassFlags flags);
+        PassBuilder AddPass(std::string_view name, PassFlags flags);
 
-        void exportTexture(TextureHandle handle);
-        void exportBuffer(BufferHandle handle);
+        void ExportTexture(TextureHandle handle);
+        void ExportBuffer(BufferHandle handle);
 
-        std::span<const Error> errors() const { return m_errors; }
-        void assertNoErrors() const;
+        std::span<const Error> GetErrors() const { return m_errors; }
+        void AssertNoErrors() const;
 
-        size_t passCount() const { return m_passes.size(); }
-        const PassRecord& pass(uint32_t passIndex) const;
-        size_t resourceCount() const { return m_resources.size(); }
-        const ResourceRecord& resource(uint32_t resourceIndex) const;
+        size_t GetPassCount() const { return m_passes.size(); }
+        const PassRecord& GetPass(uint32_t passIndex) const;
+        size_t GetResourceCount() const { return m_resources.size(); }
+        const ResourceRecord& GetResource(uint32_t resourceIndex) const;
 
     private:
         friend class PassBuilder;
 
-        TextureHandle createTextureResource(const TextureDesc& desc, bool imported);
-        BufferHandle createBufferResource(const BufferDesc& desc, bool imported);
-        bool validateTextureDesc(const TextureDesc& desc);
-        bool validateBufferDesc(const BufferDesc& desc);
+        TextureHandle CreateTextureResource(const TextureDesc& desc, bool imported);
+        BufferHandle CreateBufferResource(const BufferDesc& desc, bool imported);
+        bool ValidateTextureDesc(const TextureDesc& desc);
+        bool ValidateBufferDesc(const BufferDesc& desc);
 
-        void declareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode);
-        void declareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode);
-        void declareAccessInternal(
+        void DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode);
+        void DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode);
+        void DeclareAccessInternal(
             uint32_t passIndex,
             ResourceKind kind,
             uint32_t index,
             uint32_t version,
             uint32_t graphId,
             AccessMode mode);
-        void exportResource(ResourceKind kind, uint32_t index, uint32_t version, uint32_t graphId);
-        const ResourceRecord* resolveHandle(
+        void ExportResource(ResourceKind kind, uint32_t index, uint32_t version, uint32_t graphId);
+        const ResourceRecord* ResolveHandle(
             ResourceKind kind,
             uint32_t index,
             uint32_t version,
@@ -135,7 +135,7 @@ namespace renderlab::rdg
             uint32_t passIndex,
             const std::string& passName,
             const char* operation);
-        void addError(
+        void AddError(
             ErrorCategory category,
             std::string message,
             uint32_t passIndex,

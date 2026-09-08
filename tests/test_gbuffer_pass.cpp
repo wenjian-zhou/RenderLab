@@ -53,7 +53,7 @@ int RunGBufferPassContractTests()
     Check(depth.depthWriteEnable, "Depth write is enabled");
     Check(depth.depthFunc == nvrhi::ComparisonFunc::GreaterOrEqual, "Reversed-Z uses GreaterOrEqual");
 
-    Check((RendererViewFlag_Mirrored & 1u) == 1u, "View mirrored flag is bit 0 for frontCounterClockwise");
+    Check((static_cast<uint32_t>(RendererViewFlag::Mirrored) & 1u) == 1u, "View mirrored flag is bit 0 for frontCounterClockwise");
     Check(kGBufferFormats[0].debugName == std::string("GBufferA"), "Pass still writes frozen GBufferA");
     Check(kGBufferFormats[1].debugName == std::string("GBufferB"), "Pass still writes frozen GBufferB");
     Check(kGBufferFormats[2].debugName == std::string("GBufferC"), "Pass still writes frozen GBufferC");

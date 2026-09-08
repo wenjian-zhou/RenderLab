@@ -1560,7 +1560,7 @@ namespace renderlab
             m_options.lockCamera ? "true" : "false");
         log::info(
             "View constants: mirrored=%s fov=%.5f rad zNear=%.3f viewport=%.0fx%.0f",
-            (m_viewConstants.flags & RendererViewFlag_Mirrored) ? "true" : "false",
+            (m_viewConstants.flags & static_cast<uint32_t>(RendererViewFlag::Mirrored)) ? "true" : "false",
             m_viewConstants.verticalFovRadians,
             m_viewConstants.zNear,
             m_viewConstants.viewportSize.x,

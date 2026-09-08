@@ -53,6 +53,7 @@ and DXR are not implemented. The next executable task is
 - [M1 reference](docs/m1-reference.md) records the frozen manual pipeline: reference set, pass order, resource states, and re-verification.
 - [UE RDG survey](docs/ue-rdg-survey.md) records how UE 5.8.1's render dependency graph is designed (handles, passes, culling, validation) with file:line citations; it feeds the Stage 4 mini-RDG design and ADR-003.
 - [RDG model and boundary](docs/rdg.md) is the Stage 4 mini-RDG logical model: handles, descriptors, pass declarations, and the failure taxonomy.
+- [Code style](docs/code-style.md) is the engine-side naming, enum, and formatting convention (PascalCase types/methods, camelCase variables, lowercase namespaces, the two-layer shared-header enum pattern).
 - [ADR-001](docs/adr/ADR-001-donut-nvrhi-baseline.md) explains the baseline and acquisition method.
 - [ADR-002](docs/adr/ADR-002-gbuffer-layout.md) records the GBuffer format decision.
 - [ADR-003](docs/adr/ADR-003-rdg-boundary.md) records the RDG boundary decision: Stage 4 is a pure logical CPU model with zero NVRHI dependencies.

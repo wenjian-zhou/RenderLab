@@ -546,7 +546,7 @@ namespace renderlab
             return;
         }
 
-        const bool mirrored = (view.flags & RendererViewFlag_Mirrored) != 0;
+        const bool mirrored = (view.flags & static_cast<uint32_t>(RendererViewFlag::Mirrored)) != 0;
         const nvrhi::Viewport viewport(
             view.viewportOrigin.x,
             view.viewportOrigin.x + view.viewportSize.x,

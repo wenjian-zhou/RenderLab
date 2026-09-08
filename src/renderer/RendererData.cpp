@@ -205,7 +205,8 @@ namespace renderlab
         constants.viewportSize = dm::float2(width, height);
         constants.viewportSizeInv = 1.f / constants.viewportSize;
         constants.zNear = desc.zNear;
-        constants.flags = IsMirroredView(desc.worldToView) ? RendererViewFlag_Mirrored : 0u;
+        constants.flags =
+            static_cast<uint32_t>(IsMirroredView(desc.worldToView) ? RendererViewFlag::Mirrored : RendererViewFlag::None);
         constants.cameraPosition = float4(desc.cameraPosition, 1.f);
         constants.verticalFovRadians = fovRadians;
         constants.aspectRatio = aspect;
@@ -303,21 +304,22 @@ namespace renderlab
             FallbackTextureKind::OcclusionWhite,
             kFallbackOcclusionRgba);
 
+        MaterialFlag materialFlags = MaterialFlag::None;
         if (baseColor.fallback == FallbackTextureKind::Scene)
         {
-            params.flags |= MaterialFlag_HasBaseColorTexture;
+            materialFlags |= MaterialFlag::HasBaseColorTexture;
         }
         if (metalRough.fallback == FallbackTextureKind::Scene)
         {
-            params.flags |= MaterialFlag_HasMetalRoughTexture;
+            materialFlags |= MaterialFlag::HasMetalRoughTexture;
         }
         if (normal.fallback == FallbackTextureKind::Scene)
         {
-            params.flags |= MaterialFlag_HasNormalTexture;
+            materialFlags |= MaterialFlag::HasNormalTexture;
         }
         if (occlusion.fallback == FallbackTextureKind::Scene)
         {
-            params.flags |= MaterialFlag_HasOcclusionTexture;
+            materialFlags |= MaterialFlag::HasOcclusionTexture;
         }
         else
         {
@@ -325,8 +327,9 @@ namespace renderlab
         }
         if (material.doubleSided)
         {
-            params.flags |= MaterialFlag_TwoSided;
+            materialFlags |= MaterialFlag::TwoSided;
         }
+        params.flags |= static_cast<uint32_t>(materialFlags);
 
         return true;
     }
@@ -338,13 +341,13 @@ namespace renderlab
         sample.roughness = params.roughness;
         sample.metallic = params.metallic;
         sample.ao = 1.f;
-        if ((params.flags & MaterialFlag_HasOcclusionTexture) != 0)
+        if ((params.flags & static_cast<uint32_t>(MaterialFlag::HasOcclusionTexture)) != 0)
         {
             sample.ao = dm::lerp(1.f, 1.f, params.occlusionStrength);
         }
         sample.materialFlags = params.flags;
         sample.gbufferFlags = kGBufferFlagShadingValid;
-        if ((params.flags & MaterialFlag_TwoSided) != 0)
+        if ((params.flags & static_cast<uint32_t>(MaterialFlag::TwoSided)) != 0)
         {
             sample.gbufferFlags |= kGBufferFlagTwoSided;
         }

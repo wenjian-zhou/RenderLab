@@ -27,6 +27,11 @@ namespace renderlab::rdg
         return static_cast<PassFlags>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
     }
 
+    constexpr PassFlags& operator|=(PassFlags& a, PassFlags b)
+    {
+        return a = a | b;
+    }
+
     enum class AccessMode : uint8_t
     {
         Read,

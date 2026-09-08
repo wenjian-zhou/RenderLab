@@ -25,7 +25,7 @@ namespace renderlab::rdg
         uint32_t version = 0;
         uint32_t graphId = 0;
 
-        bool isNull() const { return index == kNullHandleIndex; }
+        bool IsNull() const { return index == kNullHandleIndex; }
 
         friend bool operator==(const TextureHandle&, const TextureHandle&) = default;
     };
@@ -36,7 +36,7 @@ namespace renderlab::rdg
         uint32_t version = 0;
         uint32_t graphId = 0;
 
-        bool isNull() const { return index == kNullHandleIndex; }
+        bool IsNull() const { return index == kNullHandleIndex; }
 
         friend bool operator==(const BufferHandle&, const BufferHandle&) = default;
     };
