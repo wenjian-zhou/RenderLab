@@ -23,6 +23,10 @@ namespace renderlab::rdg
         InvalidName,
         InvalidDescriptor,
         InvalidPassFlags,
+        ReadBeforeProduce,
+        DuplicateWrite,
+        SupersededUse,
+        IncompatibleAccess,
     };
 
     // One rejected declaration or creation call. S4.6 turns these into the
@@ -39,8 +43,13 @@ namespace renderlab::rdg
         std::string resourceName;
     };
 
-    // Builder-side registry entry. Indices are never recycled within a
-    // graph, so version is the only staleness axis (S4.2 bumps it on writes).
+    struct ResourceVersionRecord
+    {
+        uint32_t producerPass = Error::kNoPass;
+        std::vector<uint32_t> readerPasses;
+        bool produced = false;
+    };
+
     struct ResourceRecord
     {
         std::string name;
@@ -49,6 +58,7 @@ namespace renderlab::rdg
         bool imported = false; // UE bExternal
         bool exported = false; // UE bExtracted; imported || exported is a cull root (S4.4)
         uint32_t currentVersion = 0;
+        std::vector<ResourceVersionRecord> versions;
     };
 
     class GraphBuilder;
@@ -63,8 +73,8 @@ namespace renderlab::rdg
 
         void Read(TextureHandle handle);
         void Read(BufferHandle handle);
-        void Write(TextureHandle handle);
-        void Write(BufferHandle handle);
+        TextureHandle Write(TextureHandle handle);
+        BufferHandle Write(BufferHandle handle);
 
     private:
         friend class GraphBuilder;
@@ -76,11 +86,6 @@ namespace renderlab::rdg
         uint32_t m_passIndex = 0;
     };
 
-    // S4.1 declaration surface of the mini RDG: logical resources, pass
-    // records, explicit read/write declarations. No execution, no
-    // compilation, no NVRHI. Errors are collected, never thrown: a rejected
-    // call records Error(s) and leaves the graph unchanged by that call;
-    // AssertNoErrors() is the explicit Debug trap for non-test callers.
     class GraphBuilder
     {
     public:
@@ -108,6 +113,7 @@ namespace renderlab::rdg
         const PassRecord& GetPass(uint32_t passIndex) const;
         size_t GetResourceCount() const { return m_resources.size(); }
         const ResourceRecord& GetResource(uint32_t resourceIndex) const;
+        std::string DumpVersions() const;
 
     private:
         friend class PassBuilder;
@@ -117,9 +123,11 @@ namespace renderlab::rdg
         bool ValidateTextureDesc(const TextureDesc& desc);
         bool ValidateBufferDesc(const BufferDesc& desc);
 
-        void DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode);
-        void DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode);
-        void DeclareAccessInternal(
+        bool DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode);
+        bool DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode);
+        TextureHandle DeclareWrite(uint32_t passIndex, TextureHandle handle);
+        BufferHandle DeclareWrite(uint32_t passIndex, BufferHandle handle);
+        bool DeclareAccessInternal(
             uint32_t passIndex,
             ResourceKind kind,
             uint32_t index,

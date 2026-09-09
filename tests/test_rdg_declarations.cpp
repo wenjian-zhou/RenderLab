@@ -141,7 +141,7 @@ int RunRdgDeclarationTests()
     // Declaration scopes stay bound to their own pass when interleaved
     {
         GraphBuilder builder;
-        TextureHandle texture = builder.CreateTexture({"T", 8, 8, Format::Rgba8Unorm});
+        TextureHandle texture = builder.ImportTexture({"T", 8, 8, Format::Rgba8Unorm});
         auto first = builder.AddPass("First", PassFlags::Raster);
         auto second = builder.AddPass("Second", PassFlags::NeverCull);
         first.Read(texture);
@@ -167,21 +167,21 @@ int RunRdgDeclarationTests()
         TextureHandle hdrSceneColor = builder.CreateTexture({"HDRSceneColor", 1280, 720, Format::Rgba16Float});
 
         auto gbufferPass = builder.AddPass("GBuffer", PassFlags::Raster);
-        gbufferPass.Write(gbufferA);
-        gbufferPass.Write(gbufferB);
-        gbufferPass.Write(gbufferC);
-        gbufferPass.Write(gbufferDepth);
+        gbufferA = gbufferPass.Write(gbufferA);
+        gbufferB = gbufferPass.Write(gbufferB);
+        gbufferC = gbufferPass.Write(gbufferC);
+        gbufferDepth = gbufferPass.Write(gbufferDepth);
 
         auto deferredPass = builder.AddPass("DeferredLighting", PassFlags::Raster);
         deferredPass.Read(gbufferA);
         deferredPass.Read(gbufferB);
         deferredPass.Read(gbufferC);
         deferredPass.Read(gbufferDepth);
-        deferredPass.Write(hdrSceneColor);
+        hdrSceneColor = deferredPass.Write(hdrSceneColor);
 
         auto postPass = builder.AddPass("PostProcess", PassFlags::Raster);
         postPass.Read(hdrSceneColor);
-        postPass.Write(backBuffer);
+        backBuffer = postPass.Write(backBuffer);
 
         builder.ExportTexture(backBuffer);
 

@@ -1,5 +1,6 @@
 #include "GraphBuilder.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <format>
@@ -48,20 +49,14 @@ namespace renderlab::rdg
         }
     }
 
-    void PassBuilder::Write(TextureHandle handle)
+    TextureHandle PassBuilder::Write(TextureHandle handle)
     {
-        if (m_builder != nullptr)
-        {
-            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Write);
-        }
+        return m_builder != nullptr ? m_builder->DeclareWrite(m_passIndex, handle) : TextureHandle{};
     }
 
-    void PassBuilder::Write(BufferHandle handle)
+    BufferHandle PassBuilder::Write(BufferHandle handle)
     {
-        if (m_builder != nullptr)
-        {
-            m_builder->DeclareAccess(m_passIndex, handle, AccessMode::Write);
-        }
+        return m_builder != nullptr ? m_builder->DeclareWrite(m_passIndex, handle) : BufferHandle{};
     }
 
     GraphBuilder::GraphBuilder()
@@ -96,8 +91,8 @@ namespace renderlab::rdg
             return TextureHandle{};
         }
         const uint32_t index = static_cast<uint32_t>(m_resources.size());
-        m_resources.push_back(
-            ResourceRecord{desc.name, ResourceKind::Texture, desc, imported, false, 0u});
+        m_resources.push_back(ResourceRecord{
+            desc.name, ResourceKind::Texture, desc, imported, false, 0u, {{Error::kNoPass, {}, imported}}});
         return TextureHandle{index, 0u, m_graphId};
     }
 
@@ -108,8 +103,8 @@ namespace renderlab::rdg
             return BufferHandle{};
         }
         const uint32_t index = static_cast<uint32_t>(m_resources.size());
-        m_resources.push_back(
-            ResourceRecord{desc.name, ResourceKind::Buffer, desc, imported, false, 0u});
+        m_resources.push_back(ResourceRecord{
+            desc.name, ResourceKind::Buffer, desc, imported, false, 0u, {{Error::kNoPass, {}, imported}}});
         return BufferHandle{index, 0u, m_graphId};
     }
 
@@ -217,19 +212,37 @@ namespace renderlab::rdg
         return PassBuilder{*this, index};
     }
 
-    void GraphBuilder::DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode)
+    bool GraphBuilder::DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode)
     {
-        DeclareAccessInternal(
+        return DeclareAccessInternal(
             passIndex, ResourceKind::Texture, handle.index, handle.version, handle.graphId, mode);
     }
 
-    void GraphBuilder::DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode)
+    bool GraphBuilder::DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode)
     {
-        DeclareAccessInternal(
+        return DeclareAccessInternal(
             passIndex, ResourceKind::Buffer, handle.index, handle.version, handle.graphId, mode);
     }
 
-    void GraphBuilder::DeclareAccessInternal(
+    TextureHandle GraphBuilder::DeclareWrite(uint32_t passIndex, TextureHandle handle)
+    {
+        if (!DeclareAccess(passIndex, handle, AccessMode::Write))
+        {
+            return TextureHandle{};
+        }
+        return TextureHandle{handle.index, m_resources[handle.index].currentVersion, m_graphId};
+    }
+
+    BufferHandle GraphBuilder::DeclareWrite(uint32_t passIndex, BufferHandle handle)
+    {
+        if (!DeclareAccess(passIndex, handle, AccessMode::Write))
+        {
+            return BufferHandle{};
+        }
+        return BufferHandle{handle.index, m_resources[handle.index].currentVersion, m_graphId};
+    }
+
+    bool GraphBuilder::DeclareAccessInternal(
         uint32_t passIndex,
         ResourceKind kind,
         uint32_t index,
@@ -242,9 +255,62 @@ namespace renderlab::rdg
             kind, index, version, graphId, passIndex, m_passes[passIndex].name, ToString(mode));
         if (record == nullptr)
         {
-            return; // rejected; ResolveHandle recorded the error
+            return false;
+        }
+        for (const ResourceAccess& access : m_passes[passIndex].accesses)
+        {
+            if (access.index == index && (access.mode == AccessMode::Write || mode == AccessMode::Write))
+            {
+                AddError(
+                    access.mode == mode ? ErrorCategory::DuplicateWrite : ErrorCategory::IncompatibleAccess,
+                    std::format(
+                        "conflicting {} of resource '{}' version {} in pass '{}'",
+                        ToString(mode),
+                        record->name,
+                        version,
+                        m_passes[passIndex].name),
+                    passIndex,
+                    m_passes[passIndex].name,
+                    record->name);
+                return false;
+            }
+        }
+        if (mode == AccessMode::Read && !record->versions[version].produced)
+        {
+            AddError(
+                ErrorCategory::ReadBeforeProduce,
+                std::format("read of unproduced resource '{}' version {}", record->name, version),
+                passIndex,
+                m_passes[passIndex].name,
+                record->name);
+            return false;
+        }
+        if (mode == AccessMode::Write && record->exported)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format("write would supersede exported resource '{}' version {}", record->name, version),
+                passIndex,
+                m_passes[passIndex].name,
+                record->name);
+            return false;
+        }
+        ResourceRecord& resource = m_resources[index];
+        if (mode == AccessMode::Write)
+        {
+            resource.versions.push_back(ResourceVersionRecord{passIndex, {}, true});
+            version = ++resource.currentVersion;
+        }
+        else
+        {
+            auto& readers = resource.versions[version].readerPasses;
+            if (std::find(readers.begin(), readers.end(), passIndex) == readers.end())
+            {
+                readers.push_back(passIndex);
+            }
         }
         m_passes[passIndex].accesses.push_back(ResourceAccess{kind, index, version, mode});
+        return true;
     }
 
     void GraphBuilder::ExportTexture(TextureHandle handle)
@@ -263,6 +329,16 @@ namespace renderlab::rdg
             ResolveHandle(kind, index, version, graphId, Error::kNoPass, "", "export declaration");
         if (record != nullptr)
         {
+            if (!record->versions[version].produced)
+            {
+                AddError(
+                    ErrorCategory::ReadBeforeProduce,
+                    std::format("export of unproduced resource '{}' version {}", record->name, version),
+                    Error::kNoPass,
+                    "",
+                    record->name);
+                return;
+            }
             m_resources[index].exported = true;
         }
     }
@@ -342,7 +418,7 @@ namespace renderlab::rdg
         if (version != record.currentVersion)
         {
             AddError(
-                ErrorCategory::StaleVersion,
+                version < record.currentVersion ? ErrorCategory::SupersededUse : ErrorCategory::StaleVersion,
                 std::format(
                     "{} handle version {} in {} does not match current version {} of resource '{}'",
                     ToString(kind),
@@ -361,6 +437,41 @@ namespace renderlab::rdg
     void GraphBuilder::AssertNoErrors() const
     {
         assert(m_errors.empty() && "GraphBuilder recorded RDG declaration errors");
+    }
+
+    std::string GraphBuilder::DumpVersions() const
+    {
+        std::string dump;
+        for (uint32_t index = 0; index < m_resources.size(); ++index)
+        {
+            const ResourceRecord& resource = m_resources[index];
+            for (uint32_t version = 0; version < resource.versions.size(); ++version)
+            {
+                const auto& record = resource.versions[version];
+                dump += std::format("{} {} '{}' v{} producer=", ToString(resource.kind), index, resource.name, version);
+                if (record.producerPass != Error::kNoPass)
+                {
+                    dump += std::format("{} '{}'", record.producerPass, m_passes[record.producerPass].name);
+                }
+                else
+                {
+                    dump += record.produced ? "external" : "unproduced";
+                }
+                dump += " readers=[";
+                for (size_t reader = 0; reader < record.readerPasses.size(); ++reader)
+                {
+                    const uint32_t passIndex = record.readerPasses[reader];
+                    dump += std::format("{}{} '{}'", reader == 0 ? "" : ", ", passIndex, m_passes[passIndex].name);
+                }
+                dump += "]";
+                if (version == resource.currentVersion)
+                {
+                    dump += resource.exported ? " current exported" : " current";
+                }
+                dump += "\n";
+            }
+        }
+        return dump;
     }
 
     const PassRecord& GraphBuilder::GetPass(uint32_t passIndex) const

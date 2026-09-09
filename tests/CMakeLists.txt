@@ -12,6 +12,7 @@ add_executable(
     test_postprocess_pass.cpp
     test_rdg_handles.cpp
     test_rdg_declarations.cpp
+    test_rdg_versioning.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp

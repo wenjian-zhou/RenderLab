@@ -5,18 +5,19 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.2 - Implement resource versioning**
-- State: **S4.1 complete; Stage 4 in progress** — the RDG logical model (typed
-  handles, descriptors, pass declarations) lives in `src/rdg` with zero NVRHI
+- Active step: **S4.3 - Build dependencies and topologically sort**
+- State: **S4.2 complete; Stage 4 in progress** — the RDG logical model (typed
+  handles, descriptors, pass declarations, resource versions and provenance)
+  lives in `src/rdg` with zero NVRHI
   dependencies (docs/rdg.md, ADR-003)
-- Last updated: 2026-09-08
+- Last updated: 2026-09-09
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
-- Stage 4: **S4.1 complete**; S4.2 through S4.6 pending
+- Stage 4: **S4.1-S4.2 complete**; S4.3 through S4.6 pending
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1172,6 +1173,46 @@ Known limitations:
     until S5.4
   PassBuilder read/write return void (no chaining); revisit if a need appears
 Next step: S4.2 - Implement resource versioning
+```
+
+### S4.2 - Implement resource versioning
+
+```text
+Step: S4.2
+State: Complete
+Date: 2026-09-09
+Commit: working tree (pending commit)
+Commands:
+  cmake --build out/build/windows-vs2022 --config Debug --parallel
+  cmake --build out/build/windows-vs2022 --config Release --parallel
+  ctest --test-dir out/build/windows-vs2022 -C Debug --output-on-failure
+  ctest --test-dir out/build/windows-vs2022 -C Release --output-on-failure
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  git diff --check
+Review: both standard parallel builds succeeded; CTest 1/1 passed in each
+  configuration, and both test executables reported 0 failures. Earlier
+  attempts encountered an MSBuild Path/PATH environment collision; the final
+  review builds above completed without an environment workaround.
+Automated tests: 0 failures in both configurations; 94 new S4.2 checks cover
+  textures and buffers, initial/imported versions, single writer, read chain,
+  multiple readers, WAW, read-before-produce, imported input, exported output,
+  stale/superseded handles, duplicate/incompatible writes, rejection isolation,
+  and deterministic provenance dump text.
+GPU validation/capture: not applicable; RenderLabRdg remains CPU-only.
+Artifacts:
+  src/rdg/GraphBuilder.h / GraphBuilder.cpp
+  src/rdg/Handle.h / Pass.h
+  tests/test_rdg_versioning.cpp and updated RDG suites
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp (suite registration)
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg-dataflow.md (mark S4.1 diagrams as a historical snapshot)
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: dependency ordering, culling, lifetimes, and full compile
+  diagnostics remain S4.3-S4.6; renderer/M1 code remains untouched. Writes are
+  whole-resource overwrites; same-pass read/modify/write is unsupported.
+  Declaration-time validity does not guarantee a schedulable graph (S4.3).
+Next step: S4.3 - Build dependencies and topologically sort
 ```
 
 Selected baseline:

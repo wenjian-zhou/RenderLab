@@ -1,7 +1,9 @@
 # RDG S4.1 Data Flow Walkthrough
 
 Status: **reference walkthrough** — diagrams pinned to the code at commit
-`35846e2`. If `src/rdg` changes shape, re-verify this file against it.
+`35846e2`. This is a historical S4.1 snapshot, not the current S4.2 field or
+method map. S4.2 adds version records, returning Write calls, access validation,
+and a provenance dump; the current API contract is in [`rdg.md`](rdg.md).
 
 This is the picture behind [`rdg.md`](rdg.md): who owns what, how one
 declaration travels through validation into storage, and which method touches

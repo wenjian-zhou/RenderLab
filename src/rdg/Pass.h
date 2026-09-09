@@ -38,9 +38,6 @@ namespace renderlab::rdg
         Write,
     };
 
-    // One read/write declaration. S4.1 records declarations verbatim — no
-    // dedup, no conflict rules; those are S4.2/S4.3 semantics. version is
-    // the handle's version, pinned at declaration time.
     struct ResourceAccess
     {
         ResourceKind kind = ResourceKind::Texture;

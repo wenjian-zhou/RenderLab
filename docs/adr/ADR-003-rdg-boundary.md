@@ -155,3 +155,17 @@ budgeting.
 - M1 regression insurance unchanged: `smoke.ps1` errors=0;
   `golden.ps1` and `golden-hdr.ps1` `-Mode Verify -Configuration Debug`
   pass, with the channel-swap negative checks failing as expected.
+
+## S4.2 Extension (2026-09-09)
+
+The boundary is unchanged. Resource records now retain every logical version
+with its producer and unique reader passes. Internal v0 is unproduced;
+imported v0 has an external producer. Successful writes mint new handles,
+and only current handles may be used for subsequent declarations. Previously
+accepted accesses retain their version. Same-pass mixed access and duplicate
+writes are rejected; export pins the produced current version as final output.
+These whole-resource rules are specified in [`../rdg.md`](../rdg.md).
+
+The CPU-only version dump explains producer/reader provenance without RHI
+types, dependency sorting, physical resource ownership, or renderer changes.
+S4.3 will derive RAW/WAR/WAW edges from this retained history.

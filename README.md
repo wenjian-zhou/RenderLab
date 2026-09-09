@@ -29,9 +29,11 @@ graph identity, neutral resource descriptors, pass records with explicit read/wr
 declarations and collected error categories — lives in `src/rdg`
 (`RenderLabRdg`, zero NVRHI/Donut dependencies; [docs/rdg.md](docs/rdg.md),
 [ADR-003](docs/adr/ADR-003-rdg-boundary.md)), and `RenderLabDataContractTests`
-constructs graphs, including an M1-shaped one, with no GPU device. RDG execution
-and DXR are not implemented. The next executable task is
-**S4.2: implement resource versioning**.
+constructs graphs, including an M1-shaped one, with no GPU device. **S4.2 is
+complete**: writes return new logical versions, producer/reader provenance is
+retained, invalid version access is rejected, and a text dump explains consumed
+versions. RDG execution and DXR are not implemented. The next executable task is
+**S4.3: build dependencies and topologically sort**.
 
 ## Plans
 

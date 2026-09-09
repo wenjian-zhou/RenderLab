@@ -105,8 +105,6 @@ int RunRdgHandleTests()
         Check(b.GetErrors()[0].passName == "PassInB", "The cross-graph error names the declaring pass");
     }
 
-    // Stale version (forged): S4.1 has no write that bumps a version, so the
-    // mechanism is exercised with a forged mismatch.
     {
         GraphBuilder builder;
         TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
@@ -169,26 +167,25 @@ int RunRdgHandleTests()
             "Null is checked before owning graph");
     }
 
-    // Happy path: declarations are recorded verbatim
     {
         GraphBuilder builder;
-        TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
-        BufferHandle buffer = builder.CreateBuffer(MakeBufferDesc("B"));
+        TextureHandle texture = builder.ImportTexture(MakeTextureDesc("T"));
+        BufferHandle buffer = builder.ImportBuffer(MakeBufferDesc("B"));
         auto pass = builder.AddPass("P", PassFlags::Raster);
         pass.Read(texture);
-        pass.Write(texture);
-        pass.Read(texture); // duplicate: S4.1 records verbatim
+        pass.Read(texture);
         pass.Read(buffer);
         Check(builder.GetErrors().empty(), "Valid declarations record no errors");
-        Check(builder.GetPass(0).accesses.size() == 4, "Declarations are recorded verbatim, including duplicates");
+        Check(builder.GetPass(0).accesses.size() == 3, "Read declarations are recorded verbatim, including duplicates");
         const ResourceAccess& first = builder.GetPass(0).accesses[0];
         Check(
             first.kind == ResourceKind::Texture && first.index == texture.index && first.version == 0 &&
                 first.mode == AccessMode::Read,
             "An access record pins kind, index, version, and mode");
-        Check(builder.GetPass(0).accesses[1].mode == AccessMode::Write, "Read and write of the same resource both record");
+        Check(builder.GetResource(texture.index).versions[0].readerPasses.size() == 1,
+            "Duplicate declarations register the reader pass only once");
         Check(
-            builder.GetPass(0).accesses[3].kind == ResourceKind::Buffer && builder.GetPass(0).accesses[3].index == buffer.index,
+            builder.GetPass(0).accesses[2].kind == ResourceKind::Buffer && builder.GetPass(0).accesses[2].index == buffer.index,
             "A buffer access records against the same registry");
         builder.AssertNoErrors();
         Check(true, "AssertNoErrors passes on a clean builder");

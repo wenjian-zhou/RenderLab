@@ -32,6 +32,7 @@ int RunPostProcessContractTests();
 int RunPostProcessPassTests();
 int RunRdgHandleTests();
 int RunRdgDeclarationTests();
+int RunRdgVersioningTests();
 
 namespace
 {
@@ -281,6 +282,7 @@ int main()
     g_failures += RunPostProcessPassTests();
     g_failures += RunRdgHandleTests();
     g_failures += RunRdgDeclarationTests();
+    g_failures += RunRdgVersioningTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;
