@@ -12,7 +12,7 @@ what is adopted, diverged, and skipped, with `file:line` citations — lives in
 [`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
-the S4.1 code — ownership, the declaration flow, and the per-method
+the S4.2 code — version history, the declaration flow, and the per-method
 field-access matrix — is in [`rdg-dataflow.md`](rdg-dataflow.md).
 
 ## 1. Scope and boundary
