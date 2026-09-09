@@ -1181,7 +1181,7 @@ Next step: S4.2 - Implement resource versioning
 Step: S4.2
 State: Complete
 Date: 2026-09-09
-Commit: working tree (pending commit)
+Commit: b47923cf7f3d23d5038c97f5ce74eea43eb476e3
 Commands:
   cmake --build out/build/windows-vs2022 --config Debug --parallel
   cmake --build out/build/windows-vs2022 --config Release --parallel
