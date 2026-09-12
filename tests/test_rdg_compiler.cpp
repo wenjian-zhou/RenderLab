@@ -59,6 +59,7 @@ int RunRdgCompilerTests()
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         resource = producer.Write(resource);
         consumer.Read(resource);
+        graph.ExportTexture(resource);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetPassOrder()[0] == 1 &&
             result.GetPassOrder()[1] == 0,
@@ -79,6 +80,7 @@ int RunRdgCompilerTests()
         auto overwrite = graph.AddPass("Overwrite", PassFlags::Raster);
         resource = overwrite.Write(resource);
         graph.AddPass("Independent", PassFlags::Raster);
+        graph.ExportTexture(resource);
         const CompileResult result = GraphCompiler::Compile(graph);
         const auto edges = result.GetEdges();
         Check(result.IsSuccess() && edges.size() == 5, "RAW, WAR, and WAW edges are retained");
@@ -105,6 +107,8 @@ int RunRdgCompilerTests()
         second = producer.Write(second);
         consumer.Read(first);
         consumer.Read(second);
+        graph.ExportTexture(first);
+        graph.ExportTexture(second);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && result.GetEdges().size() == 1 && result.GetEdges()[0].fromPass == 0 &&
             result.GetEdges()[0].toPass == 1 && result.GetEdges()[0].reasons.size() == 2 &&

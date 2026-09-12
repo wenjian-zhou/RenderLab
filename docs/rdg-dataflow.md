@@ -1,14 +1,15 @@
 # RDG Data Flow Walkthrough
 
 Status: **current implementation walkthrough** — S4.2 declaration/versioning,
-S4.3 compilation, and S4.4 culling. The original S4.1 diagrams remain in Git
-history.
+S4.3 compilation, S4.4 culling, and S4.5 lifetimes. The original S4.1
+diagrams remain in Git history.
 
 This file explains how declarations change the CPU model and how the compiler
-turns that history into a pass order and cull set. The normative semantics
-and failure taxonomy live in [rdg.md](rdg.md); the ownership boundary lives in
-[ADR-003](adr/ADR-003-rdg-boundary.md). Method and field names below refer to
-the [source index](#8-source-index), without hard-coded line numbers.
+turns that history into a pass order, cull set, and logical lifetimes. The
+normative semantics and failure taxonomy live in [rdg.md](rdg.md); the
+ownership boundary lives in [ADR-003](adr/ADR-003-rdg-boundary.md). Method
+and field names below refer to the [source index](#8-source-index), without
+hard-coded line numbers.
 
 The Mermaid blocks render on GitHub. A local Markdown viewer needs Mermaid
 support enabled; a source editor displays the diagram code.
@@ -384,23 +385,27 @@ version mutation to `DeclareAccessInternal`.
 | Handle validation | [test_rdg_handles.cpp](../tests/test_rdg_handles.cpp): `RunRdgHandleTests` |
 | M1 construction | [test_rdg_declarations.cpp](../tests/test_rdg_declarations.cpp): `RunRdgDeclarationTests` |
 | Texture/buffer history, WAW, errors, export, dump | [test_rdg_versioning.cpp](../tests/test_rdg_versioning.cpp): `RunVersionCases` |
-| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump, culling | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `CompileOptions`, `CullReason`, `PassCullState`, `GraphCompiler::Compile`, `CompileResult::GetLivePassOrder`, `CompileResult::GetPassCullStates`, `CompileResult::Dump` |
+| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump, culling, lifetimes | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `CompileOptions`, `CullReason`, `PassCullState`, `VersionLifetime`, `ResourceLifetime`, `GraphCompiler::Compile`, `CompileResult::GetLivePassOrder`, `CompileResult::GetPassCullStates`, `CompileResult::GetVersionLifetimes`, `CompileResult::GetResourceLifetimes`, `CompileResult::Dump` |
 | Compiler cases | [test_rdg_compiler.cpp](../tests/test_rdg_compiler.cpp): `RunRdgCompilerTests` |
 | Culling cases | [test_rdg_culling.cpp](../tests/test_rdg_culling.cpp): `RunRdgCullingTests` |
+| Lifetime cases | [test_rdg_lifetimes.cpp](../tests/test_rdg_lifetimes.cpp): `RunRdgLifetimeTests` |
 
-## 9. Compile: edges, order, cycles, and culling
+## 9. Compile: edges, order, cycles, culling, and lifetimes
 
 ```mermaid
 flowchart TB
     GB["GraphBuilder records"]
     ERR{"Builder already has errors?"}
-    COPY["Copy errors; empty order, edges, cull"]
+    COPY["Copy errors; empty order, edges, cull, lifetimes"]
     EDGES["Emit RAW / WAR / WAW reasons<br/>merge and sort per pass pair"]
     KAHN["Kahn topo: ready queue is min pass index"]
     ALL{"Every pass scheduled?"}
     CULL["Mark culled; un-cull RAW/WAW closure<br/>from NeverCull and import/export writers"]
-    OK["CompileResult: full order + live order + cull reasons"]
-    CYCLE["Clear partial order<br/>DFS cycle; cull skipped"]
+    LIFE["Walk live accesses; first/last pass indices"]
+    ZERO{"Non-imported zero-use?"}
+    FAIL["Cull kept; lifetime skipped; ZeroUseAllocation"]
+    OK["CompileResult: order + live order + cull + intervals"]
+    CYCLE["Clear partial order<br/>DFS cycle; cull and lifetime skipped"]
 
     GB --> ERR
     ERR -->|"yes"| COPY
@@ -408,12 +413,17 @@ flowchart TB
     EDGES --> KAHN
     KAHN --> ALL
     ALL -->|"yes"| CULL
-    CULL --> OK
+    CULL --> LIFE
+    LIFE --> ZERO
+    ZERO -->|"yes"| FAIL
+    ZERO -->|"no"| OK
     ALL -->|"no"| CYCLE
 ```
 
 Compilation does not mutate the builder. Independent passes still enter the
 full `passOrder`. A cycle or copied declaration error never returns a partial
-order and invents no cull state. Culling walks last-producer (RAW/WAW) edges
-only. Lifetimes (S4.5) and GPU execution (Stage 5) are outside these
+order and invents no cull or lifetime state. Culling walks last-producer
+(RAW/WAW) edges only. Lifetimes walk `GetLivePassOrder()` and recorded
+accesses; imported last-use stops at last live access, exported last-use
+extends to the last live pass. GPU execution (Stage 5) is outside these
 diagrams.

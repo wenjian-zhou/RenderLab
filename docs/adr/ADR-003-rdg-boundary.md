@@ -187,5 +187,18 @@ culled; roots are `NeverCull` or a write to `imported || exported`; the
 un-cull walk follows incoming RAW and WAW last-producer edges (WAR stays a
 scheduling edge). `CompileOptions::disableCulling` is the global off switch.
 `CompileResult` exposes the full pass order, a live subsequence, and a
-stable per-pass cull reason. Lifetimes, DOT dumps, physical resources, and
-the renderer remain later steps.
+stable per-pass cull reason. DOT dumps, physical resources, and the
+renderer remain later steps.
+
+## S4.5 Extension (2026-09-12)
+
+The boundary is unchanged. Lifetimes are a post-cull logical step inside
+`GraphCompiler`: they do not allocate, touch NVRHI, or retain a
+`GraphBuilder` pointer. After a successful cull, live-pass accesses yield
+per-version and aggregated per-resource `[firstPass, lastPass]` intervals
+(pass indices, not live-slot numbers). Imported resources are live from
+graph entry through last live access; exported last-use extends through the
+last live pass. Non-imported zero-use allocations are `ZeroUseAllocation`
+compile failures with cull state kept and no partial intervals. Physical
+reuse of non-overlapping intervals remains S5.7. DOT dumps and the renderer
+remain later steps.

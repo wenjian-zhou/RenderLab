@@ -6,7 +6,7 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-12): **S0.1 through S4.4 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-12): **S0.1 through S4.5 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
 [`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
@@ -18,8 +18,11 @@ retained, invalid accesses are rejected, and a text dump explains provenance.
 **S4.3 is complete**: declarations compile into a deterministic pass DAG with
 RAW/WAR/WAW edges, min-index topological order, and named cycle diagnostics.
 **S4.4 is complete**: output-driven pass culling marks last-producer closures
-from import/export writers and `NeverCull`, with stable dump reasons. The next
-step is **S4.5 — Analyze logical lifetimes**. The S3.1 exposure and output-transfer
+from import/export writers and `NeverCull`, with stable dump reasons.
+**S4.5 is complete**: logical first/last-use intervals are computed after
+culling; imported last-use stops at last live access, exported last-use
+extends to the last live pass, and non-imported zero-use allocations fail
+compile. The next step is **S4.6 — Add compiler diagnostics and graph export**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -467,7 +470,8 @@ new handles, and declaration validation rejects unproduced and superseded use.
 S4.3 is complete: `GraphCompiler` derives RAW/WAR/WAW edges, sorts with a
 stable min-index tie-break, and reports cycles by pass and resource name.
 S4.4 is complete: output-driven culling un-culls last-producer closures from
-import/export writers and `NeverCull`. Next is S4.5.
+import/export writers and `NeverCull`. S4.5 is complete: logical lifetimes
+are first/last live-pass intervals on `CompileResult`. Next is S4.6.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

@@ -39,6 +39,7 @@ namespace renderlab::rdg
             case ErrorCategory::DuplicateWrite: return "DuplicateWrite";
             case ErrorCategory::SupersededUse: return "SupersededUse";
             case ErrorCategory::IncompatibleAccess: return "IncompatibleAccess";
+            case ErrorCategory::ZeroUseAllocation: return "ZeroUseAllocation";
             }
             return "Unknown";
         }
@@ -202,6 +203,7 @@ namespace renderlab::rdg
                 result.m_cullStates[passIndex] = {passIndex, false, CullReason::CullingDisabled};
             }
             result.m_livePassOrder = result.m_passOrder;
+            result.m_cullingApplied = true;
             return;
         }
 
@@ -274,6 +276,131 @@ namespace renderlab::rdg
                 result.m_livePassOrder.push_back(passIndex);
             }
         }
+        result.m_cullingApplied = true;
+    }
+
+    void GraphCompiler::AnalyzeLifetimes(CompileResult& result, const GraphBuilder& builder)
+    {
+        struct VersionUse
+        {
+            bool seen = false;
+            uint32_t firstSlot = 0;
+            uint32_t lastSlot = 0;
+            uint32_t firstPass = Error::kNoPass;
+            uint32_t lastPass = Error::kNoPass;
+        };
+
+        const uint32_t resourceCount = static_cast<uint32_t>(builder.GetResourceCount());
+        std::vector<std::vector<VersionUse>> uses(resourceCount);
+        for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
+        {
+            uses[resourceIndex].resize(builder.GetResource(resourceIndex).versions.size());
+        }
+
+        for (uint32_t slot = 0; slot < result.m_livePassOrder.size(); ++slot)
+        {
+            const uint32_t passIndex = result.m_livePassOrder[slot];
+            for (const ResourceAccess& access : builder.GetPass(passIndex).accesses)
+            {
+                VersionUse& use = uses[access.index][access.version];
+                if (!use.seen)
+                {
+                    use.seen = true;
+                    use.firstSlot = slot;
+                    use.firstPass = passIndex;
+                }
+                use.lastSlot = slot;
+                use.lastPass = passIndex;
+            }
+        }
+
+        const uint32_t firstLivePass =
+            result.m_livePassOrder.empty() ? Error::kNoPass : result.m_livePassOrder.front();
+        const uint32_t lastLivePass =
+            result.m_livePassOrder.empty() ? Error::kNoPass : result.m_livePassOrder.back();
+
+        for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
+        {
+            const ResourceRecord& resource = builder.GetResource(resourceIndex);
+            if (resource.imported && !uses[resourceIndex].empty() && !uses[resourceIndex][0].seen)
+            {
+                VersionUse& v0 = uses[resourceIndex][0];
+                v0.seen = true;
+                v0.firstSlot = 0;
+                v0.lastSlot = 0;
+                v0.firstPass = firstLivePass;
+                v0.lastPass = firstLivePass;
+            }
+
+            bool hasLiveAccess = false;
+            for (const VersionUse& use : uses[resourceIndex])
+            {
+                if (use.seen)
+                {
+                    hasLiveAccess = true;
+                    break;
+                }
+            }
+            if (!hasLiveAccess && !resource.imported)
+            {
+                result.m_errors.push_back({
+                    ErrorCategory::ZeroUseAllocation,
+                    std::format("resource '{}' is a zero-use non-imported allocation", resource.name),
+                    Error::kNoPass,
+                    "",
+                    resource.name,
+                });
+            }
+        }
+        if (!result.m_errors.empty())
+        {
+            return;
+        }
+
+        for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
+        {
+            const ResourceRecord& resource = builder.GetResource(resourceIndex);
+            bool any = false;
+            uint32_t minSlot = 0;
+            uint32_t maxSlot = 0;
+            uint32_t minPass = Error::kNoPass;
+            uint32_t maxPass = Error::kNoPass;
+            for (uint32_t version = 0; version < uses[resourceIndex].size(); ++version)
+            {
+                const VersionUse& use = uses[resourceIndex][version];
+                if (!use.seen)
+                {
+                    continue;
+                }
+                result.m_versionLifetimes.push_back({resourceIndex, version, use.firstPass, use.lastPass});
+                if (!any || use.firstSlot < minSlot)
+                {
+                    minSlot = use.firstSlot;
+                    minPass = use.firstPass;
+                }
+                if (!any || use.lastSlot > maxSlot)
+                {
+                    maxSlot = use.lastSlot;
+                    maxPass = use.lastPass;
+                }
+                any = true;
+            }
+            if (!any)
+            {
+                continue;
+            }
+            if (resource.imported)
+            {
+                minPass = firstLivePass;
+            }
+            if (resource.exported)
+            {
+                maxPass = lastLivePass;
+            }
+            result.m_resourceLifetimes.push_back(
+                {resourceIndex, minPass, maxPass, resource.imported, resource.exported});
+        }
+        result.m_lifetimesApplied = true;
     }
 
     CompileResult GraphCompiler::Compile(const GraphBuilder& builder, CompileOptions options)
@@ -368,6 +495,7 @@ namespace renderlab::rdg
             return result;
         }
         ApplyCulling(result, builder, options);
+        AnalyzeLifetimes(result, builder);
         return result;
     }
 
@@ -413,15 +541,51 @@ namespace renderlab::rdg
                     Quote(to.name), DumpReason(reason.dependency, reason.resourceName));
             }
         }
-        if (!IsSuccess())
+        if (!m_cullingApplied)
         {
-            return dump + "cull: skipped\n";
+            dump += "cull: skipped\n";
         }
-        dump += "cull:\n";
-        for (const PassCullState& state : m_cullStates)
+        else
         {
-            dump += std::format("  {} {} {} {}\n", state.passIndex, Quote(m_passNames[state.passIndex]),
-                state.culled ? "culled" : "live", ToString(state.reason));
+            dump += "cull:\n";
+            for (const PassCullState& state : m_cullStates)
+            {
+                dump += std::format("  {} {} {} {}\n", state.passIndex, Quote(m_passNames[state.passIndex]),
+                    state.culled ? "culled" : "live", ToString(state.reason));
+            }
+        }
+        if (!m_lifetimesApplied)
+        {
+            dump += "lifetime: skipped\n";
+        }
+        else
+        {
+            dump += "lifetime:\n";
+            const auto formatPass = [](uint32_t passIndex) -> std::string
+            {
+                return passIndex == Error::kNoPass ? std::string("none") : std::to_string(passIndex);
+            };
+            for (const ResourceLifetime& lifetime : m_resourceLifetimes)
+            {
+                dump += std::format("  resource {} {} first={} last={}", lifetime.resourceIndex,
+                    Quote(m_resourceNames[lifetime.resourceIndex]), formatPass(lifetime.firstPass),
+                    formatPass(lifetime.lastPass));
+                if (lifetime.imported)
+                {
+                    dump += " imported";
+                }
+                if (lifetime.exported)
+                {
+                    dump += " exported";
+                }
+                dump += "\n";
+            }
+            for (const VersionLifetime& lifetime : m_versionLifetimes)
+            {
+                dump += std::format("  version {} {} v{} first={} last={}\n", lifetime.resourceIndex,
+                    Quote(m_resourceNames[lifetime.resourceIndex]), lifetime.version,
+                    formatPass(lifetime.firstPass), formatPass(lifetime.lastPass));
+            }
         }
         return dump;
     }

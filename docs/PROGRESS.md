@@ -5,11 +5,12 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.5 - Analyze logical lifetimes**
-- State: **S4.4 complete; Stage 4 in progress** — the RDG logical model (typed
+- Active step: **S4.6 - Add compiler diagnostics and graph export**
+- State: **S4.5 complete; Stage 4 in progress** — the RDG logical model (typed
   handles, descriptors, pass declarations, resource versions and provenance)
-  compiles into RAW/WAR/WAW edges, a stable pass order, and output-driven
-  pass culling in `src/rdg` with zero NVRHI dependencies (docs/rdg.md, ADR-003)
+  compiles into RAW/WAR/WAW edges, a stable pass order, output-driven
+  pass culling, and logical first/last-use lifetimes in `src/rdg` with zero
+  NVRHI dependencies (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-12
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -17,7 +18,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
-- Stage 4: **S4.1-S4.4 complete**; S4.5 through S4.6 pending
+- Stage 4: **S4.1-S4.5 complete**; S4.6 pending
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1297,6 +1298,52 @@ Known limitations: lifetimes and full compile/DOT diagnostics remain
   last-producer edges only; WAR is scheduling-only. GetPassOrder() still lists
   culled passes; GetLivePassOrder() is the post-cull schedule for S4.5.
 Next step: S4.5 - Analyze logical lifetimes
+```
+
+### S4.5 - Analyze logical lifetimes
+
+```text
+Step: S4.5
+State: Complete
+Date: 2026-09-12
+Commit: (pending)
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+Evidence: Debug and Release builds compiled GraphCompiler.cpp and
+  test_rdg_lifetimes.cpp, 0 errors, 0 warnings. CTest 1/1 passed in each
+  configuration; both executables printed "RenderLab S4.5 lifetime tests"
+  and 0 failures. git diff --check was clean. RenderLabRdg still links only
+  RenderLab::ProjectOptions.
+Automated tests: 0 failures in both configurations; 20 S4.5 checks cover
+  pass-index vs live-slot first/last, unproduced v0 omission, overlapping
+  and non-overlapping NeverCull intervals, imported last-access extent,
+  unused imported (not epilogue, not an error), empty live-schedule none,
+  imported+exported epilogue, overwritten imported v0, exported epilogue extent,
+  culled zero-use, mixed live-plus-unused without partial lifetimes,
+  read-only imported v0, disable-culling as a live use, deterministic Dump,
+  and error/cycle lifetime skip. S4.3 success graphs now export produced
+  versions so they remain live; S4.4 unused-leaf/chain graphs are
+  ZeroUseAllocation compile failures with cull state retained.
+GPU validation/capture: not applicable; RenderLabRdg remains CPU-only.
+Artifacts:
+  src/rdg/GraphBuilder.h (ErrorCategory::ZeroUseAllocation)
+  src/rdg/GraphCompiler.h / GraphCompiler.cpp
+  tests/test_rdg_lifetimes.cpp
+  tests/test_rdg_compiler.cpp / tests/test_rdg_culling.cpp (fixture updates)
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp (suite registration)
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg-dataflow.md (lifetime step and source index)
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: full compile/DOT diagnostics and --dump-rdg remain S4.6;
+  physical allocation and in-frame interval reuse remain Stage 5; renderer/M1
+  code remains untouched. Lifetimes walk live-pass accesses only. Imported
+  last-use stops at last live access; exported last-use extends to the last
+  live pass.
+Next step: S4.6 - Add compiler diagnostics and graph export
 ```
 
 Selected baseline:

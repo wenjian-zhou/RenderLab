@@ -27,11 +27,13 @@ namespace renderlab::rdg
         DuplicateWrite,
         SupersededUse,
         IncompatibleAccess,
+        ZeroUseAllocation,
     };
 
-    // One rejected declaration or creation call. S4.6 turns these into the
-    // compile error categories; naming both the pass and the resource is
-    // part of the contract from day one.
+    // One collected failure: a rejected declaration/creation call, or a
+    // compile-time ZeroUseAllocation. S4.6 turns these into the compile
+    // error categories; naming both the pass and the resource is part of
+    // the contract from day one.
     struct Error
     {
         static constexpr uint32_t kNoPass = 0xFFFFFFFFu;

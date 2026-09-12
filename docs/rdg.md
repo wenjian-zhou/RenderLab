@@ -1,20 +1,21 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 4** (implemented through S4.4)
+Status: **active design note — Stage 4** (implemented through S4.5)
 
-Step: S4.4
+Step: S4.5
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
-dependency edges, topological order, and output-driven pass culling. How this
-design relates to UE 5.8.1's render dependency graph — what is adopted,
+dependency edges, topological order, output-driven pass culling, and
+logical resource lifetimes. How this design relates to UE 5.8.1's render
+dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
 [`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
-the S4.2–S4.4 code — version history, the declaration flow, the per-method
-field-access matrix, compilation, and culling — is in
+the S4.2–S4.5 code — version history, the declaration flow, the per-method
+field-access matrix, compilation, culling, and lifetimes — is in
 [`rdg-dataflow.md`](rdg-dataflow.md).
 
 ## 1. Scope and boundary
@@ -26,15 +27,17 @@ the **pure logical CPU model** of the render dependency graph:
   read/write declarations, logical versions with producer/reader provenance,
   imported/exported flags, pass flags, declaration-time validation,
   RAW/WAR/WAW dependency edges, a deterministic pass order or cycle
-  diagnostic, and output-driven pass culling with stable reasons.
+  diagnostic, output-driven pass culling with stable reasons, and logical
+  first/last-use lifetimes after culling.
 - It must not include or link Donut/NVRHI. `RenderLabRdg` links only
   `RenderLab::ProjectOptions`; the link closure is the proof, and review
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- What is deliberately absent and who owns it: lifetimes (S4.5), full graph
-  text/DOT dumps and expanded compile diagnostics (S4.6), physical resources
-  and access states (Stage 5).
+- What is deliberately absent and who owns it: full graph text/DOT dumps and
+  expanded compile diagnostics (S4.6), physical resources and access states
+  (Stage 5). S5.7 reuses non-overlapping logical intervals; this file only
+  defines the intervals.
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -161,7 +164,8 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 - Pass and resource names must be non-empty; duplicates are allowed.
 - There is no execute lambda in Stage 4. S4.3 compiles declarations into a
   pass order; S4.4 culls passes that cannot affect an exported resource or
-  declared side effect. GPU execution is Stage 5.
+  declared side effect; S4.5 assigns logical lifetimes. GPU execution is
+  Stage 5.
 
 ## 5. Failure taxonomy
 
@@ -192,6 +196,7 @@ Naming both the pass and the resource is part of the contract from day one.
 | `InvalidName` | empty pass or descriptor name |
 | `InvalidDescriptor` | zero extent, unknown texture format, or zero element size/count |
 | `InvalidPassFlags` | pass flags outside the known bit set |
+| `ZeroUseAllocation` | compile-time: a non-imported resource has no live-pass access after culling |
 
 Validation order is deterministic — when a forged handle violates several
 rules at once, the earliest category wins:
@@ -243,10 +248,18 @@ multi-reason edges, intentional cycles with named diagnostics and no partial
 order, builder-error short-circuit, and deterministic `CompileResult::Dump`
 text.
 
-`tests/test_rdg_culling.cpp` covers unused leaf and unused chain, exported
+`tests/test_rdg_culling.cpp` covers unused leaf and unused chain (now
+compile failures with `ZeroUseAllocation` after culling), exported
 and imported output roots, `NeverCull` producer closure, shared producers,
 global disable-culling, WAR-not-walked overwrite, deterministic dump, and
-error/cycle short-circuit with `cull: skipped`.
+error/cycle short-circuit with `cull: skipped` and `lifetime: skipped`.
+
+`tests/test_rdg_lifetimes.cpp` covers first/last pass indices versus live
+slots, overlapping and non-overlapping intervals, imported last-access
+extent, unused imported (including no error), exported epilogue extent,
+culled zero-use, mixed live-plus-unused failure without partial lifetimes,
+read-only imported v0, disable-culling as a live use, deterministic dump,
+and error/cycle `lifetime: skipped`.
 
 ## 8. Version dump
 
@@ -266,7 +279,7 @@ texture 2 'Output' v0 producer=unproduced readers=[]
 texture 2 'Output' v1 producer=1 'Second' readers=[2 'Third'] current exported
 ```
 
-## 9. Graph compiler (S4.3–S4.4)
+## 9. Graph compiler (S4.3–S4.5)
 
 `GraphCompiler::Compile(const GraphBuilder&, CompileOptions = {})` is a pure
 function. It copies pass/resource names and builder errors into a
@@ -275,7 +288,7 @@ when the error list is empty and no cycle was found.
 
 If the builder already recorded declaration errors, compilation copies them
 and returns immediately: no edges, no pass order, no cycle diagnostic, no
-cull state (`cull: skipped` in the dump).
+cull state, no lifetimes (`cull: skipped` and `lifetime: skipped` in the dump).
 
 Otherwise every resource version contributes ordering edges:
 
@@ -295,7 +308,7 @@ when several passes have indegree zero, the lowest index runs first. A
 valid graph therefore has one legal order. If not every pass is scheduled,
 the partial order is discarded and a deterministic DFS records a cycle of
 pass names plus one dependency reason per step. Failed compiles invent no
-cull state.
+cull or lifetime state.
 
 After a successful order, culling runs as a separate logical step (UE
 mark-all + last-producer DFS, survey §5). `GetPassOrder()` keeps the full
@@ -312,9 +325,52 @@ passes. `GetPassCullStates()` is one record per pass in index order.
 - `CompileOptions::disableCulling` keeps every pass live with reason
   `culling-disabled` (analog of UE `r.RDG.CullPasses=0`).
 
+After a successful cull, lifetimes run as a second logical step. They walk
+`GetLivePassOrder()` only — never the full edge list, which still contains
+WAR/WAW into culled passes — and read each live pass's recorded accesses
+from the builder during `Compile`. `CompileResult` stores owned interval
+vectors; it does not copy access lists or retain the builder.
+
+```text
+VersionLifetime  { resourceIndex, version, firstPass, lastPass }
+ResourceLifetime { resourceIndex, firstPass, lastPass, imported, exported }
+```
+
+`firstPass` / `lastPass` are GraphBuilder pass indices of the earliest and
+latest live-schedule access (read or write). Writes record the output
+version, so an overwrite is not an access of `v(n-1)`. Unproduced internal
+v0 is never emitted. Because declaration index is not schedule order,
+`firstPass` may be numerically greater than `lastPass`. Two resources
+overlap iff those pass indices map to overlapping closed slots on
+`GetLivePassOrder()`.
+
+Resource interval is min(first) / max(last) across that resource's live
+versions on the live schedule, then:
+
+- **Imported:** live from graph entry (`GetLivePassOrder().front()`) through
+  last live access. Unused imported — including imported v0 that is
+  immediately overwritten, so v0 has no access — is still a live resource:
+  pin unused imported v0 at graph entry; do not reject. Empty live schedule
+  uses `Error::kNoPass` for both ends. Imported last-use is **not** extended
+  to the last live pass (unlike export).
+- **Exported:** last use extends through the last live pass (UE extract →
+  epilogue). The producer of the pinned exported version is already live via
+  S4.4. If imported and exported, import wins `first` and export wins `last`.
+- **Zero-use:** a non-imported resource with no live-pass access is
+  `ZeroUseAllocation` (one error per resource, index order,
+  `passIndex = Error::kNoPass`). That is a compile failure: lifetime vectors
+  stay empty. Cull state is kept (`lifetime: skipped` after the `cull:`
+  section). Imported unused is not an error. Disable-culling makes every
+  writer a live use, so it does not trigger zero-use.
+
+`GetVersionLifetimes()` is sorted by resource index then version.
+`GetResourceLifetimes()` is sorted by resource index.
+
 `CompileResult::Dump()` is stable text: compile status, the ordered pass
 list, each edge with its reasons, copied builder errors, `cycle: none` or
-the named cycle, then a `cull:` section (or `cull: skipped` on failure).
+the named cycle, then `cull:` (or `cull: skipped`) and `lifetime:` (or
+`lifetime: skipped`). `Error::kNoPass` prints as `none`. Resource rows may
+end with ` imported` and/or ` exported`.
 
 ```text
 compile: success
@@ -325,6 +381,9 @@ edges:
 errors:
 cycle: none
 cull:
-  0 "Consumer" culled unused-leaf
-  1 "Producer" culled unused-chain
+  0 "Consumer" live root-never-cull
+  1 "Producer" live producer
+lifetime:
+  resource 0 "Resource" first=1 last=0
+  version 0 "Resource" v1 first=1 last=0
 ```

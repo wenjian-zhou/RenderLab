@@ -36,9 +36,11 @@ versions. **S4.3 is complete**: `GraphCompiler` builds RAW/WAR/WAW edges, a
 stable min-index topological order, and named cycle diagnostics; compilation
 does not touch NVRHI. **S4.4 is complete**: output-driven pass culling removes
 work that cannot affect an exported resource or `NeverCull` side effect;
-dumps list live and culled passes with a reason. RDG lifetimes, execution,
-and DXR are not implemented. The next executable task is **S4.5: analyze
-logical lifetimes**.
+dumps list live and culled passes with a reason. **S4.5 is complete**:
+every live logical resource has a deterministic first/last-use interval
+after scheduling and culling; non-imported zero-use allocations fail
+compile. RDG DOT dumps, execution, and DXR are not implemented. The next
+executable task is **S4.6: compiler diagnostics and graph export**.
 
 ## Plans
 

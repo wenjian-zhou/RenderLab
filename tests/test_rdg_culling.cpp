@@ -77,8 +77,10 @@ int RunRdgCullingTests()
         TextureHandle resource = MakeTexture(graph);
         graph.AddPass("Unused", PassFlags::Raster).Write(resource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(result.IsSuccess() && result.GetPassOrder().size() == 1 && result.GetLivePassOrder().empty() &&
-            HasCull(result, 0, true, CullReason::UnusedLeaf),
+        Check(!result.IsSuccess() && result.GetPassOrder().size() == 1 && result.GetLivePassOrder().empty() &&
+            HasCull(result, 0, true, CullReason::UnusedLeaf) &&
+            result.GetResourceLifetimes().empty() && result.GetErrors().size() == 1 &&
+            result.GetErrors()[0].category == ErrorCategory::ZeroUseAllocation,
             "Unused leaf is culled");
     }
     {
@@ -91,9 +93,16 @@ int RunRdgCullingTests()
         consumer.Read(intermediate);
         unusedOut = consumer.Write(unusedOut);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetLivePassOrder().empty() &&
+        Check(!result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetLivePassOrder().empty() &&
             HasCull(result, 0, true, CullReason::UnusedChain) &&
-            HasCull(result, 1, true, CullReason::UnusedLeaf),
+            HasCull(result, 1, true, CullReason::UnusedLeaf) &&
+            result.GetResourceLifetimes().empty() && result.GetErrors().size() == 2 &&
+            result.GetErrors()[0].category == ErrorCategory::ZeroUseAllocation &&
+            result.GetErrors()[0].passIndex == Error::kNoPass &&
+            result.GetErrors()[0].resourceName == "Intermediate" &&
+            result.GetErrors()[1].category == ErrorCategory::ZeroUseAllocation &&
+            result.GetErrors()[1].passIndex == Error::kNoPass &&
+            result.GetErrors()[1].resourceName == "UnusedOut",
             "Unused chain culls producer as unused-chain and consumer as unused-leaf");
     }
     {
@@ -195,7 +204,8 @@ int RunRdgCullingTests()
         const CompileResult first = GraphCompiler::Compile(graph);
         Check(first.Dump() == GraphCompiler::Compile(graph).Dump() &&
             first.Dump().find("cull:") != std::string::npos &&
-            first.Dump().find("unused-leaf") != std::string::npos,
+            first.Dump().find("unused-leaf") != std::string::npos &&
+            first.Dump().find("lifetime: skipped") != std::string::npos,
             "Cull dump is deterministic");
     }
     {
@@ -204,7 +214,8 @@ int RunRdgCullingTests()
         graph.AddPass("Invalid", PassFlags::Raster).Read(resource);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && result.GetPassCullStates().empty() && result.GetLivePassOrder().empty() &&
-            result.Dump().find("cull: skipped") != std::string::npos,
+            result.Dump().find("cull: skipped") != std::string::npos &&
+            result.Dump().find("lifetime: skipped") != std::string::npos,
             "Builder errors skip cull results");
     }
     {
@@ -219,7 +230,8 @@ int RunRdgCullingTests()
         passB.Read(first);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && result.HasCycle() && result.GetPassCullStates().empty() &&
-            result.GetLivePassOrder().empty() && result.Dump().find("cull: skipped") != std::string::npos,
+            result.GetLivePassOrder().empty() && result.Dump().find("cull: skipped") != std::string::npos &&
+            result.Dump().find("lifetime: skipped") != std::string::npos,
             "Cycles skip cull results");
     }
     return failures;

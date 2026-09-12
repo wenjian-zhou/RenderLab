@@ -75,6 +75,27 @@ namespace renderlab::rdg
         friend bool operator==(const PassCullState&, const PassCullState&) = default;
     };
 
+    struct VersionLifetime
+    {
+        uint32_t resourceIndex = 0;
+        uint32_t version = 0;
+        uint32_t firstPass = 0;
+        uint32_t lastPass = 0;
+
+        friend bool operator==(const VersionLifetime&, const VersionLifetime&) = default;
+    };
+
+    struct ResourceLifetime
+    {
+        uint32_t resourceIndex = 0;
+        uint32_t firstPass = 0;
+        uint32_t lastPass = 0;
+        bool imported = false;
+        bool exported = false;
+
+        friend bool operator==(const ResourceLifetime&, const ResourceLifetime&) = default;
+    };
+
     struct CompileOptions
     {
         bool disableCulling = false;
@@ -90,6 +111,8 @@ namespace renderlab::rdg
         std::span<const DependencyEdge> GetEdges() const { return m_edges; }
         std::span<const DependencyEdge> GetDependencies() const { return m_edges; }
         std::span<const Error> GetErrors() const { return m_errors; }
+        std::span<const VersionLifetime> GetVersionLifetimes() const { return m_versionLifetimes; }
+        std::span<const ResourceLifetime> GetResourceLifetimes() const { return m_resourceLifetimes; }
         const std::optional<CycleDiagnostic>& GetCycle() const { return m_cycle; }
         bool HasCycle() const { return m_cycle.has_value(); }
         std::string Dump() const;
@@ -105,6 +128,10 @@ namespace renderlab::rdg
         std::optional<CycleDiagnostic> m_cycle;
         std::vector<std::string> m_passNames;
         std::vector<std::string> m_resourceNames;
+        std::vector<VersionLifetime> m_versionLifetimes;
+        std::vector<ResourceLifetime> m_resourceLifetimes;
+        bool m_cullingApplied = false;
+        bool m_lifetimesApplied = false;
     };
 
     class GraphCompiler
@@ -114,5 +141,6 @@ namespace renderlab::rdg
 
     private:
         static void ApplyCulling(CompileResult& result, const GraphBuilder& builder, const CompileOptions& options);
+        static void AnalyzeLifetimes(CompileResult& result, const GraphBuilder& builder);
     };
 }
