@@ -1,11 +1,12 @@
 # RDG Data Flow Walkthrough
 
-Status: **current implementation walkthrough** — S4.2 declaration/versioning
-plus S4.3 compilation. The original S4.1 diagrams remain in Git history.
+Status: **current implementation walkthrough** — S4.2 declaration/versioning,
+S4.3 compilation, and S4.4 culling. The original S4.1 diagrams remain in Git
+history.
 
 This file explains how declarations change the CPU model and how the compiler
-turns that history into a pass order. The normative semantics and failure
-taxonomy live in [rdg.md](rdg.md); the ownership boundary lives in
+turns that history into a pass order and cull set. The normative semantics
+and failure taxonomy live in [rdg.md](rdg.md); the ownership boundary lives in
 [ADR-003](adr/ADR-003-rdg-boundary.md). Method and field names below refer to
 the [source index](#8-source-index), without hard-coded line numbers.
 
@@ -252,7 +253,7 @@ After export, new reads and repeated export remain legal, while writes fail
 with `IncompatibleAccess` (unless an earlier validation check fails).
 Because writes cannot supersede the exported version, the resource-level flag
 unambiguously refers to `currentVersion`. The `imported || exported` root
-policy is retained for S4.4; no culling runs in S4.2.
+policy is consumed by S4.4 culling.
 
 ## 6. M1-shaped construction and its dump
 
@@ -383,32 +384,36 @@ version mutation to `DeclareAccessInternal`.
 | Handle validation | [test_rdg_handles.cpp](../tests/test_rdg_handles.cpp): `RunRdgHandleTests` |
 | M1 construction | [test_rdg_declarations.cpp](../tests/test_rdg_declarations.cpp): `RunRdgDeclarationTests` |
 | Texture/buffer history, WAW, errors, export, dump | [test_rdg_versioning.cpp](../tests/test_rdg_versioning.cpp): `RunVersionCases` |
-| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `GraphCompiler::Compile`, `CompileResult::Dump` |
+| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump, culling | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `CompileOptions`, `CullReason`, `PassCullState`, `GraphCompiler::Compile`, `CompileResult::GetLivePassOrder`, `CompileResult::GetPassCullStates`, `CompileResult::Dump` |
 | Compiler cases | [test_rdg_compiler.cpp](../tests/test_rdg_compiler.cpp): `RunRdgCompilerTests` |
+| Culling cases | [test_rdg_culling.cpp](../tests/test_rdg_culling.cpp): `RunRdgCullingTests` |
 
-## 9. Compile: edges, order, and cycles
+## 9. Compile: edges, order, cycles, and culling
 
 ```mermaid
 flowchart TB
     GB["GraphBuilder records"]
     ERR{"Builder already has errors?"}
-    COPY["Copy errors; empty order and edges"]
+    COPY["Copy errors; empty order, edges, cull"]
     EDGES["Emit RAW / WAR / WAW reasons<br/>merge and sort per pass pair"]
     KAHN["Kahn topo: ready queue is min pass index"]
     ALL{"Every pass scheduled?"}
-    OK["CompileResult: success + pass order"]
-    CYCLE["Clear partial order<br/>DFS cycle with pass and resource names"]
+    CULL["Mark culled; un-cull RAW/WAW closure<br/>from NeverCull and import/export writers"]
+    OK["CompileResult: full order + live order + cull reasons"]
+    CYCLE["Clear partial order<br/>DFS cycle; cull skipped"]
 
     GB --> ERR
     ERR -->|"yes"| COPY
     ERR -->|"no"| EDGES
     EDGES --> KAHN
     KAHN --> ALL
-    ALL -->|"yes"| OK
+    ALL -->|"yes"| CULL
+    CULL --> OK
     ALL -->|"no"| CYCLE
 ```
 
 Compilation does not mutate the builder. Independent passes still enter the
-order. A cycle or copied declaration error never returns a partial
-`passOrder`. Culling (S4.4), lifetimes (S4.5), and GPU execution (Stage 5)
-are outside these diagrams.
+full `passOrder`. A cycle or copied declaration error never returns a partial
+order and invents no cull state. Culling walks last-producer (RAW/WAW) edges
+only. Lifetimes (S4.5) and GPU execution (Stage 5) are outside these
+diagrams.

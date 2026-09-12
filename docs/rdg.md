@@ -1,19 +1,21 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 4** (implemented through S4.3)
+Status: **active design note — Stage 4** (implemented through S4.4)
 
-Step: S4.3
+Step: S4.4
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
-dependency edges, and topological order. How this design relates to UE 5.8.1's
-render dependency graph — what is adopted, diverged, and skipped, with
-`file:line` citations — lives in [`ue-rdg-survey.md`](ue-rdg-survey.md) and
+dependency edges, topological order, and output-driven pass culling. How this
+design relates to UE 5.8.1's render dependency graph — what is adopted,
+diverged, and skipped, with `file:line` citations — lives in
+[`ue-rdg-survey.md`](ue-rdg-survey.md) and
 [`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
-the S4.2/S4.3 code — version history, the declaration flow, the per-method
-field-access matrix, and compilation — is in [`rdg-dataflow.md`](rdg-dataflow.md).
+the S4.2–S4.4 code — version history, the declaration flow, the per-method
+field-access matrix, compilation, and culling — is in
+[`rdg-dataflow.md`](rdg-dataflow.md).
 
 ## 1. Scope and boundary
 
@@ -23,16 +25,16 @@ the **pure logical CPU model** of the render dependency graph:
 - It owns logical resource identity, descriptors, pass records, explicit
   read/write declarations, logical versions with producer/reader provenance,
   imported/exported flags, pass flags, declaration-time validation,
-  RAW/WAR/WAW dependency edges, and a deterministic pass order or cycle
-  diagnostic.
+  RAW/WAR/WAW dependency edges, a deterministic pass order or cycle
+  diagnostic, and output-driven pass culling with stable reasons.
 - It must not include or link Donut/NVRHI. `RenderLabRdg` links only
   `RenderLab::ProjectOptions`; the link closure is the proof, and review
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- What is deliberately absent and who owns it: culling (S4.4),
-  lifetimes (S4.5), full graph text/DOT dumps and expanded compile
-  diagnostics (S4.6), physical resources and access states (Stage 5).
+- What is deliberately absent and who owns it: lifetimes (S4.5), full graph
+  text/DOT dumps and expanded compile diagnostics (S4.6), physical resources
+  and access states (Stage 5).
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -93,8 +95,9 @@ A resource enters the graph three ways, mirroring UE's semantics (survey
 | `ImportTexture` / `ImportBuffer` | `Imported` | physical counterpart exists outside the graph (UE `bExternal`); in S4.1 the descriptor describes it for S5.1 mapping |
 | `ExportTexture` / `ExportBuffer` | `Exported` | output leaves the graph (UE `bExtracted`); pins the current produced version |
 
-`imported || exported` marks a cull root; S4.4 consumes that rule. An imported
-resource may also be written (back-buffer precedent).
+`imported || exported` marks a cull root. A pass that writes such a resource
+is a culling root. An imported resource may also be written (back-buffer
+precedent).
 
 ### Version semantics (S4.2)
 
@@ -150,14 +153,15 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 
 - `PassFlags` starts as `None | Raster | NeverCull`. `Raster` is
   informational in S4.1 (S5.3 access planning and S4.6 dumps consume it);
-  `NeverCull` is the side-effect flag (UE precedent — survey §4). Unknown
-  bits are rejected. `Compute`/`Copy`/`Readback` are added when a real pass
-  needs them.
+  `NeverCull` is the side-effect flag (UE precedent — survey §4): the pass
+  and its last-producer closure survive culling. Unknown bits are rejected.
+  `Compute`/`Copy`/`Readback` are added when a real pass needs them.
 - Accepted reads pin the input version; accepted writes pin the new output
   version. Same-resource conflicts follow the S4.2 rules above.
 - Pass and resource names must be non-empty; duplicates are allowed.
 - There is no execute lambda in Stage 4. S4.3 compiles declarations into a
-  pass order; GPU execution is Stage 5.
+  pass order; S4.4 culls passes that cannot affect an exported resource or
+  declared side effect. GPU execution is Stage 5.
 
 ## 5. Failure taxonomy
 
@@ -239,6 +243,11 @@ multi-reason edges, intentional cycles with named diagnostics and no partial
 order, builder-error short-circuit, and deterministic `CompileResult::Dump`
 text.
 
+`tests/test_rdg_culling.cpp` covers unused leaf and unused chain, exported
+and imported output roots, `NeverCull` producer closure, shared producers,
+global disable-culling, WAR-not-walked overwrite, deterministic dump, and
+error/cycle short-circuit with `cull: skipped`.
+
 ## 8. Version dump
 
 `GraphBuilder::DumpVersions()` returns deterministic text in resource-index,
@@ -257,15 +266,16 @@ texture 2 'Output' v0 producer=unproduced readers=[]
 texture 2 'Output' v1 producer=1 'Second' readers=[2 'Third'] current exported
 ```
 
-## 9. Graph compiler (S4.3)
+## 9. Graph compiler (S4.3–S4.4)
 
-`GraphCompiler::Compile(const GraphBuilder&)` is a pure function. It copies
-pass/resource names and builder errors into a `CompileResult` and never
-retains the builder. `IsSuccess()` is true only when the error list is empty
-and no cycle was found.
+`GraphCompiler::Compile(const GraphBuilder&, CompileOptions = {})` is a pure
+function. It copies pass/resource names and builder errors into a
+`CompileResult` and never retains the builder. `IsSuccess()` is true only
+when the error list is empty and no cycle was found.
 
 If the builder already recorded declaration errors, compilation copies them
-and returns immediately: no edges, no pass order, no cycle diagnostic.
+and returns immediately: no edges, no pass order, no cycle diagnostic, no
+cull state (`cull: skipped` in the dump).
 
 Otherwise every resource version contributes ordering edges:
 
@@ -284,11 +294,27 @@ The scheduler is Kahn's algorithm with a min-heap of ready pass indices:
 when several passes have indegree zero, the lowest index runs first. A
 valid graph therefore has one legal order. If not every pass is scheduled,
 the partial order is discarded and a deterministic DFS records a cycle of
-pass names plus one dependency reason per step.
+pass names plus one dependency reason per step. Failed compiles invent no
+cull state.
+
+After a successful order, culling runs as a separate logical step (UE
+mark-all + last-producer DFS, survey §5). `GetPassOrder()` keeps the full
+topological list. `GetLivePassOrder()` is that list filtered to un-culled
+passes. `GetPassCullStates()` is one record per pass in index order.
+
+- Default: every pass starts culled. Roots are a pass with
+  `PassFlags::NeverCull` (`root-never-cull`, wins over output) or a `Write`
+  to a resource with `imported || exported` (`root-output`). From each root,
+  walk **incoming RAW and WAW** edges and un-cull the producer closure
+  (`producer`). WAR is scheduling-only and does not keep unused previous
+  readers. Remaining passes are `unused-chain` if they have an outgoing
+  RAW/WAW edge, else `unused-leaf`.
+- `CompileOptions::disableCulling` keeps every pass live with reason
+  `culling-disabled` (analog of UE `r.RDG.CullPasses=0`).
 
 `CompileResult::Dump()` is stable text: compile status, the ordered pass
-list, each edge with its reasons, copied builder errors, and `cycle: none`
-or the named cycle.
+list, each edge with its reasons, copied builder errors, `cycle: none` or
+the named cycle, then a `cull:` section (or `cull: skipped` on failure).
 
 ```text
 compile: success
@@ -298,4 +324,7 @@ edges:
     RAW resource 0 "Resource" v1 -> v1
 errors:
 cycle: none
+cull:
+  0 "Consumer" culled unused-leaf
+  1 "Producer" culled unused-chain
 ```

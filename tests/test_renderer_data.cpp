@@ -34,6 +34,7 @@ int RunRdgHandleTests();
 int RunRdgDeclarationTests();
 int RunRdgVersioningTests();
 int RunRdgCompilerTests();
+int RunRdgCullingTests();
 
 namespace
 {
@@ -285,6 +286,7 @@ int main()
     g_failures += RunRdgDeclarationTests();
     g_failures += RunRdgVersioningTests();
     g_failures += RunRdgCompilerTests();
+    g_failures += RunRdgCullingTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

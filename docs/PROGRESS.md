@@ -5,11 +5,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.4 - Implement output-driven pass culling**
-- State: **S4.3 complete; Stage 4 in progress** — the RDG logical model (typed
+- Active step: **S4.5 - Analyze logical lifetimes**
+- State: **S4.4 complete; Stage 4 in progress** — the RDG logical model (typed
   handles, descriptors, pass declarations, resource versions and provenance)
-  compiles into RAW/WAR/WAW edges and a stable pass order in `src/rdg` with
-  zero NVRHI dependencies (docs/rdg.md, ADR-003)
+  compiles into RAW/WAR/WAW edges, a stable pass order, and output-driven
+  pass culling in `src/rdg` with zero NVRHI dependencies (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-12
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -17,7 +17,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
-- Stage 4: **S4.1-S4.3 complete**; S4.4 through S4.6 pending
+- Stage 4: **S4.1-S4.4 complete**; S4.5 through S4.6 pending
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1258,6 +1258,45 @@ Known limitations: culling, lifetimes, and full compile/DOT diagnostics
   from kNoPass. CompileResult::Dump covers order, edges, errors, and cycles;
   S4.6 still owns the broader compiled-graph dump.
 Next step: S4.4 - Implement output-driven pass culling
+```
+
+### S4.4 - Implement output-driven pass culling
+
+```text
+Step: S4.4
+State: Complete
+Date: 2026-09-12
+Commit: uncommitted
+Commands:
+  cmake --build C:\Github\RenderLab\out\build\windows-vs2022 --config Debug --target RenderLabDataContractTests --parallel 4 --verbose
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Debug --output-on-failure
+  cmake --build C:\Github\RenderLab\out\build\windows-vs2022 --config Release --target RenderLabDataContractTests --parallel 4 --verbose
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Release --output-on-failure
+  git diff --check
+Evidence: CMAKE_CXX_FLAGS already held /DWIN32 /D_WINDOWS /GR /EHsc. Debug and
+  Release verbose builds compiled GraphCompiler.cpp and test_rdg_culling.cpp,
+  linked a new RenderLabDataContractTests.exe in each config, 0 errors, 0
+  warnings. CTest 1/1 passed in each configuration; both executables printed
+  "RenderLab S4.4 culling tests" and 0 failures. git diff --check was clean.
+  FileTracker permission errors did not appear.
+Automated tests: 0 failures in both configurations; 12 S4.4 checks cover
+  unused leaf, unused chain, exported RAW producer chain, imported write root,
+  NeverCull plus unused sibling, shared producer, disable-culling, WAW-kept
+  previous writer vs culled previous reader, deterministic Dump, and
+  error/cycle cull skip. Existing S4.3 compiler checks still pass.
+GPU validation/capture: not applicable; RenderLabRdg remains CPU-only.
+Artifacts:
+  src/rdg/GraphCompiler.h / GraphCompiler.cpp
+  tests/test_rdg_culling.cpp
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp (suite registration)
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg-dataflow.md (cull step and source index)
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: lifetimes and full compile/DOT diagnostics remain
+  S4.5-S4.6; renderer/M1 code remains untouched. Culling walks RAW/WAW
+  last-producer edges only; WAR is scheduling-only. GetPassOrder() still lists
+  culled passes; GetLivePassOrder() is the post-cull schedule for S4.5.
+Next step: S4.5 - Analyze logical lifetimes
 ```
 
 Selected baseline:

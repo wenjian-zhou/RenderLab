@@ -56,11 +56,37 @@ namespace renderlab::rdg
         friend bool operator==(const CycleDiagnostic&, const CycleDiagnostic&) = default;
     };
 
+    enum class CullReason : uint8_t
+    {
+        CullingDisabled,
+        RootOutput,
+        RootNeverCull,
+        Producer,
+        UnusedLeaf,
+        UnusedChain,
+    };
+
+    struct PassCullState
+    {
+        uint32_t passIndex = 0;
+        bool culled = true;
+        CullReason reason = CullReason::UnusedLeaf;
+
+        friend bool operator==(const PassCullState&, const PassCullState&) = default;
+    };
+
+    struct CompileOptions
+    {
+        bool disableCulling = false;
+    };
+
     class CompileResult
     {
     public:
         bool IsSuccess() const { return m_errors.empty() && !m_cycle.has_value(); }
         std::span<const uint32_t> GetPassOrder() const { return m_passOrder; }
+        std::span<const uint32_t> GetLivePassOrder() const { return m_livePassOrder; }
+        std::span<const PassCullState> GetPassCullStates() const { return m_cullStates; }
         std::span<const DependencyEdge> GetEdges() const { return m_edges; }
         std::span<const DependencyEdge> GetDependencies() const { return m_edges; }
         std::span<const Error> GetErrors() const { return m_errors; }
@@ -72,6 +98,8 @@ namespace renderlab::rdg
         friend class GraphCompiler;
 
         std::vector<uint32_t> m_passOrder;
+        std::vector<uint32_t> m_livePassOrder;
+        std::vector<PassCullState> m_cullStates;
         std::vector<DependencyEdge> m_edges;
         std::vector<Error> m_errors;
         std::optional<CycleDiagnostic> m_cycle;
@@ -82,6 +110,9 @@ namespace renderlab::rdg
     class GraphCompiler
     {
     public:
-        static CompileResult Compile(const GraphBuilder& builder);
+        static CompileResult Compile(const GraphBuilder& builder, CompileOptions options = {});
+
+    private:
+        static void ApplyCulling(CompileResult& result, const GraphBuilder& builder, const CompileOptions& options);
     };
 }

@@ -177,3 +177,15 @@ only `RenderLab::ProjectOptions`, and returns a `CompileResult` that owns
 its strings rather than pointing at the builder. Edges, the min-index Kahn
 order, and named cycle diagnostics are CPU-only. Culling, lifetimes, DOT
 dumps, physical resources, and the renderer remain later steps.
+
+## S4.4 Extension (2026-09-12)
+
+The boundary is unchanged. Culling is a post-schedule logical step inside
+`GraphCompiler`: it does not allocate, touch NVRHI, or retain a
+`GraphBuilder` pointer. After a successful Kahn order, every pass starts
+culled; roots are `NeverCull` or a write to `imported || exported`; the
+un-cull walk follows incoming RAW and WAW last-producer edges (WAR stays a
+scheduling edge). `CompileOptions::disableCulling` is the global off switch.
+`CompileResult` exposes the full pass order, a live subsequence, and a
+stable per-pass cull reason. Lifetimes, DOT dumps, physical resources, and
+the renderer remain later steps.

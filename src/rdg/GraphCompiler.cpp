@@ -43,6 +43,20 @@ namespace renderlab::rdg
             return "Unknown";
         }
 
+        const char* ToString(CullReason reason)
+        {
+            switch (reason)
+            {
+            case CullReason::CullingDisabled: return "culling-disabled";
+            case CullReason::RootOutput: return "root-output";
+            case CullReason::RootNeverCull: return "root-never-cull";
+            case CullReason::Producer: return "producer";
+            case CullReason::UnusedLeaf: return "unused-leaf";
+            case CullReason::UnusedChain: return "unused-chain";
+            }
+            return "unknown";
+        }
+
         std::string Quote(std::string_view value)
         {
             std::string quoted = "\"";
@@ -146,9 +160,123 @@ namespace renderlab::rdg
             assert(false && "Incomplete topological order must contain a cycle");
             return {};
         }
+
+        bool WritesCullRoot(const GraphBuilder& builder, uint32_t passIndex)
+        {
+            for (const ResourceAccess& access : builder.GetPass(passIndex).accesses)
+            {
+                if (access.mode != AccessMode::Write)
+                {
+                    continue;
+                }
+                const ResourceRecord& resource = builder.GetResource(access.index);
+                if (resource.imported || resource.exported)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool IsProducerEdge(const DependencyEdge& edge)
+        {
+            for (const DependencyReason& reason : edge.reasons)
+            {
+                if (reason.type == DependencyType::RAW || reason.type == DependencyType::WAW)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
-    CompileResult GraphCompiler::Compile(const GraphBuilder& builder)
+    void GraphCompiler::ApplyCulling(CompileResult& result, const GraphBuilder& builder, const CompileOptions& options)
+    {
+        const uint32_t passCount = static_cast<uint32_t>(builder.GetPassCount());
+        result.m_cullStates.resize(passCount);
+        if (options.disableCulling)
+        {
+            for (uint32_t passIndex = 0; passIndex < passCount; ++passIndex)
+            {
+                result.m_cullStates[passIndex] = {passIndex, false, CullReason::CullingDisabled};
+            }
+            result.m_livePassOrder = result.m_passOrder;
+            return;
+        }
+
+        std::vector<std::vector<uint32_t>> producers(passCount);
+        std::vector<uint8_t> hasOutgoingProducerEdge(passCount, 0);
+        for (const DependencyEdge& edge : result.m_edges)
+        {
+            if (!IsProducerEdge(edge))
+            {
+                continue;
+            }
+            producers[edge.toPass].push_back(edge.fromPass);
+            hasOutgoingProducerEdge[edge.fromPass] = 1;
+        }
+        for (std::vector<uint32_t>& producerList : producers)
+        {
+            std::sort(producerList.begin(), producerList.end());
+            producerList.erase(std::unique(producerList.begin(), producerList.end()), producerList.end());
+        }
+
+        std::vector<uint8_t> culled(passCount, 1);
+        std::vector<CullReason> reasons(passCount, CullReason::UnusedLeaf);
+        std::vector<uint32_t> stack;
+        for (uint32_t passIndex = 0; passIndex < passCount; ++passIndex)
+        {
+            const bool neverCull =
+                (builder.GetPass(passIndex).flags & PassFlags::NeverCull) != PassFlags::None;
+            if (neverCull || WritesCullRoot(builder, passIndex))
+            {
+                reasons[passIndex] = neverCull ? CullReason::RootNeverCull : CullReason::RootOutput;
+                stack.push_back(passIndex);
+            }
+        }
+        while (!stack.empty())
+        {
+            const uint32_t passIndex = stack.back();
+            stack.pop_back();
+            if (culled[passIndex] == 0)
+            {
+                continue;
+            }
+            culled[passIndex] = 0;
+            if (reasons[passIndex] != CullReason::RootNeverCull &&
+                reasons[passIndex] != CullReason::RootOutput)
+            {
+                reasons[passIndex] = CullReason::Producer;
+            }
+            for (const uint32_t producer : producers[passIndex])
+            {
+                if (culled[producer] != 0)
+                {
+                    stack.push_back(producer);
+                }
+            }
+        }
+
+        for (uint32_t passIndex = 0; passIndex < passCount; ++passIndex)
+        {
+            if (culled[passIndex] != 0)
+            {
+                reasons[passIndex] = hasOutgoingProducerEdge[passIndex] != 0 ?
+                    CullReason::UnusedChain : CullReason::UnusedLeaf;
+            }
+            result.m_cullStates[passIndex] = {passIndex, culled[passIndex] != 0, reasons[passIndex]};
+        }
+        for (const uint32_t passIndex : result.m_passOrder)
+        {
+            if (culled[passIndex] == 0)
+            {
+                result.m_livePassOrder.push_back(passIndex);
+            }
+        }
+    }
+
+    CompileResult GraphCompiler::Compile(const GraphBuilder& builder, CompileOptions options)
     {
         CompileResult result;
         for (uint32_t passIndex = 0; passIndex < builder.GetPassCount(); ++passIndex)
@@ -237,7 +365,9 @@ namespace renderlab::rdg
         {
             result.m_passOrder.clear();
             result.m_cycle = FindCycle(result.m_edges, adjacency, indegrees, result.m_passNames, result.m_resourceNames);
+            return result;
         }
+        ApplyCulling(result, builder, options);
         return result;
     }
 
@@ -269,16 +399,29 @@ namespace renderlab::rdg
         dump += "cycle:";
         if (!m_cycle)
         {
-            return dump + " none\n";
+            dump += " none\n";
         }
-        dump += "\n";
-        for (size_t step = 0; step < m_cycle->reasons.size(); ++step)
+        else
         {
-            const CyclePass& from = m_cycle->passes[step];
-            const CyclePass& to = m_cycle->passes[step + 1];
-            const CycleReason& reason = m_cycle->reasons[step];
-            dump += std::format("  {} {} -> {} {}: {}\n", from.passIndex, Quote(from.name), to.passIndex,
-                Quote(to.name), DumpReason(reason.dependency, reason.resourceName));
+            dump += "\n";
+            for (size_t step = 0; step < m_cycle->reasons.size(); ++step)
+            {
+                const CyclePass& from = m_cycle->passes[step];
+                const CyclePass& to = m_cycle->passes[step + 1];
+                const CycleReason& reason = m_cycle->reasons[step];
+                dump += std::format("  {} {} -> {} {}: {}\n", from.passIndex, Quote(from.name), to.passIndex,
+                    Quote(to.name), DumpReason(reason.dependency, reason.resourceName));
+            }
+        }
+        if (!IsSuccess())
+        {
+            return dump + "cull: skipped\n";
+        }
+        dump += "cull:\n";
+        for (const PassCullState& state : m_cullStates)
+        {
+            dump += std::format("  {} {} {} {}\n", state.passIndex, Quote(m_passNames[state.passIndex]),
+                state.culled ? "culled" : "live", ToString(state.reason));
         }
         return dump;
     }

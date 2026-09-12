@@ -14,6 +14,7 @@ add_executable(
     test_rdg_declarations.cpp
     test_rdg_versioning.cpp
     test_rdg_compiler.cpp
+    test_rdg_culling.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp
