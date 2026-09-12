@@ -32,8 +32,10 @@ declarations and collected error categories — lives in `src/rdg`
 constructs graphs, including an M1-shaped one, with no GPU device. **S4.2 is
 complete**: writes return new logical versions, producer/reader provenance is
 retained, invalid version access is rejected, and a text dump explains consumed
-versions. RDG execution and DXR are not implemented. The next executable task is
-**S4.3: build dependencies and topologically sort**.
+versions. **S4.3 is complete**: `GraphCompiler` builds RAW/WAR/WAW edges, a
+stable min-index topological order, and named cycle diagnostics; compilation
+does not touch NVRHI. RDG culling, execution, and DXR are not implemented.
+The next executable task is **S4.4: implement output-driven pass culling**.
 
 ## Plans
 

@@ -168,4 +168,12 @@ These whole-resource rules are specified in [`../rdg.md`](../rdg.md).
 
 The CPU-only version dump explains producer/reader provenance without RHI
 types, dependency sorting, physical resource ownership, or renderer changes.
-S4.3 will derive RAW/WAR/WAW edges from this retained history.
+S4.3 derives RAW/WAR/WAW edges from this retained history.
+
+## S4.3 Extension (2026-09-12)
+
+The boundary is unchanged. `GraphCompiler` lives in `src/rdg`, still links
+only `RenderLab::ProjectOptions`, and returns a `CompileResult` that owns
+its strings rather than pointing at the builder. Edges, the min-index Kahn
+order, and named cycle diagnostics are CPU-only. Culling, lifetimes, DOT
+dumps, physical resources, and the renderer remain later steps.

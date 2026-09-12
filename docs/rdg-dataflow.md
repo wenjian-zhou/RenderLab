@@ -1,12 +1,13 @@
-# RDG S4.2 Data Flow Walkthrough
+# RDG Data Flow Walkthrough
 
-Status: **current implementation walkthrough** — checked against S4.2 commit
-`b47923c` (2026-09-09). The original S4.1 diagrams remain in Git history.
+Status: **current implementation walkthrough** — S4.2 declaration/versioning
+plus S4.3 compilation. The original S4.1 diagrams remain in Git history.
 
-This file explains how declarations change the CPU model. The normative
-semantics and failure taxonomy live in [rdg.md](rdg.md); the ownership boundary
-lives in [ADR-003](adr/ADR-003-rdg-boundary.md). Method and field names below
-refer to the [source index](#8-source-index), without hard-coded line numbers.
+This file explains how declarations change the CPU model and how the compiler
+turns that history into a pass order. The normative semantics and failure
+taxonomy live in [rdg.md](rdg.md); the ownership boundary lives in
+[ADR-003](adr/ADR-003-rdg-boundary.md). Method and field names below refer to
+the [source index](#8-source-index), without hard-coded line numbers.
 
 The Mermaid blocks render on GitHub. A local Markdown viewer needs Mermaid
 support enabled; a source editor displays the diagram code.
@@ -382,7 +383,32 @@ version mutation to `DeclareAccessInternal`.
 | Handle validation | [test_rdg_handles.cpp](../tests/test_rdg_handles.cpp): `RunRdgHandleTests` |
 | M1 construction | [test_rdg_declarations.cpp](../tests/test_rdg_declarations.cpp): `RunRdgDeclarationTests` |
 | Texture/buffer history, WAW, errors, export, dump | [test_rdg_versioning.cpp](../tests/test_rdg_versioning.cpp): `RunVersionCases` |
+| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `GraphCompiler::Compile`, `CompileResult::Dump` |
+| Compiler cases | [test_rdg_compiler.cpp](../tests/test_rdg_compiler.cpp): `RunRdgCompilerTests` |
 
-S4.2 remains pure CPU code with zero Donut/NVRHI dependencies. Ordering and
-cycle detection (S4.3), culling (S4.4), lifetimes (S4.5), and GPU execution
-(Stage 5) are outside these diagrams.
+## 9. Compile: edges, order, and cycles
+
+```mermaid
+flowchart TB
+    GB["GraphBuilder records"]
+    ERR{"Builder already has errors?"}
+    COPY["Copy errors; empty order and edges"]
+    EDGES["Emit RAW / WAR / WAW reasons<br/>merge and sort per pass pair"]
+    KAHN["Kahn topo: ready queue is min pass index"]
+    ALL{"Every pass scheduled?"}
+    OK["CompileResult: success + pass order"]
+    CYCLE["Clear partial order<br/>DFS cycle with pass and resource names"]
+
+    GB --> ERR
+    ERR -->|"yes"| COPY
+    ERR -->|"no"| EDGES
+    EDGES --> KAHN
+    KAHN --> ALL
+    ALL -->|"yes"| OK
+    ALL -->|"no"| CYCLE
+```
+
+Compilation does not mutate the builder. Independent passes still enter the
+order. A cycle or copied declaration error never returns a partial
+`passOrder`. Culling (S4.4), lifetimes (S4.5), and GPU execution (Stage 5)
+are outside these diagrams.

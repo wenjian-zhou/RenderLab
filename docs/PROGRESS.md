@@ -5,19 +5,19 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.3 - Build dependencies and topologically sort**
-- State: **S4.2 complete; Stage 4 in progress** — the RDG logical model (typed
+- Active step: **S4.4 - Implement output-driven pass culling**
+- State: **S4.3 complete; Stage 4 in progress** — the RDG logical model (typed
   handles, descriptors, pass declarations, resource versions and provenance)
-  lives in `src/rdg` with zero NVRHI
-  dependencies (docs/rdg.md, ADR-003)
-- Last updated: 2026-09-09
+  compiles into RAW/WAR/WAW edges and a stable pass order in `src/rdg` with
+  zero NVRHI dependencies (docs/rdg.md, ADR-003)
+- Last updated: 2026-09-12
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
-- Stage 4: **S4.1-S4.2 complete**; S4.3 through S4.6 pending
+- Stage 4: **S4.1-S4.3 complete**; S4.4 through S4.6 pending
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1213,6 +1213,51 @@ Known limitations: dependency ordering, culling, lifetimes, and full compile
   whole-resource overwrites; same-pass read/modify/write is unsupported.
   Declaration-time validity does not guarantee a schedulable graph (S4.3).
 Next step: S4.3 - Build dependencies and topologically sort
+```
+
+### S4.3 - Build dependencies and topologically sort
+
+```text
+Step: S4.3
+State: Complete
+Date: 2026-09-12
+Commit: working tree (pending commit)
+Commands:
+  cmake --build out/build/windows-vs2022 --config Debug --target RenderLabDataContractTests --parallel 4 --verbose
+  ctest --test-dir out/build/windows-vs2022 -C Debug --output-on-failure
+  cmake --build out/build/windows-vs2022 --config Release --target RenderLabDataContractTests --parallel 4 --verbose
+  ctest --test-dir out/build/windows-vs2022 -C Release --output-on-failure
+  .\out\build\windows-vs2022\bin\Debug\RenderLabDataContractTests.exe
+  .\out\build\windows-vs2022\bin\Release\RenderLabDataContractTests.exe
+  git diff --check
+Review: both targeted Debug/Release builds compiled GraphCompiler.cpp and
+  test_rdg_compiler.cpp into newly generated RenderLabDataContractTests.exe
+  files. CTest 1/1 passed in each configuration; both executables printed
+  "RenderLab S4.3 compiler tests" and 0 failures. An earlier empty
+  CMAKE_CXX_FLAGS cache (missing /DWIN32 /EHsc) broke Donut; restoring the
+  MSVC defaults unblocked the full test target. FileTracker permission
+  errors did not reproduce on the successful builds.
+Automated tests: 0 failures in both configurations; 14 S4.3 checks cover
+  empty graphs, declaration-order RAW reordering, fan-out/fan-in overwrite
+  (RAW/WAR/WAW edge directions), independent passes in min-index Kahn order,
+  merged multi-reason edges, intentional cycles with named diagnostics and
+  no partial order, builder-error short-circuit, and deterministic Dump text.
+GPU validation/capture: not applicable; RenderLabRdg remains CPU-only.
+Artifacts:
+  src/rdg/GraphCompiler.h / GraphCompiler.cpp
+  src/CMakeLists.txt (GraphCompiler added to RenderLabRdg)
+  tests/test_rdg_compiler.cpp
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp (suite registration)
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg-dataflow.md (compiler walkthrough and source index)
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: culling, lifetimes, and full compile/DOT diagnostics
+  remain S4.4-S4.6; renderer/M1 code remains untouched. Compiler tests are
+  texture-shaped; the implementation walks every resource record, including
+  buffers. Imported v0 has no pass producer, so it emits no RAW/WAW edge
+  from kNoPass. CompileResult::Dump covers order, edges, errors, and cycles;
+  S4.6 still owns the broader compiled-graph dump.
+Next step: S4.4 - Implement output-driven pass culling
 ```
 
 Selected baseline:

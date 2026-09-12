@@ -6,7 +6,7 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-09): **S0.1 through S4.2 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-12): **S0.1 through S4.3 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
 [`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
@@ -15,7 +15,9 @@ declarations) lives in `src/rdg` with zero NVRHI dependencies
 ([`docs/rdg.md`](docs/rdg.md), [`docs/adr/ADR-003-rdg-boundary.md`](docs/adr/ADR-003-rdg-boundary.md)).
 **S4.2 is complete**: writes mint logical versions, producer/reader history is
 retained, invalid accesses are rejected, and a text dump explains provenance.
-The next step is **S4.3 — Build dependencies and topologically sort**. The S3.1 exposure and output-transfer
+**S4.3 is complete**: declarations compile into a deterministic pass DAG with
+RAW/WAR/WAW edges, min-index topological order, and named cycle diagnostics.
+The next step is **S4.4 — Implement output-driven pass culling**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -460,7 +462,9 @@ error categories — lives in `src/rdg` (`RenderLabRdg`, zero NVRHI dependencies
 [`docs/rdg.md`](docs/rdg.md), [`docs/adr/ADR-003-rdg-boundary.md`](docs/adr/ADR-003-rdg-boundary.md)).
 S4.2 is also complete: resource versions retain producers/readers, writes return
 new handles, and declaration validation rejects unproduced and superseded use.
-Next is S4.3.
+S4.3 is complete: `GraphCompiler` derives RAW/WAR/WAW edges, sorts with a
+stable min-index tie-break, and reports cycles by pass and resource name.
+Next is S4.4.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

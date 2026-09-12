@@ -1,19 +1,19 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 4** (implemented through S4.2)
+Status: **active design note — Stage 4** (implemented through S4.3)
 
-Step: S4.2
+Step: S4.3
 
 This file records the mini RDG's logical model: handles, resource
-descriptors, pass records, read/write declarations, and the failure
-taxonomy. How this design relates to UE 5.8.1's render dependency graph —
-what is adopted, diverged, and skipped, with `file:line` citations — lives in
-[`ue-rdg-survey.md`](ue-rdg-survey.md) and
+descriptors, pass records, read/write declarations, version provenance,
+dependency edges, and topological order. How this design relates to UE 5.8.1's
+render dependency graph — what is adopted, diverged, and skipped, with
+`file:line` citations — lives in [`ue-rdg-survey.md`](ue-rdg-survey.md) and
 [`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
-the S4.2 code — version history, the declaration flow, and the per-method
-field-access matrix — is in [`rdg-dataflow.md`](rdg-dataflow.md).
+the S4.2/S4.3 code — version history, the declaration flow, the per-method
+field-access matrix, and compilation — is in [`rdg-dataflow.md`](rdg-dataflow.md).
 
 ## 1. Scope and boundary
 
@@ -22,17 +22,17 @@ the **pure logical CPU model** of the render dependency graph:
 
 - It owns logical resource identity, descriptors, pass records, explicit
   read/write declarations, logical versions with producer/reader provenance,
-  imported/exported flags, pass flags, and
-  declaration-time validation.
+  imported/exported flags, pass flags, declaration-time validation,
+  RAW/WAR/WAW dependency edges, and a deterministic pass order or cycle
+  diagnostic.
 - It must not include or link Donut/NVRHI. `RenderLabRdg` links only
   `RenderLab::ProjectOptions`; the link closure is the proof, and review
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- What is deliberately absent and who owns it: dependency edges and
-  topological order (S4.3), culling (S4.4),
-  lifetimes (S4.5), full graph text/DOT dumps and compile error categories (S4.6),
-  physical resources and access states (Stage 5).
+- What is deliberately absent and who owns it: culling (S4.4),
+  lifetimes (S4.5), full graph text/DOT dumps and expanded compile
+  diagnostics (S4.6), physical resources and access states (Stage 5).
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -119,8 +119,9 @@ After a write, older handles are superseded; declarations accepted earlier
 remain valid and retain their original version. A stale write cannot branch
 the version history. Version changes follow declaration-call order, not pass
 index order: interleaved builders are supported, and an older pass may read
-a version already produced by a newer pass. Cycle detection and actual
-execution ordering belong to S4.3; S4.2 does not claim the graph is schedulable.
+a version already produced by a newer pass. S4.3 derives scheduling edges
+from this history; a graph that declares without errors can still be
+unschedulable if those edges form a cycle.
 
 A pass may read a resource repeatedly, but cannot both read and write it,
 nor write it twice (even using the returned current handle). This deliberately
@@ -155,8 +156,8 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 - Accepted reads pin the input version; accepted writes pin the new output
   version. Same-resource conflicts follow the S4.2 rules above.
 - Pass and resource names must be non-empty; duplicates are allowed.
-- There is no execute lambda and no compile/finish phase in Stage 4;
-  execution is Stage 5.
+- There is no execute lambda in Stage 4. S4.3 compiles declarations into a
+  pass order; GPU execution is Stage 5.
 
 ## 5. Failure taxonomy
 
@@ -231,14 +232,22 @@ real superseded handles at all three entry points, forged future versions,
 duplicate/incompatible writes, both mixed-access orders, pinned export, and
 rejection isolation. It also asserts the textual provenance dump.
 
+`tests/test_rdg_compiler.cpp` covers empty graphs, RAW reordering when the
+consumer is declared first, RAW/WAR/WAW edge directions on an overwrite
+fan-out/fan-in, independent passes in min-index topological order, merged
+multi-reason edges, intentional cycles with named diagnostics and no partial
+order, builder-error short-circuit, and deterministic `CompileResult::Dump`
+text.
+
 ## 8. Version dump
 
 `GraphBuilder::DumpVersions()` returns deterministic text in resource-index,
 then version order. Each row names the resource kind/index/name, version,
 producer (pass index/name, `external`, or `unproduced`), reader indices/names,
 and current/exported status. It omits graph IDs so identical declarations
-produce identical text across builders. This is S4.2 provenance evidence;
-S4.6 adds full compiled-graph diagnostics and DOT output.
+produce identical text across builders. This is S4.2 provenance evidence.
+S4.3's compiler dump is separate (`CompileResult::Dump`); S4.6 adds full
+compiled-graph diagnostics and DOT output.
 
 ```text
 texture 0 'Input' v0 producer=external readers=[0 'First'] current
@@ -246,4 +255,47 @@ texture 1 'Intermediate' v0 producer=unproduced readers=[]
 texture 1 'Intermediate' v1 producer=0 'First' readers=[1 'Second'] current
 texture 2 'Output' v0 producer=unproduced readers=[]
 texture 2 'Output' v1 producer=1 'Second' readers=[2 'Third'] current exported
+```
+
+## 9. Graph compiler (S4.3)
+
+`GraphCompiler::Compile(const GraphBuilder&)` is a pure function. It copies
+pass/resource names and builder errors into a `CompileResult` and never
+retains the builder. `IsSuccess()` is true only when the error list is empty
+and no cycle was found.
+
+If the builder already recorded declaration errors, compilation copies them
+and returns immediately: no edges, no pass order, no cycle diagnostic.
+
+Otherwise every resource version contributes ordering edges:
+
+| Type | Direction | When |
+|---|---|---|
+| RAW | producer of vn → each reader of vn | a pass reads a produced version |
+| WAR | each reader of v(n-1) → producer of vn | a later pass overwrites a version that had readers |
+| WAW | producer of v(n-1) → producer of vn | a later pass overwrites a produced version |
+
+`Error::kNoPass` producers (internal unproduced v0, imported v0) do not emit
+edges. Reasons on the same pass pair merge into one edge, then sort and
+deduplicate by resource index, versions, and type. Independent passes still
+appear in the order.
+
+The scheduler is Kahn's algorithm with a min-heap of ready pass indices:
+when several passes have indegree zero, the lowest index runs first. A
+valid graph therefore has one legal order. If not every pass is scheduled,
+the partial order is discarded and a deterministic DFS records a cycle of
+pass names plus one dependency reason per step.
+
+`CompileResult::Dump()` is stable text: compile status, the ordered pass
+list, each edge with its reasons, copied builder errors, and `cycle: none`
+or the named cycle.
+
+```text
+compile: success
+order: [1 "Producer", 0 "Consumer"]
+edges:
+  1 "Producer" -> 0 "Consumer"
+    RAW resource 0 "Resource" v1 -> v1
+errors:
+cycle: none
 ```

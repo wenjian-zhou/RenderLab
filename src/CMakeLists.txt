@@ -48,6 +48,8 @@ set(RENDERLAB_RDG_SOURCES
     rdg/Pass.h
     rdg/GraphBuilder.h
     rdg/GraphBuilder.cpp
+    rdg/GraphCompiler.h
+    rdg/GraphCompiler.cpp
 )
 
 # The Stage 4 RDG compiler model is a pure logical CPU model: it must not
