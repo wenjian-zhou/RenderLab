@@ -31,9 +31,8 @@ namespace renderlab::rdg
     };
 
     // One collected failure: a rejected declaration/creation call, or a
-    // compile-time ZeroUseAllocation. S4.6 turns these into the compile
-    // error categories; naming both the pass and the resource is part of
-    // the contract from day one.
+    // compile-time ZeroUseAllocation. Compile dumps expose category plus
+    // pass and resource names (S4.6).
     struct Error
     {
         static constexpr uint32_t kNoPass = 0xFFFFFFFFu;

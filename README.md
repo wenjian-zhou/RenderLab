@@ -39,8 +39,11 @@ work that cannot affect an exported resource or `NeverCull` side effect;
 dumps list live and culled passes with a reason. **S4.5 is complete**:
 every live logical resource has a deterministic first/last-use interval
 after scheduling and culling; non-imported zero-use allocations fail
-compile. RDG DOT dumps, execution, and DXR are not implemented. The next
-executable task is **S4.6: compiler diagnostics and graph export**.
+compile. **S4.6 is complete**: compiled graphs emit stable text and DOT dumps
+(pass order, edges, versions, accesses, cull, lifetimes), `--dump-rdg` is
+CPU-only, and the M1-shaped golden is committed. Stage 4 is satisfied. RDG
+execution and DXR are not implemented. The next executable task is
+**S5.1: define imported resources and execution context**.
 
 ## Plans
 
@@ -118,6 +121,7 @@ After a Debug or Release build:
 .\out\build\windows-vs2022\bin\Release\RenderLab.exe --lock-camera --frames 30
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --gbuffer-view world-normal
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --lock-camera --dump-gbuffer-views captures\s15-views
+.\out\build\windows-vs2022\bin\Debug\RenderLab.exe --dump-rdg captures\rdg
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --headless
 .\out\build\windows-vs2022\bin\Debug\RenderLab.exe --scene fallback-boxes --lock-camera --frames 15
 powershell -NoProfile -File scripts\smoke.ps1
@@ -156,6 +160,7 @@ Command-line parsing is stable:
 | `--verify-lights` | upload the S2.3 verification fixture (directional + 1 point + weak ambient) |
 | `--dump-gbuffer-views <dir>` | write PNG dumps of every mandatory GBuffer debug view; implies `--lock-camera` |
 | `--dump-lighting-views <dir>` | write PNG dumps of lighting debug views; implies `--lock-camera` |
+| `--dump-rdg <dir>` | write the M1-shaped compiled graph as `rdg.txt` and `rdg.dot` under `<dir>` and exit; CPU-only, no device, other flags ignored |
 | `--headless` | hidden-window fixed-frame smoke; locks the camera |
 | `--output <dir>` | S1.6 golden capture: six GBuffer debug PNGs plus `capture-metadata.json`; implies `--lock-camera`; disables the resize/minimize probe |
 | `--output-hdr <dir>` | S2.4/S3.2 golden capture: `hdr-scene-color.rlhdr`, `lighting-lit.png`, `final.png`, `hdr-capture-metadata.json`; implies `--lock-camera`; exclusive with `--output`; disables the resize probe; metadata records the captured frame's per-pass GPU times (S3.3) |

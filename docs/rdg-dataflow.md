@@ -1,11 +1,12 @@
 # RDG Data Flow Walkthrough
 
 Status: **current implementation walkthrough** — S4.2 declaration/versioning,
-S4.3 compilation, S4.4 culling, and S4.5 lifetimes. The original S4.1
-diagrams remain in Git history.
+S4.3 compilation, S4.4 culling, S4.5 lifetimes, and S4.6 compiled dumps. The
+original S4.1 diagrams remain in Git history.
 
 This file explains how declarations change the CPU model and how the compiler
-turns that history into a pass order, cull set, and logical lifetimes. The
+turns that history into a pass order, cull set, logical lifetimes, and stable
+text/DOT dumps. The
 normative semantics and failure taxonomy live in [rdg.md](rdg.md); the
 ownership boundary lives in [ADR-003](adr/ADR-003-rdg-boundary.md). Method
 and field names below refer to the [source index](#8-source-index), without
@@ -320,7 +321,9 @@ texture 5 'HDRSceneColor' v1 producer=1 'DeferredLighting' readers=[2 'PostProce
 ```
 
 Every consumed version has a declared source. This is a provenance dump,
-not an execution trace; S4.6 will add compiled-graph text/DOT diagnostics.
+not an execution trace. `CompileResult::Dump` / `DumpDot` (S4.6) are the
+compiled-graph diagnostics; they copy version provenance during `Compile` and
+do not call `DumpVersions()`.
 
 ## 7. Field access matrix
 
@@ -383,20 +386,23 @@ version mutation to `DeclareAccessInternal`.
 | Registry and version records | [GraphBuilder.h](../src/rdg/GraphBuilder.h): `ResourceRecord`, `ResourceVersionRecord` |
 | Validation, mutations, and text dump | [GraphBuilder.cpp](../src/rdg/GraphBuilder.cpp): methods named above |
 | Handle validation | [test_rdg_handles.cpp](../tests/test_rdg_handles.cpp): `RunRdgHandleTests` |
-| M1 construction | [test_rdg_declarations.cpp](../tests/test_rdg_declarations.cpp): `RunRdgDeclarationTests` |
+| M1 construction | [M1ShapedGraph.cpp](../src/rdg/M1ShapedGraph.cpp): `BuildM1ShapedGraph`; [test_rdg_declarations.cpp](../tests/test_rdg_declarations.cpp): `RunRdgDeclarationTests` |
 | Texture/buffer history, WAW, errors, export, dump | [test_rdg_versioning.cpp](../tests/test_rdg_versioning.cpp): `RunVersionCases` |
-| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump, culling, lifetimes | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `CompileOptions`, `CullReason`, `PassCullState`, `VersionLifetime`, `ResourceLifetime`, `GraphCompiler::Compile`, `CompileResult::GetLivePassOrder`, `CompileResult::GetPassCullStates`, `CompileResult::GetVersionLifetimes`, `CompileResult::GetResourceLifetimes`, `CompileResult::Dump` |
+| RAW/WAR/WAW edges, Kahn order, cycle diagnostic, compiler dump, culling, lifetimes, compiled text/DOT dumps | [GraphCompiler.h](../src/rdg/GraphCompiler.h) / [GraphCompiler.cpp](../src/rdg/GraphCompiler.cpp): `CompileOptions`, `CullReason`, `PassCullState`, `VersionLifetime`, `ResourceLifetime`, `GraphCompiler::Compile`, `CompileResult::GetLivePassOrder`, `CompileResult::GetPassCullStates`, `CompileResult::GetVersionLifetimes`, `CompileResult::GetResourceLifetimes`, `CompileResult::Dump`, `CompileResult::DumpDot` |
+| M1-shaped representative graph | [M1ShapedGraph.h](../src/rdg/M1ShapedGraph.h) / [M1ShapedGraph.cpp](../src/rdg/M1ShapedGraph.cpp): `BuildM1ShapedGraph` |
 | Compiler cases | [test_rdg_compiler.cpp](../tests/test_rdg_compiler.cpp): `RunRdgCompilerTests` |
 | Culling cases | [test_rdg_culling.cpp](../tests/test_rdg_culling.cpp): `RunRdgCullingTests` |
 | Lifetime cases | [test_rdg_lifetimes.cpp](../tests/test_rdg_lifetimes.cpp): `RunRdgLifetimeTests` |
+| Compiled dump goldens and diagnostics | [test_rdg_dump.cpp](../tests/test_rdg_dump.cpp): `RunRdgDumpTests`; [tests/golden/rdg](../tests/golden/rdg) |
 
-## 9. Compile: edges, order, cycles, culling, and lifetimes
+## 9. Compile: edges, order, cycles, culling, lifetimes, and dumps
 
 ```mermaid
 flowchart TB
     GB["GraphBuilder records"]
+    SNAP["Copy names, flags, accesses, versions, errors"]
     ERR{"Builder already has errors?"}
-    COPY["Copy errors; empty order, edges, cull, lifetimes"]
+    STOP["Empty order, edges, cull, lifetimes"]
     EDGES["Emit RAW / WAR / WAW reasons<br/>merge and sort per pass pair"]
     KAHN["Kahn topo: ready queue is min pass index"]
     ALL{"Every pass scheduled?"}
@@ -407,8 +413,9 @@ flowchart TB
     OK["CompileResult: order + live order + cull + intervals"]
     CYCLE["Clear partial order<br/>DFS cycle; cull and lifetime skipped"]
 
-    GB --> ERR
-    ERR -->|"yes"| COPY
+    GB --> SNAP
+    SNAP --> ERR
+    ERR -->|"yes"| STOP
     ERR -->|"no"| EDGES
     EDGES --> KAHN
     KAHN --> ALL
@@ -422,8 +429,9 @@ flowchart TB
 
 Compilation does not mutate the builder. Independent passes still enter the
 full `passOrder`. A cycle or copied declaration error never returns a partial
-order and invents no cull or lifetime state. Culling walks last-producer
-(RAW/WAW) edges only. Lifetimes walk `GetLivePassOrder()` and recorded
-accesses; imported last-use stops at last live access, exported last-use
-extends to the last live pass. GPU execution (Stage 5) is outside these
-diagrams.
+order and invents no cull or lifetime state (`cull: skipped`, `lifetime: skipped`).
+The dump snapshot (flags, accesses, version provenance) is copied first, so
+those sections still print. Culling walks last-producer (RAW/WAW) edges only.
+Lifetimes walk `GetLivePassOrder()` and recorded accesses; imported last-use
+stops at last live access, exported last-use extends to the last live pass.
+GPU execution (Stage 5) is outside these diagrams.

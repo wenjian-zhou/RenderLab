@@ -116,6 +116,7 @@ namespace renderlab::rdg
         const std::optional<CycleDiagnostic>& GetCycle() const { return m_cycle; }
         bool HasCycle() const { return m_cycle.has_value(); }
         std::string Dump() const;
+        std::string DumpDot() const;
 
     private:
         friend class GraphCompiler;
@@ -128,6 +129,12 @@ namespace renderlab::rdg
         std::optional<CycleDiagnostic> m_cycle;
         std::vector<std::string> m_passNames;
         std::vector<std::string> m_resourceNames;
+        std::vector<PassFlags> m_passFlags;
+        std::vector<std::vector<ResourceAccess>> m_passAccesses;
+        std::vector<ResourceKind> m_resourceKinds;
+        std::vector<uint8_t> m_resourceImported;
+        std::vector<uint8_t> m_resourceExported;
+        std::vector<std::vector<ResourceVersionRecord>> m_resourceVersions;
         std::vector<VersionLifetime> m_versionLifetimes;
         std::vector<ResourceLifetime> m_resourceLifetimes;
         bool m_cullingApplied = false;

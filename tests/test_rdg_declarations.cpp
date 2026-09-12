@@ -1,4 +1,5 @@
 #include "rdg/GraphBuilder.h"
+#include "rdg/M1ShapedGraph.h"
 
 #include <cstdio>
 #include <string>
@@ -158,32 +159,7 @@ int RunRdgDeclarationTests()
     // expressed as pure declarations, no GPU device
     {
         GraphBuilder builder;
-
-        TextureHandle backBuffer = builder.ImportTexture({"BackBuffer", 1280, 720, Format::Srgba8Unorm});
-        TextureHandle gbufferA = builder.CreateTexture({"GBufferA", 1280, 720, Format::Srgba8Unorm});
-        TextureHandle gbufferB = builder.CreateTexture({"GBufferB", 1280, 720, Format::Rgba16Float});
-        TextureHandle gbufferC = builder.CreateTexture({"GBufferC", 1280, 720, Format::Rgba8Unorm});
-        TextureHandle gbufferDepth = builder.CreateTexture({"GBufferDepth", 1280, 720, Format::D32Float});
-        TextureHandle hdrSceneColor = builder.CreateTexture({"HDRSceneColor", 1280, 720, Format::Rgba16Float});
-
-        auto gbufferPass = builder.AddPass("GBuffer", PassFlags::Raster);
-        gbufferA = gbufferPass.Write(gbufferA);
-        gbufferB = gbufferPass.Write(gbufferB);
-        gbufferC = gbufferPass.Write(gbufferC);
-        gbufferDepth = gbufferPass.Write(gbufferDepth);
-
-        auto deferredPass = builder.AddPass("DeferredLighting", PassFlags::Raster);
-        deferredPass.Read(gbufferA);
-        deferredPass.Read(gbufferB);
-        deferredPass.Read(gbufferC);
-        deferredPass.Read(gbufferDepth);
-        hdrSceneColor = deferredPass.Write(hdrSceneColor);
-
-        auto postPass = builder.AddPass("PostProcess", PassFlags::Raster);
-        postPass.Read(hdrSceneColor);
-        backBuffer = postPass.Write(backBuffer);
-
-        builder.ExportTexture(backBuffer);
+        BuildM1ShapedGraph(builder);
 
         Check(builder.GetErrors().empty(), "The M1-shaped graph constructs without errors");
         Check(builder.GetResourceCount() == 6, "The M1-shaped graph has six resources");
@@ -198,10 +174,10 @@ int RunRdgDeclarationTests()
             builder.GetPass(2).name == "PostProcess" && builder.GetPass(2).accesses.size() == 2,
             "PostProcess declares one read and one write");
         Check(
-            builder.GetResource(backBuffer.index).imported && builder.GetResource(backBuffer.index).exported,
+            builder.GetResource(0).imported && builder.GetResource(0).exported,
             "The back buffer is imported and exported (cull root)");
         Check(
-            !builder.GetResource(gbufferA.index).imported && !builder.GetResource(gbufferA.index).exported,
+            !builder.GetResource(1).imported && !builder.GetResource(1).exported,
             "Internal GBuffer targets carry no root flags");
         builder.AssertNoErrors();
         Check(true, "The M1-shaped graph passes AssertNoErrors");

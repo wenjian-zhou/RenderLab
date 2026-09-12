@@ -50,6 +50,8 @@ set(RENDERLAB_RDG_SOURCES
     rdg/GraphBuilder.cpp
     rdg/GraphCompiler.h
     rdg/GraphCompiler.cpp
+    rdg/M1ShapedGraph.h
+    rdg/M1ShapedGraph.cpp
 )
 
 # The Stage 4 RDG compiler model is a pure logical CPU model: it must not
@@ -145,6 +147,7 @@ target_link_libraries(
     RenderLab
     PRIVATE
         RenderLab::Renderer
+        RenderLab::Rdg
         donut_app
         bcrypt
 )

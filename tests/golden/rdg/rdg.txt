@@ -1,0 +1,68 @@
+compile: success
+order: [0 "GBuffer", 1 "DeferredLighting", 2 "PostProcess"]
+edges:
+  0 "GBuffer" -> 1 "DeferredLighting"
+    RAW resource 1 "GBufferA" v1 -> v1
+    RAW resource 2 "GBufferB" v1 -> v1
+    RAW resource 3 "GBufferC" v1 -> v1
+    RAW resource 4 "GBufferDepth" v1 -> v1
+  1 "DeferredLighting" -> 2 "PostProcess"
+    RAW resource 5 "HDRSceneColor" v1 -> v1
+errors:
+cycle: none
+cull:
+  0 "GBuffer" live producer
+  1 "DeferredLighting" live producer
+  2 "PostProcess" live root-output
+lifetime:
+  resource 0 "BackBuffer" first=0 last=2 imported exported
+  resource 1 "GBufferA" first=0 last=1
+  resource 2 "GBufferB" first=0 last=1
+  resource 3 "GBufferC" first=0 last=1
+  resource 4 "GBufferDepth" first=0 last=1
+  resource 5 "HDRSceneColor" first=1 last=2
+  version 0 "BackBuffer" v0 first=0 last=0
+  version 0 "BackBuffer" v1 first=2 last=2
+  version 1 "GBufferA" v1 first=0 last=1
+  version 2 "GBufferB" v1 first=0 last=1
+  version 3 "GBufferC" v1 first=0 last=1
+  version 4 "GBufferDepth" v1 first=0 last=1
+  version 5 "HDRSceneColor" v1 first=1 last=2
+flags:
+  0 "GBuffer" Raster
+  1 "DeferredLighting" Raster
+  2 "PostProcess" Raster
+accesses:
+  0 "GBuffer"
+    write texture 1 "GBufferA" v1
+    write texture 2 "GBufferB" v1
+    write texture 3 "GBufferC" v1
+    write texture 4 "GBufferDepth" v1
+  1 "DeferredLighting"
+    read texture 1 "GBufferA" v1
+    read texture 2 "GBufferB" v1
+    read texture 3 "GBufferC" v1
+    read texture 4 "GBufferDepth" v1
+    write texture 5 "HDRSceneColor" v1
+  2 "PostProcess"
+    read texture 5 "HDRSceneColor" v1
+    write texture 0 "BackBuffer" v1
+versions:
+  texture 0 "BackBuffer" imported exported
+    v0 producer=external readers=[]
+    v1 producer=2 "PostProcess" readers=[]
+  texture 1 "GBufferA"
+    v0 producer=unproduced readers=[]
+    v1 producer=0 "GBuffer" readers=[1 "DeferredLighting"]
+  texture 2 "GBufferB"
+    v0 producer=unproduced readers=[]
+    v1 producer=0 "GBuffer" readers=[1 "DeferredLighting"]
+  texture 3 "GBufferC"
+    v0 producer=unproduced readers=[]
+    v1 producer=0 "GBuffer" readers=[1 "DeferredLighting"]
+  texture 4 "GBufferDepth"
+    v0 producer=unproduced readers=[]
+    v1 producer=0 "GBuffer" readers=[1 "DeferredLighting"]
+  texture 5 "HDRSceneColor"
+    v0 producer=unproduced readers=[]
+    v1 producer=1 "DeferredLighting" readers=[2 "PostProcess"]

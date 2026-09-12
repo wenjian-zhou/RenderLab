@@ -5,12 +5,12 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S4.6 - Add compiler diagnostics and graph export**
-- State: **S4.5 complete; Stage 4 in progress** — the RDG logical model (typed
+- Active step: **S5.1 - Define imported resources and execution context**
+- State: **S4.6 complete; Stage 4 gate satisfied** — the RDG logical model (typed
   handles, descriptors, pass declarations, resource versions and provenance)
   compiles into RAW/WAR/WAW edges, a stable pass order, output-driven
-  pass culling, and logical first/last-use lifetimes in `src/rdg` with zero
-  NVRHI dependencies (docs/rdg.md, ADR-003)
+  pass culling, logical first/last-use lifetimes, and stable text/DOT dumps
+  in `src/rdg` with zero NVRHI dependencies (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-12
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -18,7 +18,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
-- Stage 4: **S4.1-S4.5 complete**; S4.6 pending
+- Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1344,6 +1344,52 @@ Known limitations: full compile/DOT diagnostics and --dump-rdg remain S4.6;
   last-use stops at last live access; exported last-use extends to the last
   live pass.
 Next step: S4.6 - Add compiler diagnostics and graph export
+```
+
+### S4.6 - Add compiler diagnostics and graph export
+
+```text
+Step: S4.6
+State: Complete
+Date: 2026-09-12
+Commit: (pending)
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+Evidence: Debug and Release builds compiled GraphCompiler.cpp, M1ShapedGraph.cpp,
+  and test_rdg_dump.cpp, 0 errors, 0 warnings. CTest 1/1 passed in each
+  configuration; both executables printed "RenderLab S4.6 dump tests" and
+  0 failures. git diff --check was clean. RenderLabRdg still links only
+  RenderLab::ProjectOptions. --dump-rdg writes rdg.txt/rdg.dot and returns
+  before DeviceManager.
+Automated tests: 0 failures in both configurations; 7 S4.6 checks cover
+  M1-shaped golden text, M1-shaped golden DOT, Dump()/DumpDot() determinism,
+  cycle dumps naming pass+resource, builder-error dumps with skipped
+  cull/lifetime plus snapshot sections, ZeroUseAllocation with cull kept
+  and lifetime skipped, and DOT live vs culled. Existing S4.1-S4.5 checks
+  still pass.
+GPU validation/capture: not applicable; RenderLabRdg remains CPU-only.
+  Graphviz is not a CI dependency; tests/golden/rdg/rdg.dot is the
+  Graphviz-renderable proof (locally: dot -Tpng rdg.dot -o rdg.png).
+Artifacts:
+  src/rdg/GraphCompiler.h / GraphCompiler.cpp (snapshot copy, Dump, DumpDot)
+  src/rdg/M1ShapedGraph.h / M1ShapedGraph.cpp
+  src/app/main.cpp (--dump-rdg early exit)
+  src/CMakeLists.txt (M1 sources; RenderLab links RenderLab::Rdg)
+  tests/test_rdg_dump.cpp / tests/test_rdg_declarations.cpp
+  tests/golden/rdg/rdg.txt / tests/golden/rdg/rdg.dot
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp (suite registration)
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg-dataflow.md (dump snapshot and source index)
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: physical allocation, access-state planning, and raster
+  migration remain Stage 5; renderer/M1 GPU passes remain untouched.
+  Lifetimes stay pass indices. DumpVersions() on the builder remains S4.2
+  provenance evidence, separate from the compiled dump.
+Next step: S5.1 - Define imported resources and execution context
 ```
 
 Selected baseline:

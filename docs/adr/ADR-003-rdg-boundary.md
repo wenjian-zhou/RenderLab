@@ -187,8 +187,8 @@ culled; roots are `NeverCull` or a write to `imported || exported`; the
 un-cull walk follows incoming RAW and WAW last-producer edges (WAR stays a
 scheduling edge). `CompileOptions::disableCulling` is the global off switch.
 `CompileResult` exposes the full pass order, a live subsequence, and a
-stable per-pass cull reason. DOT dumps, physical resources, and the
-renderer remain later steps.
+stable per-pass cull reason. Physical resources and the renderer remain
+later steps.
 
 ## S4.5 Extension (2026-09-12)
 
@@ -200,5 +200,17 @@ per-version and aggregated per-resource `[firstPass, lastPass]` intervals
 graph entry through last live access; exported last-use extends through the
 last live pass. Non-imported zero-use allocations are `ZeroUseAllocation`
 compile failures with cull state kept and no partial intervals. Physical
-reuse of non-overlapping intervals remains S5.7. DOT dumps and the renderer
-remain later steps.
+reuse of non-overlapping intervals remains S5.7. The renderer remains a
+later step.
+
+## S4.6 Extension (2026-09-12)
+
+The boundary is unchanged. `Compile()` copies dump-owned snapshot data
+(pass flags, accesses, resource kinds, imported/exported, version
+provenance) into `CompileResult` at the start of compilation and never
+retains the builder. `Dump()` appends `flags:`, `accesses:`, and `versions:`
+after the existing lifetime section; `DumpDot()` emits a Graphviz digraph
+with pass nodes, RAW/WAR/WAW edges, and a `cluster_resources` subgraph.
+`--dump-rdg` is a CPU-only CLI path in the app: it writes those strings and
+exits before `DeviceManager`. Physical resources, NVRHI, and the renderer
+remain Stage 5.

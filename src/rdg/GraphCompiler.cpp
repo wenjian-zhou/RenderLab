@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <queue>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -85,10 +86,61 @@ namespace renderlab::rdg
             return quoted + '"';
         }
 
+        const char* ToString(ResourceKind kind)
+        {
+            return kind == ResourceKind::Texture ? "texture" : "buffer";
+        }
+
+        const char* ToString(AccessMode mode)
+        {
+            return mode == AccessMode::Read ? "read" : "write";
+        }
+
+        std::string FormatFlags(PassFlags flags)
+        {
+            std::string text;
+            if ((flags & PassFlags::Raster) != PassFlags::None)
+            {
+                text = "Raster";
+            }
+            if ((flags & PassFlags::NeverCull) != PassFlags::None)
+            {
+                if (!text.empty())
+                {
+                    text += " ";
+                }
+                text += "NeverCull";
+            }
+            return text.empty() ? std::string("None") : text;
+        }
+
+        std::string FormatPassIndex(uint32_t passIndex)
+        {
+            return passIndex == Error::kNoPass ? std::string("none") : std::to_string(passIndex);
+        }
+
         std::string DumpReason(const DependencyReason& reason, const std::string& resourceName)
         {
             return std::format("{} resource {} {} v{} -> v{}", ToString(reason.type),
                 reason.resourceIndex, Quote(resourceName), reason.sourceVersion, reason.targetVersion);
+        }
+
+        std::string DotQuote(std::string_view value)
+        {
+            std::string quoted = "\"";
+            for (const unsigned char character : value)
+            {
+                switch (character)
+                {
+                case '\\': quoted += "\\\\"; break;
+                case '"': quoted += "\\\""; break;
+                case '\n': quoted += "\\n"; break;
+                default:
+                    quoted += static_cast<char>(character);
+                    break;
+                }
+            }
+            return quoted + '"';
         }
 
         CycleDiagnostic FindCycle(
@@ -408,11 +460,19 @@ namespace renderlab::rdg
         CompileResult result;
         for (uint32_t passIndex = 0; passIndex < builder.GetPassCount(); ++passIndex)
         {
-            result.m_passNames.push_back(builder.GetPass(passIndex).name);
+            const PassRecord& pass = builder.GetPass(passIndex);
+            result.m_passNames.push_back(pass.name);
+            result.m_passFlags.push_back(pass.flags);
+            result.m_passAccesses.push_back(pass.accesses);
         }
         for (uint32_t resourceIndex = 0; resourceIndex < builder.GetResourceCount(); ++resourceIndex)
         {
-            result.m_resourceNames.push_back(builder.GetResource(resourceIndex).name);
+            const ResourceRecord& resource = builder.GetResource(resourceIndex);
+            result.m_resourceNames.push_back(resource.name);
+            result.m_resourceKinds.push_back(resource.kind);
+            result.m_resourceImported.push_back(resource.imported ? 1 : 0);
+            result.m_resourceExported.push_back(resource.exported ? 1 : 0);
+            result.m_resourceVersions.push_back(resource.versions);
         }
         result.m_errors.assign(builder.GetErrors().begin(), builder.GetErrors().end());
         if (!result.m_errors.empty())
@@ -561,15 +621,11 @@ namespace renderlab::rdg
         else
         {
             dump += "lifetime:\n";
-            const auto formatPass = [](uint32_t passIndex) -> std::string
-            {
-                return passIndex == Error::kNoPass ? std::string("none") : std::to_string(passIndex);
-            };
             for (const ResourceLifetime& lifetime : m_resourceLifetimes)
             {
                 dump += std::format("  resource {} {} first={} last={}", lifetime.resourceIndex,
-                    Quote(m_resourceNames[lifetime.resourceIndex]), formatPass(lifetime.firstPass),
-                    formatPass(lifetime.lastPass));
+                    Quote(m_resourceNames[lifetime.resourceIndex]), FormatPassIndex(lifetime.firstPass),
+                    FormatPassIndex(lifetime.lastPass));
                 if (lifetime.imported)
                 {
                     dump += " imported";
@@ -584,9 +640,125 @@ namespace renderlab::rdg
             {
                 dump += std::format("  version {} {} v{} first={} last={}\n", lifetime.resourceIndex,
                     Quote(m_resourceNames[lifetime.resourceIndex]), lifetime.version,
-                    formatPass(lifetime.firstPass), formatPass(lifetime.lastPass));
+                    FormatPassIndex(lifetime.firstPass), FormatPassIndex(lifetime.lastPass));
             }
         }
+        dump += "flags:\n";
+        for (uint32_t passIndex = 0; passIndex < m_passNames.size(); ++passIndex)
+        {
+            dump += std::format("  {} {} {}\n", passIndex, Quote(m_passNames[passIndex]),
+                FormatFlags(m_passFlags[passIndex]));
+        }
+        dump += "accesses:\n";
+        for (uint32_t passIndex = 0; passIndex < m_passNames.size(); ++passIndex)
+        {
+            dump += std::format("  {} {}\n", passIndex, Quote(m_passNames[passIndex]));
+            for (const ResourceAccess& access : m_passAccesses[passIndex])
+            {
+                dump += std::format("    {} {} {} {} v{}\n", ToString(access.mode), ToString(access.kind),
+                    access.index, Quote(m_resourceNames[access.index]), access.version);
+            }
+        }
+        dump += "versions:\n";
+        for (uint32_t resourceIndex = 0; resourceIndex < m_resourceNames.size(); ++resourceIndex)
+        {
+            dump += std::format("  {} {} {}", ToString(m_resourceKinds[resourceIndex]), resourceIndex,
+                Quote(m_resourceNames[resourceIndex]));
+            if (m_resourceImported[resourceIndex] != 0)
+            {
+                dump += " imported";
+            }
+            if (m_resourceExported[resourceIndex] != 0)
+            {
+                dump += " exported";
+            }
+            dump += "\n";
+            for (uint32_t version = 0; version < m_resourceVersions[resourceIndex].size(); ++version)
+            {
+                const ResourceVersionRecord& record = m_resourceVersions[resourceIndex][version];
+                dump += std::format("    v{} producer=", version);
+                if (record.producerPass != Error::kNoPass)
+                {
+                    dump += std::format("{} {}", record.producerPass, Quote(m_passNames[record.producerPass]));
+                }
+                else
+                {
+                    dump += record.produced ? "external" : "unproduced";
+                }
+                dump += " readers=[";
+                for (size_t reader = 0; reader < record.readerPasses.size(); ++reader)
+                {
+                    const uint32_t passIndex = record.readerPasses[reader];
+                    dump += std::format("{}{} {}", reader == 0 ? "" : ", ", passIndex, Quote(m_passNames[passIndex]));
+                }
+                dump += "]\n";
+            }
+        }
+        return dump;
+    }
+
+    std::string CompileResult::DumpDot() const
+    {
+        std::string dump = "digraph RDG {\n  rankdir=LR;\n";
+        for (uint32_t passIndex = 0; passIndex < m_passNames.size(); ++passIndex)
+        {
+            std::string label = std::format("{} {}\n{}", passIndex, Quote(m_passNames[passIndex]),
+                FormatFlags(m_passFlags[passIndex]));
+            if (m_cullingApplied)
+            {
+                const PassCullState& state = m_cullStates[passIndex];
+                label += std::format("\n{} {}", state.culled ? "culled" : "live", ToString(state.reason));
+            }
+            dump += std::format("  p{} [label={}];\n", passIndex, DotQuote(label));
+        }
+        for (const DependencyEdge& edge : m_edges)
+        {
+            for (const DependencyReason& reason : edge.reasons)
+            {
+                const std::string label = std::format("{} {} v{}", ToString(reason.type),
+                    Quote(m_resourceNames[reason.resourceIndex]), reason.sourceVersion);
+                dump += std::format("  p{} -> p{} [label={}];\n", edge.fromPass, edge.toPass, DotQuote(label));
+            }
+        }
+        if (!m_resourceNames.empty())
+        {
+            dump += "  subgraph cluster_resources {\n    label=\"resources\";\n";
+            for (uint32_t resourceIndex = 0; resourceIndex < m_resourceNames.size(); ++resourceIndex)
+            {
+                std::string label = std::format("{} {}", resourceIndex, Quote(m_resourceNames[resourceIndex]));
+                if (m_resourceImported[resourceIndex] != 0 || m_resourceExported[resourceIndex] != 0)
+                {
+                    label += "\n";
+                    if (m_resourceImported[resourceIndex] != 0)
+                    {
+                        label += "imported";
+                    }
+                    if (m_resourceExported[resourceIndex] != 0)
+                    {
+                        if (m_resourceImported[resourceIndex] != 0)
+                        {
+                            label += " ";
+                        }
+                        label += "exported";
+                    }
+                }
+                if (m_lifetimesApplied)
+                {
+                    for (const ResourceLifetime& lifetime : m_resourceLifetimes)
+                    {
+                        if (lifetime.resourceIndex == resourceIndex)
+                        {
+                            label += std::format("\nfirst={} last={}", FormatPassIndex(lifetime.firstPass),
+                                FormatPassIndex(lifetime.lastPass));
+                            break;
+                        }
+                    }
+                }
+                dump += std::format("    r{} [label={}];\n", resourceIndex, DotQuote(label));
+            }
+            dump += "  }\n";
+        }
+        dump += "}\n";
         return dump;
     }
 }

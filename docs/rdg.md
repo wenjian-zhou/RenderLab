@@ -1,21 +1,21 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 4** (implemented through S4.5)
+Status: **active design note — Stage 4** (implemented through S4.6)
 
-Step: S4.5
+Step: S4.6
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
-dependency edges, topological order, output-driven pass culling, and
-logical resource lifetimes. How this design relates to UE 5.8.1's render
+dependency edges, topological order, output-driven pass culling, logical
+resource lifetimes, and compiled-graph text/DOT dumps. How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
 [`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
-the S4.2–S4.5 code — version history, the declaration flow, the per-method
-field-access matrix, compilation, culling, and lifetimes — is in
+the S4.2–S4.6 code — version history, the declaration flow, the per-method
+field-access matrix, compilation, culling, lifetimes, and compiled dumps — is in
 [`rdg-dataflow.md`](rdg-dataflow.md).
 
 ## 1. Scope and boundary
@@ -27,17 +27,17 @@ the **pure logical CPU model** of the render dependency graph:
   read/write declarations, logical versions with producer/reader provenance,
   imported/exported flags, pass flags, declaration-time validation,
   RAW/WAR/WAW dependency edges, a deterministic pass order or cycle
-  diagnostic, output-driven pass culling with stable reasons, and logical
-  first/last-use lifetimes after culling.
+  diagnostic, output-driven pass culling with stable reasons, logical
+  first/last-use lifetimes after culling, and stable text/DOT dumps of the
+  compiled graph.
 - It must not include or link Donut/NVRHI. `RenderLabRdg` links only
   `RenderLab::ProjectOptions`; the link closure is the proof, and review
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- What is deliberately absent and who owns it: full graph text/DOT dumps and
-  expanded compile diagnostics (S4.6), physical resources and access states
-  (Stage 5). S5.7 reuses non-overlapping logical intervals; this file only
-  defines the intervals.
+- What is deliberately absent and who owns it: physical resources and access
+  states (Stage 5). S5.7 reuses non-overlapping logical intervals; this file
+  only defines the intervals.
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -155,7 +155,7 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 ```
 
 - `PassFlags` starts as `None | Raster | NeverCull`. `Raster` is
-  informational in S4.1 (S5.3 access planning and S4.6 dumps consume it);
+  informational until S5.3 access planning; S4.6 dumps print it.
   `NeverCull` is the side-effect flag (UE precedent — survey §4): the pass
   and its last-producer closure survive culling. Unknown bits are rejected.
   `Compute`/`Copy`/`Readback` are added when a real pass needs them.
@@ -174,7 +174,7 @@ Every mutating call (`Create*`, `Import*`, `AddPass`, `Read`, `Write`,
 structured errors and leaves the graph unchanged by that call. Errors are
 **collected, never thrown**, and never implicitly asserted — the explicit
 `GraphBuilder::AssertNoErrors()` is the Debug trap for non-test callers.
-S4.6 builds the compile error categories on this structure.
+Compile dumps (S4.6) print each error's category plus pass and resource names.
 
 ```text
 Error { ErrorCategory category; std::string message;
@@ -261,6 +261,11 @@ culled zero-use, mixed live-plus-unused failure without partial lifetimes,
 read-only imported v0, disable-culling as a live use, deterministic dump,
 and error/cycle `lifetime: skipped`.
 
+`tests/test_rdg_dump.cpp` covers the M1-shaped golden (`tests/golden/rdg/rdg.txt`
+and `rdg.dot`), dump determinism, cycle and builder-error dumps that name pass
+and resource, DOT live vs culled, and ZeroUse dumps that keep `cull:` plus
+`ZeroUseAllocation` with `lifetime: skipped`.
+
 ## 8. Version dump
 
 `GraphBuilder::DumpVersions()` returns deterministic text in resource-index,
@@ -268,8 +273,8 @@ then version order. Each row names the resource kind/index/name, version,
 producer (pass index/name, `external`, or `unproduced`), reader indices/names,
 and current/exported status. It omits graph IDs so identical declarations
 produce identical text across builders. This is S4.2 provenance evidence.
-S4.3's compiler dump is separate (`CompileResult::Dump`); S4.6 adds full
-compiled-graph diagnostics and DOT output.
+S4.3–S4.6's compiler dump is separate (`CompileResult::Dump` / `DumpDot`) and
+does not require the builder to still be alive.
 
 ```text
 texture 0 'Input' v0 producer=external readers=[0 'First'] current
@@ -279,12 +284,13 @@ texture 2 'Output' v0 producer=unproduced readers=[]
 texture 2 'Output' v1 producer=1 'Second' readers=[2 'Third'] current exported
 ```
 
-## 9. Graph compiler (S4.3–S4.5)
+## 9. Graph compiler (S4.3–S4.6)
 
 `GraphCompiler::Compile(const GraphBuilder&, CompileOptions = {})` is a pure
-function. It copies pass/resource names and builder errors into a
-`CompileResult` and never retains the builder. `IsSuccess()` is true only
-when the error list is empty and no cycle was found.
+function. It copies pass/resource names, pass flags, per-pass accesses,
+resource kinds, imported/exported flags, version provenance, and builder
+errors into a `CompileResult` and never retains the builder. `IsSuccess()` is
+true only when the error list is empty and no cycle was found.
 
 If the builder already recorded declaration errors, compilation copies them
 and returns immediately: no edges, no pass order, no cycle diagnostic, no
@@ -329,7 +335,7 @@ After a successful cull, lifetimes run as a second logical step. They walk
 `GetLivePassOrder()` only — never the full edge list, which still contains
 WAR/WAW into culled passes — and read each live pass's recorded accesses
 from the builder during `Compile`. `CompileResult` stores owned interval
-vectors; it does not copy access lists or retain the builder.
+vectors plus the dump snapshot listed above; it does not retain the builder.
 
 ```text
 VersionLifetime  { resourceIndex, version, firstPass, lastPass }
@@ -369,8 +375,11 @@ versions on the live schedule, then:
 `CompileResult::Dump()` is stable text: compile status, the ordered pass
 list, each edge with its reasons, copied builder errors, `cycle: none` or
 the named cycle, then `cull:` (or `cull: skipped`) and `lifetime:` (or
-`lifetime: skipped`). `Error::kNoPass` prints as `none`. Resource rows may
-end with ` imported` and/or ` exported`.
+`lifetime: skipped`), then `flags:`, `accesses:`, and `versions:` from the
+snapshot. `flags:` / `accesses:` / `versions:` always emit; they are never
+skipped. `Error::kNoPass` prints as `none`. Resource lifetime rows may end
+with ` imported` and/or ` exported`. Identical declarations dump identically
+across builders (no `graphId`).
 
 ```text
 compile: success
@@ -386,4 +395,29 @@ cull:
 lifetime:
   resource 0 "Resource" first=1 last=0
   version 0 "Resource" v1 first=1 last=0
+flags:
+  0 "Consumer" Raster NeverCull
+  1 "Producer" Raster
+accesses:
+  0 "Consumer"
+    read texture 0 "Resource" v1
+  1 "Producer"
+    write texture 0 "Resource" v1
+versions:
+  texture 0 "Resource"
+    v0 producer=unproduced readers=[]
+    v1 producer=1 "Producer" readers=[0 "Consumer"]
 ```
+
+`CompileResult::DumpDot()` is a second stable Graphviz `digraph RDG`. Pass
+nodes use ids `p{index}` and labels of index, quoted name, flags, and
+`live`/`culled` plus cull reason when culling ran. Each dependency reason is
+one edge labeled `RAW|WAR|WAW "resource" v{source}`. Resources live in
+`subgraph cluster_resources` (id `r{index}`): imported/exported flags always,
+`first=`/`last=` only when lifetimes were applied (same pass indices as
+`order:` / `cull:`; `none` for `kNoPass`). No addresses, timestamps, or
+colors. CI does not run Graphviz; committed `tests/golden/rdg/rdg.dot` is the
+renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
+
+`--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
+`rdg.dot` and exits before creating a device.

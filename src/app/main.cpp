@@ -2,6 +2,8 @@
 #include "RenderingLabApp.h"
 #include "SceneCatalog.h"
 #include "renderer/PostProcessPass.h"
+#include "rdg/GraphCompiler.h"
+#include "rdg/M1ShapedGraph.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -15,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +44,7 @@ namespace
         std::optional<float> exposureEV;
         std::optional<std::string> dumpGBufferViews;
         std::optional<std::string> dumpLightingViews;
+        std::optional<std::string> dumpRdg;
         bool verifyLights = false;
     };
 
@@ -81,6 +85,10 @@ namespace
             "  --dump-lighting-views <dir>\n"
             "                      Dump lighting debug views (world-position, ndotl, lit) as PNG\n"
             "                      under <dir>. Implies --lock-camera. Orthogonal to GBuffer dump.\n"
+            "  --dump-rdg <dir>\n"
+            "                      Write the M1-shaped compiled graph as rdg.txt and rdg.dot under\n"
+            "                      <dir> and exit. CPU-only: does not create a device, touch NVRHI,\n"
+            "                      or run the M1 pass list. Other flags are ignored.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
@@ -263,6 +271,17 @@ namespace
                 continue;
             }
 
+            if (EqualsOption(argument, "--dump-rdg"))
+            {
+                if (index + 1 >= argc)
+                {
+                    error = "--dump-rdg requires a directory path.";
+                    return false;
+                }
+                options.dumpRdg = argv[++index];
+                continue;
+            }
+
             if (EqualsOption(argument, "--dx12") || EqualsOption(argument, "-dx12") ||
                 EqualsOption(argument, "--d3d12") || EqualsOption(argument, "-d3d12"))
             {
@@ -331,6 +350,39 @@ int main(int argc, char** argv)
     if (options.help)
     {
         PrintUsage("RenderLab");
+        return 0;
+    }
+
+    if (options.dumpRdg.has_value())
+    {
+        std::error_code createError;
+        std::filesystem::create_directories(*options.dumpRdg, createError);
+        if (createError)
+        {
+            std::fprintf(stderr, "error: Failed to create directory '%s'.\n", options.dumpRdg->c_str());
+            return 1;
+        }
+
+        renderlab::rdg::GraphBuilder graph;
+        renderlab::rdg::BuildM1ShapedGraph(graph);
+        const renderlab::rdg::CompileResult result = renderlab::rdg::GraphCompiler::Compile(graph);
+        const std::filesystem::path directory = *options.dumpRdg;
+        const std::filesystem::path textPath = directory / "rdg.txt";
+        const std::filesystem::path dotPath = directory / "rdg.dot";
+        std::ofstream textFile(textPath, std::ios::binary | std::ios::trunc);
+        std::ofstream dotFile(dotPath, std::ios::binary | std::ios::trunc);
+        if (!textFile || !dotFile)
+        {
+            std::fprintf(stderr, "error: Failed to write RDG dumps under '%s'.\n", options.dumpRdg->c_str());
+            return 1;
+        }
+        textFile << result.Dump();
+        dotFile << result.DumpDot();
+        if (!textFile || !dotFile)
+        {
+            std::fprintf(stderr, "error: Failed to write RDG dumps under '%s'.\n", options.dumpRdg->c_str());
+            return 1;
+        }
         return 0;
     }
 
