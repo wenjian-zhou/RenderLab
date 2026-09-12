@@ -1352,7 +1352,7 @@ Next step: S4.6 - Add compiler diagnostics and graph export
 Step: S4.6
 State: Complete
 Date: 2026-09-12
-Commit: (pending)
+Commit: 0463c5913a91223902c51edff057e4429cbce4ed
 Commands:
   cmake --build --preset windows-debug --target RenderLabDataContractTests
   ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
