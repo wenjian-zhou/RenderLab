@@ -21,7 +21,7 @@ namespace
 
     TextureHandle MakeTexture(GraphBuilder& graph, const char* name = "Resource")
     {
-        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::Rgba8Unorm});
+        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::RGBA8Unorm});
     }
 
     const DependencyEdge* FindEdge(std::span<const DependencyEdge> edges, uint32_t fromPass, uint32_t toPass)

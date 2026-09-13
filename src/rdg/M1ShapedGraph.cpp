@@ -4,12 +4,12 @@ namespace renderlab::rdg
 {
     void BuildM1ShapedGraph(GraphBuilder& builder)
     {
-        TextureHandle backBuffer = builder.ImportTexture({"BackBuffer", 1280, 720, Format::Srgba8Unorm});
-        TextureHandle gbufferA = builder.CreateTexture({"GBufferA", 1280, 720, Format::Srgba8Unorm});
-        TextureHandle gbufferB = builder.CreateTexture({"GBufferB", 1280, 720, Format::Rgba16Float});
-        TextureHandle gbufferC = builder.CreateTexture({"GBufferC", 1280, 720, Format::Rgba8Unorm});
+        TextureHandle backBuffer = builder.ImportTexture({"BackBuffer", 1280, 720, Format::SRGBA8Unorm});
+        TextureHandle gbufferA = builder.CreateTexture({"GBufferA", 1280, 720, Format::SRGBA8Unorm});
+        TextureHandle gbufferB = builder.CreateTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
+        TextureHandle gbufferC = builder.CreateTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
         TextureHandle gbufferDepth = builder.CreateTexture({"GBufferDepth", 1280, 720, Format::D32Float});
-        TextureHandle hdrSceneColor = builder.CreateTexture({"HDRSceneColor", 1280, 720, Format::Rgba16Float});
+        TextureHandle hdrSceneColor = builder.CreateTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
 
         PassBuilder gbufferPass = builder.AddPass("GBuffer", PassFlags::Raster);
         gbufferA = gbufferPass.Write(gbufferA);

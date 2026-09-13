@@ -83,8 +83,8 @@ BufferDesc  { name, bytesPerElement, numElements }
 Both are value types with `operator==` — the future pooling key for S5.7
 (UE precedent: `FRDGBufferDesc::operator==`).
 
-`Format` is a **neutral owned enum** (`Srgba8Unorm`, `Rgba8Unorm`,
-`Rgba16Float`, `Rgba32Float`, `R32Float`, `D32Float`), covering the frozen
+`Format` is a **neutral owned enum** (`SRGBA8Unorm`, `RGBA8Unorm`,
+`RGBA16Float`, `RGBA32Float`, `R32Float`, `D32Float`), covering the frozen
 M1 pipeline resources. S5.2 owns the mapping table from these values to
 `nvrhi::FormatType`; Stage 4 never names an RHI type. Extend the enum only
 when a real resource needs a new value.

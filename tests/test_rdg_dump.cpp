@@ -24,7 +24,7 @@ namespace
 
     TextureHandle MakeTexture(GraphBuilder& graph, const char* name)
     {
-        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::Rgba8Unorm});
+        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::RGBA8Unorm});
     }
 
     std::filesystem::path FindRdgGoldenDirectory()

@@ -40,7 +40,7 @@ namespace
 
     TextureDesc MakeTextureDesc(const char* name)
     {
-        return TextureDesc{name, 1280, 720, Format::Rgba16Float};
+        return TextureDesc{name, 1280, 720, Format::RGBA16Float};
     }
 
     BufferDesc MakeBufferDesc(const char* name)

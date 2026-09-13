@@ -27,7 +27,7 @@ namespace
     {
         if constexpr (std::is_same_v<Handle, TextureHandle>)
         {
-            const TextureDesc desc{"Resource", 8, 8, Format::Rgba8Unorm};
+            const TextureDesc desc{"Resource", 8, 8, Format::RGBA8Unorm};
             return imported ? graph.ImportTexture(desc) : graph.CreateTexture(desc);
         }
         else

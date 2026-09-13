@@ -12,10 +12,10 @@ namespace renderlab::rdg
     enum class Format : uint8_t
     {
         Unknown,
-        Srgba8Unorm,
-        Rgba8Unorm,
-        Rgba16Float,
-        Rgba32Float,
+        SRGBA8Unorm,
+        RGBA8Unorm,
+        RGBA16Float,
+        RGBA32Float,
         R32Float,
         D32Float,
     };

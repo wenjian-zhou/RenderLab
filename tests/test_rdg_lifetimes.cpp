@@ -21,7 +21,7 @@ namespace
 
     TextureHandle MakeTexture(GraphBuilder& graph, const char* name = "Resource")
     {
-        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::Rgba8Unorm});
+        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::RGBA8Unorm});
     }
 
     const ResourceLifetime* FindResource(std::span<const ResourceLifetime> lives, uint32_t resourceIndex)
@@ -139,7 +139,7 @@ int RunRdgLifetimeTests()
     {
         GraphBuilder graph;
         TextureHandle other = MakeTexture(graph, "Other");
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         graph.AddPass("Writer", PassFlags::NeverCull).Write(other);
         graph.AddPass("Reader", PassFlags::NeverCull).Read(imported);
         const CompileResult result = GraphCompiler::Compile(graph);
@@ -152,7 +152,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         TextureHandle a = MakeTexture(graph, "A");
         TextureHandle b = MakeTexture(graph, "B");
         graph.AddPass("First", PassFlags::NeverCull).Write(a);
@@ -209,7 +209,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         graph.AddPass("Forced", PassFlags::NeverCull);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
@@ -219,7 +219,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
         const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 0, 0);
@@ -232,7 +232,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         TextureHandle a = MakeTexture(graph, "A");
         TextureHandle b = MakeTexture(graph, "B");
         graph.ExportTexture(imported);
@@ -246,7 +246,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         graph.AddPass("Writer", PassFlags::Raster).Write(imported);
         const CompileResult result = GraphCompiler::Compile(graph);
         const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 0, 0);
@@ -260,7 +260,7 @@ int RunRdgLifetimeTests()
     }
     {
         GraphBuilder graph;
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         graph.AddPass("Reader", PassFlags::NeverCull).Read(imported);
         const CompileResult result = GraphCompiler::Compile(graph);
         const VersionLifetime* version = FindVersion(result.GetVersionLifetimes(), 0, 0);

@@ -22,7 +22,7 @@ namespace
 
     TextureHandle MakeTexture(GraphBuilder& graph, const char* name = "Resource")
     {
-        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::Rgba8Unorm});
+        return graph.CreateTexture(TextureDesc{name, 8, 8, Format::RGBA8Unorm});
     }
 
     const PassCullState* FindCull(std::span<const PassCullState> states, uint32_t passIndex)
@@ -123,7 +123,7 @@ int RunRdgCullingTests()
     }
     {
         GraphBuilder graph;
-        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::Rgba8Unorm});
+        TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         graph.AddPass("Writer", PassFlags::Raster).Write(imported);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && LiveOrderIs(result, {0}) &&

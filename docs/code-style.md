@@ -38,8 +38,12 @@ one: `Make*` (pure factory), `Create*` (allocate and register), `Get*`
 
 1. Always `enum class` with an explicit underlying type — `uint8_t` for
    compact sets, `uint32_t` for constant-buffer payloads and flags.
-2. Enumerators are PascalCase with no prefix and never repeat the enum name:
-   `AccessMode::Read` — not `ERdgAccess`, `ACCESS_READ`, or `AccessModeRead`.
+2. Enumerators are PascalCase with no prefix and never repeat the enum name.
+   Acronyms stay uppercase as one token: `DependencyType::RAW`,
+   `Format::RGBA16Float` — not folded (`Raw`, `Rgba16Float`) and not C-macro
+   ALL_CAPS (`RGBA16_FLOAT`, `ACCESS_READ`). Ordinary words stay PascalCase
+   (`AccessMode::Read`). Types still treat compound names as words
+   (`GBufferPass`, not `GBUFFERPass`).
 3. Sentinel vocabulary: `None = 0` for an empty flag set; `Unknown` for an
    unset value; `Count` as the trailing array bound (`GBufferTarget::Count`).
 4. Flag enums: collection-noun name, free `constexpr operator|`,
@@ -82,7 +86,9 @@ one: `Make*` (pure factory), `Create*` (allocate and register), `Get*`
 - UE Hungarian type prefixes (`F`, `T`, `E`, `I`): RenderLab adopts UE
   semantics where the surveys justify them, not UE naming.
 - PascalCase namespaces (a .NET/Java habit; see §1).
-- ALL_CAPS enumerators (C macro style).
+- ALL_CAPS enumerators with underscores (C macro style: `ACCESS_READ`,
+  `RGBA8_UNORM`). Acronyms in PascalCase enumerators stay uppercase without
+  underscores (`RAW`, `RGBA8Unorm`).
 - Lowercase `get`-prefixed accessors (Java style).
 
 ## 6. Enforcement
