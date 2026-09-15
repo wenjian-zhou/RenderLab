@@ -80,6 +80,42 @@ if(MSVC)
     target_compile_options(RenderLabRdg PRIVATE /wd4100)
 endif()
 
+# S5.1 execution layer: imported physical bind and PassContext. Links only
+# RenderLab::Rdg (no nvrhi or donut). S5.2 adds nvrhi to this target.
+set(RENDERLAB_RDG_EXEC_SOURCES
+    rdg/exec/PhysicalResource.h
+    rdg/exec/PhysicalRegistry.h
+    rdg/exec/PhysicalRegistry.cpp
+    rdg/exec/PassContext.h
+    rdg/exec/PassContext.cpp
+    rdg/exec/GraphExecutor.h
+    rdg/exec/GraphExecutor.cpp
+)
+
+add_library(RenderLabRdgExec STATIC ${RENDERLAB_RDG_EXEC_SOURCES})
+add_library(RenderLab::RdgExec ALIAS RenderLabRdgExec)
+
+target_include_directories(RenderLabRdgExec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+target_link_libraries(
+    RenderLabRdgExec
+    PUBLIC
+        RenderLab::Rdg
+)
+
+set_target_properties(
+    RenderLabRdgExec
+    PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+        FOLDER RenderLab
+)
+
+if(MSVC)
+    target_compile_options(RenderLabRdgExec PRIVATE /wd4100)
+endif()
+
 set(RENDERLAB_RENDERER_SOURCES
     renderer/GBufferContract.h
     renderer/LightingContract.h

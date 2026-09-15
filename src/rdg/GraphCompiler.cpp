@@ -41,6 +41,10 @@ namespace renderlab::rdg
             case ErrorCategory::SupersededUse: return "SupersededUse";
             case ErrorCategory::IncompatibleAccess: return "IncompatibleAccess";
             case ErrorCategory::ZeroUseAllocation: return "ZeroUseAllocation";
+            case ErrorCategory::UndeclaredAccess: return "UndeclaredAccess";
+            case ErrorCategory::ExpiredContext: return "ExpiredContext";
+            case ErrorCategory::UnregisteredImport: return "UnregisteredImport";
+            case ErrorCategory::InvalidPass: return "InvalidPass";
             }
             return "Unknown";
         }

@@ -17,6 +17,7 @@ add_executable(
     test_rdg_culling.cpp
     test_rdg_lifetimes.cpp
     test_rdg_dump.cpp
+    test_rdg_exec.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp
@@ -28,6 +29,7 @@ target_link_libraries(
     PRIVATE
         RenderLab::Renderer
         RenderLab::Rdg
+        RenderLab::RdgExec
         stb
         jsoncpp_static
 )

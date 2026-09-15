@@ -28,11 +28,15 @@ namespace renderlab::rdg
         SupersededUse,
         IncompatibleAccess,
         ZeroUseAllocation,
+        UndeclaredAccess,
+        ExpiredContext,
+        UnregisteredImport,
+        InvalidPass,
     };
 
-    // One collected failure: a rejected declaration/creation call, or a
-    // compile-time ZeroUseAllocation. Compile dumps expose category plus
-    // pass and resource names (S4.6).
+    // One collected failure: a rejected declaration/creation call, a
+    // compile-time ZeroUseAllocation, or an S5.1 execution-time lookup
+    // failure. Dumps expose category plus pass and resource names.
     struct Error
     {
         static constexpr uint32_t kNoPass = 0xFFFFFFFFu;
