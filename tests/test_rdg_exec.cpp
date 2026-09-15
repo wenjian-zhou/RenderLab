@@ -351,6 +351,24 @@ int RunRdgExecTests()
 
     {
         GraphBuilder builder;
+        TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("Live", PassFlags::Raster);
+        output = pass.Write(output);
+        builder.ExportTexture(output);
+        builder.CreateTexture({"", 8, 8, Format::RGBA8Unorm});
+        const CompileResult compiled = GraphCompiler::Compile(builder);
+        Check(!compiled.IsSuccess(), "Builder declaration errors fail compilation");
+
+        GraphExecutor executor(builder, compiled);
+        bool called = false;
+        executor.ExecutePass(0, [&](PassContext&) { called = true; });
+        Check(!called, "ExecutePass does not invoke the callback when compile failed");
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
+              "ExecutePass on a failed compile is InvalidPass");
+    }
+
+    {
+        GraphBuilder builder;
         BuildM1ShapedGraph(builder);
         const CompileResult compiled = GraphCompiler::Compile(builder);
         Check(compiled.IsSuccess(), "M1-shaped graph compiles");

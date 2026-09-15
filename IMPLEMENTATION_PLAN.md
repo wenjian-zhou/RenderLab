@@ -476,7 +476,9 @@ S4.3 is complete: `GraphCompiler` derives RAW/WAR/WAW edges, sorts with a
 stable min-index tie-break, and reports cycles by pass and resource name.
 S4.4 is complete: output-driven culling un-culls last-producer closures from
 import/export writers and `NeverCull`. S4.5 is complete: logical lifetimes
-are first/last live-pass intervals on `CompileResult`. Next is S4.6.
+are first/last live-pass intervals on `CompileResult`. S4.6 is complete:
+compiled-graph dumps, `--dump-rdg`, and the M1-shaped golden. Stage 4 is
+satisfied. S5.1 is complete (`RenderLabRdgExec`). Next is S5.2.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

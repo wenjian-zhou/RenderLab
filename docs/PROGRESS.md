@@ -18,6 +18,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
+- Stage 5: **S5.1 complete**; next is S5.2
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1397,7 +1398,7 @@ Next step: S5.1 - Define imported resources and execution context
 Step: S5.1
 State: Complete
 Date: 2026-09-16
-Commit: b22e2aa
+Commit: 746b2f4 (exec target), b22e2aa (lookup tests)
 Design: grill rounds froze module split (RenderLabRdgExec, no NVRHI in S5.1),
   opaque {native, debugName} tokens, two-phase RegisterImport, PassContext
   GetTexture/GetBuffer, declared-version validity, ExecutePass synthetic
@@ -1415,15 +1416,15 @@ Evidence: Debug and Release builds compiled RenderLabRdgExec (PhysicalRegistry,
   each configuration; both executables printed "RenderLab S5.1 RDG exec tests"
   and 0 failures. git diff --check was clean. RenderLabRdg still links only
   RenderLab::ProjectOptions; RenderLabRdgExec links only RenderLab::Rdg.
-Automated tests: 0 failures in both configurations; 62 S5.1 checks cover
+Automated tests: 0 failures in both configurations; 65 S5.1 checks cover
   RegisterImport/GetExported success, CreateTexture/duplicate/null/foreign/
   type-mismatch/out-of-range bind, non-exported and unregistered export
   lookup, in-range v0 bind after write, declared write and read-only resolve,
   undeclared/stale/null/foreign/type-mismatch/expired GetTexture, independent
   second import, imported buffer resolve, UnregisteredImport on internals,
-  InvalidPass for culled and OOB ExecutePass, and M1 BackBuffer rules
-  (PostProcess only; GBuffer undeclared; Deferred HDR unbound). Existing
-  S4.1-S4.6 checks still pass.
+  InvalidPass for culled, OOB, and failed-compile ExecutePass, and M1
+  BackBuffer rules (PostProcess only; GBuffer undeclared; Deferred HDR
+  unbound). Existing S4.1-S4.6 checks still pass.
 GPU validation/capture: not applicable; S5.1 is device-free. Renderer/M1 GPU
   passes remain untouched.
 Artifacts:
