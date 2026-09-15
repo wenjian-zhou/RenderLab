@@ -13,8 +13,9 @@
 namespace renderlab::rdg::exec
 {
     // Binds logical imported handles to opaque physical tokens and runs
-    // synthetic pass callbacks. The builder and compile result must outlive
-    // the executor. S5.1 does not allocate internals or record commands.
+    // synthetic pass callbacks. The builder must outlive the executor.
+    // Compile result is read in the constructor (success flag and cull states
+    // are copied); it does not need to outlive ExecutePass.
     class GraphExecutor
     {
     public:
@@ -60,7 +61,8 @@ namespace renderlab::rdg::exec
             std::string resourceName);
 
         const GraphBuilder* m_builder = nullptr;
-        const CompileResult* m_result = nullptr;
+        bool m_compileSuccess = false;
+        std::vector<PassCullState> m_cullStates;
         PhysicalRegistry m_registry;
         PassContext m_context;
         std::vector<Error> m_errors;

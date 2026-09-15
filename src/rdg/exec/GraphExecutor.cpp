@@ -16,7 +16,8 @@ namespace renderlab::rdg::exec
 
     GraphExecutor::GraphExecutor(const GraphBuilder& builder, const CompileResult& result)
         : m_builder(&builder)
-        , m_result(&result)
+        , m_compileSuccess(result.IsSuccess())
+        , m_cullStates(result.GetPassCullStates().begin(), result.GetPassCullStates().end())
     {
         m_registry.Reset(builder.GetResourceCount());
     }
@@ -165,7 +166,7 @@ namespace renderlab::rdg::exec
 
     void GraphExecutor::ExecutePass(uint32_t passIndex, const std::function<void(PassContext&)>& callback)
     {
-        if (!m_result->IsSuccess() || passIndex >= m_builder->GetPassCount())
+        if (!m_compileSuccess || passIndex >= m_builder->GetPassCount())
         {
             AddError(
                 ErrorCategory::InvalidPass,
@@ -176,8 +177,7 @@ namespace renderlab::rdg::exec
             return;
         }
 
-        const std::span<const PassCullState> cullStates = m_result->GetPassCullStates();
-        if (passIndex >= cullStates.size() || cullStates[passIndex].culled)
+        if (passIndex >= m_cullStates.size() || m_cullStates[passIndex].culled)
         {
             const std::string& passName = m_builder->GetPass(passIndex).name;
             AddError(

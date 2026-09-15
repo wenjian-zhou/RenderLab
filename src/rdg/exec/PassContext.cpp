@@ -7,11 +7,6 @@ namespace renderlab::rdg::exec
 {
     namespace
     {
-        const char* ToString(ResourceKind kind)
-        {
-            return kind == ResourceKind::Texture ? "texture" : "buffer";
-        }
-
         const ResourceAccess* FindDeclaredAccess(
             std::span<const ResourceAccess> accesses,
             ResourceKind kind,
