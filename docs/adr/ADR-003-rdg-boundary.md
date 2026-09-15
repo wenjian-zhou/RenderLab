@@ -214,3 +214,14 @@ with pass nodes, RAW/WAR/WAW edges, and a `cluster_resources` subgraph.
 `--dump-rdg` is a CPU-only CLI path in the app: it writes those strings and
 exits before `DeviceManager`. Physical resources, NVRHI, and the renderer
 remain Stage 5.
+
+## S5.1 Extension (2026-09-16)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`. Physical import bind and pass execution context
+live in a new target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
+`renderlab::rdg::exec`), which in S5.1 also has zero NVRHI/Donut dependencies
+and links only `RenderLab::Rdg`. Opaque `{native, debugName}` tokens stand in
+for already-existing objects so CI needs no device. S5.2 will add NVRHI to
+`RenderLabRdgExec` only, to allocate internal resources. `GraphBuilder` still
+has no execute lambda. The renderer remains frozen until S5.4.

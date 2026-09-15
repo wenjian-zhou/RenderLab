@@ -6,7 +6,7 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-12): **S0.1 through S4.6 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-16): **S0.1 through S5.1 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
 [`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
@@ -24,7 +24,10 @@ culling; imported last-use stops at last live access, exported last-use
 extends to the last live pass, and non-imported zero-use allocations fail
 compile. **S4.6 is complete**: compiled-graph text and DOT dumps, compile
 diagnostics that name pass and resource, `--dump-rdg`, and an M1-shaped golden;
-**Stage 4 is satisfied**. The next step is **S5.1 — Define imported resources and execution context**. The S3.1 exposure and output-transfer
+**Stage 4 is satisfied**. **S5.1 is complete**: imported handles bind to opaque
+physical tokens and `PassContext` resolves only declared resources
+(`RenderLabRdgExec`, zero NVRHI). The next step is **S5.2 — Allocate physical
+textures and buffers**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).

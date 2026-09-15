@@ -1,13 +1,15 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 4** (implemented through S4.6)
+Status: **active design note — Stage 5** (implemented through S5.1)
 
-Step: S4.6
+Step: S5.1
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
 dependency edges, topological order, output-driven pass culling, logical
-resource lifetimes, and compiled-graph text/DOT dumps. How this design relates to UE 5.8.1's render
+resource lifetimes, and compiled-graph text/DOT dumps. S5.1 adds the
+NVRHI-free execution layer that binds imported handles to opaque physical
+tokens. How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
@@ -35,9 +37,11 @@ the **pure logical CPU model** of the render dependency graph:
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- What is deliberately absent and who owns it: physical resources and access
-  states (Stage 5). S5.7 reuses non-overlapping logical intervals; this file
-  only defines the intervals.
+- Physical import bind and pass execution context live in a separate
+  target, `RenderLabRdgExec` (`src/rdg/exec`, namespace `renderlab::rdg::exec`).
+  That target links only `RenderLab::Rdg` in S5.1. Internal allocation and
+  format mapping are S5.2; access-state planning is S5.3. S5.7 reuses
+  non-overlapping logical intervals; this file only defines the intervals.
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -162,19 +166,22 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 - Accepted reads pin the input version; accepted writes pin the new output
   version. Same-resource conflicts follow the S4.2 rules above.
 - Pass and resource names must be non-empty; duplicates are allowed.
-- There is no execute lambda in Stage 4. S4.3 compiles declarations into a
+- There is no execute lambda on `AddPass`. S4.3 compiles declarations into a
   pass order; S4.4 culls passes that cannot affect an exported resource or
-  declared side effect; S4.5 assigns logical lifetimes. GPU execution is
-  Stage 5.
+  declared side effect; S5.1's `GraphExecutor::ExecutePass` is a synthetic
+  driver that never records GPU commands.
 
 ## 5. Failure taxonomy
 
 Every mutating call (`Create*`, `Import*`, `AddPass`, `Read`, `Write`,
 `Export*`) validates immediately. A rejected call records one or more
-structured errors and leaves the graph unchanged by that call. Errors are
+structured errors and leaves the graph unchanged by that call. Execution-time
+lookup (`RegisterImport`, `GetExported`, `GetTexture` / `GetBuffer`) uses the
+same `Error` values. Errors are
 **collected, never thrown**, and never implicitly asserted — the explicit
-`GraphBuilder::AssertNoErrors()` is the Debug trap for non-test callers.
-Compile dumps (S4.6) print each error's category plus pass and resource names.
+`GraphBuilder::AssertNoErrors()` / `GraphExecutor::AssertNoErrors()` Debug
+traps are for non-test callers. Compile dumps (S4.6) print each error's
+category plus pass and resource names.
 
 ```text
 Error { ErrorCategory category; std::string message;
@@ -191,12 +198,16 @@ Naming both the pass and the resource is part of the contract from day one.
 | `SupersededUse` | Read, Write, or Export names an older version |
 | `ReadBeforeProduce` | Read or Export names an unproduced internal v0 |
 | `DuplicateWrite` | same pass writes the same resource again using its current handle |
-| `IncompatibleAccess` | same-pass read/write combination, or Write after Export |
+| `IncompatibleAccess` | same-pass read/write combination, Write after Export, RegisterImport of a non-imported or already-bound resource, or GetExported of a non-exported resource |
 | `TypeMismatch` | handle kind does not match the registry slot's kind (only reachable with a forged handle) |
 | `InvalidName` | empty pass or descriptor name |
 | `InvalidDescriptor` | zero extent, unknown texture format, or zero element size/count |
 | `InvalidPassFlags` | pass flags outside the known bit set |
 | `ZeroUseAllocation` | compile-time: a non-imported resource has no live-pass access after culling |
+| `UndeclaredAccess` | `GetTexture` / `GetBuffer` names a resource that exists on the graph but is not in this pass's read/write list |
+| `ExpiredContext` | `Get*` after `ExecutePass` has returned |
+| `UnregisteredImport` | declared or exported handle has no physical token (S5.1 internals stay unbound) |
+| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass |
 
 Validation order is deterministic — when a forged handle violates several
 rules at once, the earliest category wins:
@@ -265,6 +276,12 @@ and error/cycle `lifetime: skipped`.
 and `rdg.dot`), dump determinism, cycle and builder-error dumps that name pass
 and resource, DOT live vs culled, and ZeroUse dumps that keep `cull:` plus
 `ZeroUseAllocation` with `lifetime: skipped`.
+
+`tests/test_rdg_exec.cpp` covers two-phase import bind, `GetExported`,
+declared `GetTexture` / `GetBuffer` during `ExecutePass`, undeclared /
+stale / null / foreign / type-mismatch / expired lookup, unbound internals,
+culled and out-of-range `ExecutePass`, imported buffers, and the M1-shaped
+BackBuffer rule (only PostProcess may resolve it). No GPU device.
 
 ## 8. Version dump
 
@@ -421,3 +438,35 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
+
+## 10. Execution layer (S5.1)
+
+`GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
+`renderlab::rdg::exec::GraphExecutor` binds already-existing objects:
+
+```text
+PhysicalTexture / PhysicalBuffer { void* native; std::string debugName; }
+GraphExecutor::RegisterImport(handle, physical)
+GraphExecutor::GetExported(handle)
+GraphExecutor::ExecutePass(passIndex, callback)
+PassContext::GetTexture / GetBuffer
+```
+
+- `native` is non-owning. Tests pass the address of a stack dummy. S5.2 will
+  store device pointers as `void*` in the same slot. Physical identity is per
+  resource index; `RegisterImport` accepts any in-range version of an
+  imported resource.
+- `GetExported` returns that same token once the import is registered. It
+  does not extract into a new object. The handle must be the pinned exported
+  (current) version.
+- `ExecutePass` copies compile success and cull state in the constructor,
+  requires a live pass, activates one executor-owned `PassContext` for the
+  callback, then deactivates it. There is no command list.
+- `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
+  list, including the exact declared version (read version or write output
+  version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,
+  and unbound lookups return `nullptr` and append an `rdg::Error` in every
+  configuration. The callback does not receive the registry, the compile
+  result, or renderer tables.
+- `RegisterImport` refuses `CreateTexture` / `CreateBuffer` slots. Internal
+  physical allocation is S5.2.

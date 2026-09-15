@@ -41,9 +41,11 @@ every live logical resource has a deterministic first/last-use interval
 after scheduling and culling; non-imported zero-use allocations fail
 compile. **S4.6 is complete**: compiled graphs emit stable text and DOT dumps
 (pass order, edges, versions, accesses, cull, lifetimes), `--dump-rdg` is
-CPU-only, and the M1-shaped golden is committed. Stage 4 is satisfied. RDG
-execution and DXR are not implemented. The next executable task is
-**S5.1: define imported resources and execution context**.
+CPU-only, and the M1-shaped golden is committed. Stage 4 is satisfied.
+**S5.1 is complete**: imported logical handles bind to opaque physical tokens
+in `RenderLabRdgExec`, and `PassContext` resolves only declared handles
+without a GPU device. The next executable task is
+**S5.2: allocate physical textures and buffers**.
 
 ## Plans
 

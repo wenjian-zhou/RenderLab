@@ -5,14 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.1 - Define imported resources and execution context**
-- State: **S4.6 complete; Stage 4 gate satisfied** — the RDG logical model (typed
-  handles, descriptors, pass declarations, resource versions and provenance)
-  compiles into RAW/WAR/WAW edges, a stable pass order, output-driven
-  pass culling, logical first/last-use lifetimes, and stable text/DOT dumps
-  in `src/rdg` with zero NVRHI dependencies (docs/rdg.md, ADR-003)
-- Last updated: 2026-09-12
-- Current branch: `main`
+- Active step: **S5.2 - Allocate physical textures and buffers**
+- State: **S5.1 complete** — imported logical handles bind to opaque physical
+  tokens in `RenderLabRdgExec`; `PassContext` resolves only declared handles;
+  `RenderLabRdg` and `RenderLabRdgExec` both stay NVRHI-free; renderer/M1 GPU
+  passes remain untouched (docs/rdg.md, ADR-003)
+- Last updated: 2026-09-16
+- Current branch: `feat/s51-imported-resources-exec`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
 - Stage 1: **S1.1 through S1.6 complete**; Stage 1 gate satisfied
@@ -1390,6 +1389,59 @@ Known limitations: physical allocation, access-state planning, and raster
   Lifetimes stay pass indices. DumpVersions() on the builder remains S4.2
   provenance evidence, separate from the compiled dump.
 Next step: S5.1 - Define imported resources and execution context
+```
+
+### S5.1 - Define imported resources and execution context
+
+```text
+Step: S5.1
+State: Complete
+Date: 2026-09-16
+Commit: b22e2aa
+Design: grill rounds froze module split (RenderLabRdgExec, no NVRHI in S5.1),
+  opaque {native, debugName} tokens, two-phase RegisterImport, PassContext
+  GetTexture/GetBuffer, declared-version validity, ExecutePass synthetic
+  driver, GetExported after bind, extended rdg::Error in every config,
+  imported-only M1 BackBuffer tests, docs list
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir C:\Github\RenderLab\out\build\windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+  Select-String on src/rdg and src/rdg/exec for nvrhi includes / donut/ includes
+Evidence: Debug and Release builds compiled RenderLabRdgExec (PhysicalRegistry,
+  PassContext, GraphExecutor) with 0 errors, 0 warnings. CTest 1/1 passed in
+  each configuration; both executables printed "RenderLab S5.1 RDG exec tests"
+  and 0 failures. git diff --check was clean. RenderLabRdg still links only
+  RenderLab::ProjectOptions; RenderLabRdgExec links only RenderLab::Rdg.
+Automated tests: 0 failures in both configurations; 62 S5.1 checks cover
+  RegisterImport/GetExported success, CreateTexture/duplicate/null/foreign/
+  type-mismatch/out-of-range bind, non-exported and unregistered export
+  lookup, in-range v0 bind after write, declared write and read-only resolve,
+  undeclared/stale/null/foreign/type-mismatch/expired GetTexture, independent
+  second import, imported buffer resolve, UnregisteredImport on internals,
+  InvalidPass for culled and OOB ExecutePass, and M1 BackBuffer rules
+  (PostProcess only; GBuffer undeclared; Deferred HDR unbound). Existing
+  S4.1-S4.6 checks still pass.
+GPU validation/capture: not applicable; S5.1 is device-free. Renderer/M1 GPU
+  passes remain untouched.
+Artifacts:
+  src/rdg/exec/PhysicalResource.h
+  src/rdg/exec/PhysicalRegistry.h / PhysicalRegistry.cpp
+  src/rdg/exec/PassContext.h / PassContext.cpp
+  src/rdg/exec/GraphExecutor.h / GraphExecutor.cpp
+  src/rdg/GraphBuilder.h (ErrorCategory extensions)
+  src/rdg/GraphCompiler.cpp (ToString for new categories)
+  src/CMakeLists.txt (RenderLabRdgExec target)
+  tests/test_rdg_exec.cpp
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: internal CreateTexture/CreateBuffer slots stay unbound
+  until S5.2 allocates device objects; no access-state planning (S5.3);
+  no raster migration (S5.4+); GraphBuilder still has no execute lambda.
+Next step: S5.2 - Allocate physical textures and buffers
 ```
 
 Selected baseline:
