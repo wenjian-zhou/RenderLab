@@ -1563,7 +1563,7 @@ Next step: S5.4 - Migrate tone mapping first
 Step: S5.4
 State: Complete
 Date: 2026-09-16
-Commit: (docs this file); code c82e819 4ade6d1 d775763 ba981c4 6b78d5b bd24b74
+Commit: 33182c0 (docs); code c82e819 4ade6d1 d775763 ba981c4 6b78d5b bd24b74
 Design: grill rounds froze app-owned ExecutePass + BuildToneMapGraph in
   RenderLabRdg, callback-captured command list, Plan() audit-only
   keepInitialState path, --manual-tonemap default-off covering Final and
