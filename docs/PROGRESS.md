@@ -1452,7 +1452,7 @@ Next step: S5.2 - Allocate physical textures and buffers
 Step: S5.2
 State: Complete
 Date: 2026-09-16
-Commit: uncommitted on top of 23d8e99
+Commit: 57e8f8a
 Design: grill rounds froze split CPU FormatMap vs allocator, optional
   nvrhi::IDevice* on GraphExecutor with CI stubs (no fake IDevice),
   explicit Allocate() one-shot per executor, graph-wide Create* mint
