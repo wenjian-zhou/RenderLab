@@ -94,6 +94,8 @@ set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/FormatMap.cpp
     rdg/exec/AccessMap.h
     rdg/exec/AccessMap.cpp
+    rdg/exec/AccessPlan.h
+    rdg/exec/AccessPlan.cpp
 )
 
 add_library(RenderLabRdgExec STATIC ${RENDERLAB_RDG_EXEC_SOURCES})

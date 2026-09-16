@@ -28,6 +28,7 @@ namespace renderlab::rdg::exec
         : m_builder(&builder)
         , m_compileSuccess(result.IsSuccess())
         , m_cullStates(result.GetPassCullStates().begin(), result.GetPassCullStates().end())
+        , m_livePassOrder(result.GetLivePassOrder().begin(), result.GetLivePassOrder().end())
     {
         m_registry.Reset(builder.GetResourceCount());
     }

@@ -1,7 +1,10 @@
+#include "rdg/GraphCompiler.h"
+#include "rdg/M1ShapedGraph.h"
 #include "rdg/Pass.h"
 #include "rdg/ResourceDesc.h"
 #include "rdg/exec/AccessMap.h"
 #include "rdg/exec/FormatMap.h"
+#include "rdg/exec/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -68,6 +71,13 @@ int RunRdgAccessTests()
     CheckFormatMapAgreement(Format::RGBA32Float, "RGBA32Float initial matches FormatMap");
     CheckFormatMapAgreement(Format::R32Float, "R32Float initial matches FormatMap");
     CheckFormatMapAgreement(Format::D32Float, "D32Float initial matches FormatMap");
+
+    {
+        GraphBuilder builder;
+        BuildM1ShapedGraph(builder);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Dump empty before Plan");
+    }
 
     return g_failures;
 }

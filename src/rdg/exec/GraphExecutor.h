@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../GraphCompiler.h"
+#include "AccessPlan.h"
 #include "PassContext.h"
 #include "PhysicalRegistry.h"
 #include "PhysicalResource.h"
@@ -52,6 +53,8 @@ namespace renderlab::rdg::exec
 
         void ExecutePass(uint32_t passIndex, const std::function<void(PassContext&)>& callback);
 
+        const AccessPlan& GetAccessPlan() const { return m_accessPlan; }
+
         std::span<const Error> GetErrors() const { return m_errors; }
         void AssertNoErrors() const;
 
@@ -89,11 +92,14 @@ namespace renderlab::rdg::exec
         const GraphBuilder* m_builder = nullptr;
         bool m_compileSuccess = false;
         std::vector<PassCullState> m_cullStates;
+        std::vector<uint32_t> m_livePassOrder;
         PhysicalRegistry m_registry;
         PassContext m_context;
         std::vector<Error> m_errors;
         nvrhi::IDevice* m_device = nullptr;
         bool m_allocated = false;
+        bool m_planned = false;
+        AccessPlan m_accessPlan;
         AllocationStats m_stats{};
         std::vector<std::unique_ptr<CpuIdentity>> m_cpuTextures;
         std::vector<std::unique_ptr<CpuIdentity>> m_cpuBuffers;
