@@ -8,7 +8,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <span>
 #include <string>
 
@@ -101,6 +100,18 @@ namespace
         Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
                   state->required == after && state->after == after,
             message);
+    }
+
+    bool HasCategory(std::span<const Error> errors, ErrorCategory category)
+    {
+        for (const Error& error : errors)
+        {
+            if (error.category == category)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -251,6 +262,131 @@ int RunRdgAccessTests()
             "M1 live passes are in the plan");
         Check(!HasPassNamed(plan, "Extra") && !HasPassNamed(plan, "Unused"),
             "M1 plan has no extra pass names");
+    }
+
+    {
+        GraphBuilder builder;
+        TextureHandle color = builder.CreateTexture({"Color", 8, 8, Format::RGBA8Unorm});
+        TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        PassBuilder writer = builder.AddPass("W", PassFlags::Raster);
+        color = writer.Write(color);
+        PassBuilder firstRead = builder.AddPass("R1", PassFlags::Raster | PassFlags::NeverCull);
+        firstRead.Read(color);
+        PassBuilder secondRead = builder.AddPass("R2", PassFlags::Raster);
+        secondRead.Read(color);
+        out = secondRead.Write(out);
+        builder.ExportTexture(out);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.Plan();
+        const AccessPlan& plan = executor.GetAccessPlan();
+        CheckReadTransition(
+            FindPassState(plan, "R1", "Color"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "Repeated read first use RT to SR");
+        CheckReadTransition(
+            FindPassState(plan, "R2", "Color"),
+            Access::ShaderResource,
+            Access::ShaderResource,
+            "Repeated read keeps ShaderResource");
+    }
+
+    {
+        GraphBuilder builder;
+        TextureHandle color = builder.CreateTexture({"Color", 8, 8, Format::RGBA8Unorm});
+        TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        PassBuilder producer = builder.AddPass("Producer", PassFlags::Raster);
+        color = producer.Write(color);
+        PassBuilder extra = builder.AddPass("Extra", PassFlags::Raster);
+        extra.Read(color);
+        PassBuilder consumer = builder.AddPass("Consumer", PassFlags::Raster);
+        consumer.Read(color);
+        out = consumer.Write(out);
+        builder.ExportTexture(out);
+        const CompileResult compiled = GraphCompiler::Compile(builder);
+        Check(compiled.IsSuccess(), "Culled-extra graph compiles");
+        bool extraCulled = false;
+        for (const PassCullState& state : compiled.GetPassCullStates())
+        {
+            if (state.passIndex == extra.PassIndex())
+            {
+                extraCulled = state.culled;
+            }
+        }
+        Check(extraCulled, "Extra pass is culled");
+        GraphExecutor executor(builder, compiled);
+        executor.Plan();
+        const AccessPlan& plan = executor.GetAccessPlan();
+        Check(!HasPassNamed(plan, "Extra"), "Culled Extra is omitted from the plan");
+        Check(HasPassNamed(plan, "Producer") && HasPassNamed(plan, "Consumer"),
+            "Live Producer and Consumer remain in the plan");
+    }
+
+    {
+        GraphBuilder builder;
+        BufferHandle buffer = builder.CreateBuffer({"Scratch", 4, 8});
+        TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        buffer = pass.Write(buffer);
+        out = pass.Write(out);
+        builder.ExportTexture(out);
+        const CompileResult compiled = GraphCompiler::Compile(builder);
+        Check(compiled.IsSuccess(), "Buffer-write graph compiles");
+        GraphExecutor executor(builder, compiled);
+        executor.Plan();
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::UnknownAccess),
+            "Buffer write is UnknownAccess");
+        Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Failed Plan leaves dump empty");
+        bool namedBuffer = false;
+        for (const Error& error : executor.GetErrors())
+        {
+            if (error.category == ErrorCategory::UnknownAccess && error.resourceName == "Scratch")
+            {
+                namedBuffer = true;
+            }
+        }
+        Check(namedBuffer, "UnknownAccess names the buffer");
+    }
+
+    {
+        GraphBuilder builder;
+        TextureHandle first = builder.CreateTexture({"First", 8, 8, Format::RGBA8Unorm});
+        TextureHandle second = builder.CreateTexture({"Second", 8, 8, Format::RGBA8Unorm});
+        PassBuilder passA = builder.AddPass("A", PassFlags::Raster);
+        PassBuilder passB = builder.AddPass("B", PassFlags::Raster);
+        first = passA.Write(first);
+        second = passB.Write(second);
+        passA.Read(second);
+        passB.Read(first);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.Plan();
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
+            "Failed compile Plan is InvalidPass");
+        Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Failed compile dump stays empty");
+    }
+
+    {
+        GraphBuilder builder;
+        BuildM1ShapedGraph(builder);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.Plan();
+        const size_t restoreCount = executor.GetAccessPlan().restores.size();
+        executor.Plan();
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::IncompatibleAccess),
+            "Second Plan is IncompatibleAccess");
+        Check(executor.GetAccessPlan().restores.size() == restoreCount, "Second Plan leaves first plan intact");
+    }
+
+    {
+        GraphBuilder builder;
+        TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        output = pass.Write(output);
+        builder.ExportTexture(output);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        bool ran = false;
+        executor.ExecutePass(0, [&](PassContext&) { ran = true; });
+        Check(ran && executor.GetErrors().empty(), "ExecutePass without Plan still runs");
     }
 
     return g_failures;
