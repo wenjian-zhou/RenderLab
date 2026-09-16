@@ -1,4 +1,5 @@
 #include "GraphExecutor.h"
+#include "AccessMap.h"
 #include "FormatMap.h"
 
 #include <nvrhi/nvrhi.h>
@@ -48,6 +49,121 @@ namespace renderlab::rdg::exec
             return;
         }
         m_device = device;
+    }
+
+    void GraphExecutor::Plan()
+    {
+        if (!m_compileSuccess)
+        {
+            AddError(
+                ErrorCategory::InvalidPass,
+                "Plan() requires a successful compile",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+        if (m_planned)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                "Plan() already ran",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+
+        AccessPlan plan;
+        const size_t resourceCount = m_builder->GetResourceCount();
+        std::vector<Access> current(resourceCount, Access::Unknown);
+        const size_t errorCountBefore = m_errors.size();
+
+        for (uint32_t index = 0; index < resourceCount; ++index)
+        {
+            const ResourceRecord& record = m_builder->GetResource(index);
+            Access initial = Access::ShaderResource;
+            if (record.kind == ResourceKind::Texture)
+            {
+                if (record.imported && record.exported)
+                {
+                    initial = Access::Present;
+                }
+                else
+                {
+                    const Format format = std::get<TextureDesc>(record.desc).format;
+                    initial = format == Format::D32Float ? Access::DepthWrite : Access::RenderTarget;
+                }
+            }
+            plan.resources.push_back(ResourceBoundary{
+                index,
+                record.name,
+                initial,
+                initial,
+                record.imported,
+                record.exported});
+            current[index] = initial;
+        }
+
+        for (const uint32_t passIndex : m_livePassOrder)
+        {
+            if (passIndex >= m_cullStates.size() || m_cullStates[passIndex].culled)
+            {
+                continue;
+            }
+            const PassRecord& pass = m_builder->GetPass(passIndex);
+            for (const ResourceAccess& access : pass.accesses)
+            {
+                const ResourceRecord& record = m_builder->GetResource(access.index);
+                Format format = Format::Unknown;
+                if (record.kind == ResourceKind::Texture)
+                {
+                    format = std::get<TextureDesc>(record.desc).format;
+                }
+                const Access required = InferAccess(access.mode, access.kind, format);
+                if (!IsSingleKnownAccess(required))
+                {
+                    AddError(
+                        ErrorCategory::UnknownAccess,
+                        std::format("Plan() cannot map access for '{}'", record.name),
+                        passIndex,
+                        pass.name,
+                        record.name);
+                    continue;
+                }
+                plan.passes.push_back(PassResourceState{
+                    passIndex,
+                    pass.name,
+                    access.index,
+                    record.name,
+                    access.kind,
+                    access.mode,
+                    current[access.index],
+                    required,
+                    required});
+                current[access.index] = required;
+            }
+        }
+
+        if (m_errors.size() != errorCountBefore)
+        {
+            return;
+        }
+
+        for (uint32_t index = 0; index < resourceCount; ++index)
+        {
+            if (current[index] != plan.resources[index].final)
+            {
+                plan.restores.push_back(ResourceRestore{
+                    index,
+                    plan.resources[index].name,
+                    current[index],
+                    plan.resources[index].final});
+            }
+        }
+
+        m_accessPlan = std::move(plan);
+        m_planned = true;
     }
 
     void GraphExecutor::Allocate()

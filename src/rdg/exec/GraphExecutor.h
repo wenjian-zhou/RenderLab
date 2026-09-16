@@ -43,6 +43,7 @@ namespace renderlab::rdg::exec
 
         void SetDevice(nvrhi::IDevice* device);
         void Allocate();
+        void Plan();
         AllocationStats GetAllocationStats() const { return m_stats; }
 
         void RegisterImport(TextureHandle handle, PhysicalTexture physical);

@@ -8,6 +8,9 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <span>
+#include <string>
 
 using namespace renderlab::rdg;
 using namespace renderlab::rdg::exec;
@@ -32,6 +35,72 @@ namespace
         const TextureDesc desc{"t", 8, 8, format};
         const Access initial = InferAccess(AccessMode::Write, ResourceKind::Texture, format);
         Check(ToNvStates(initial) == MakeTextureDesc(desc).initialState, message);
+    }
+
+    const ResourceBoundary* FindBoundary(const AccessPlan& plan, const char* name)
+    {
+        for (const ResourceBoundary& resource : plan.resources)
+        {
+            if (resource.name == name)
+            {
+                return &resource;
+            }
+        }
+        return nullptr;
+    }
+
+    const PassResourceState* FindPassState(const AccessPlan& plan, const char* passName, const char* resourceName)
+    {
+        for (const PassResourceState& state : plan.passes)
+        {
+            if (state.passName == passName && state.resourceName == resourceName)
+            {
+                return &state;
+            }
+        }
+        return nullptr;
+    }
+
+    const ResourceRestore* FindRestore(const AccessPlan& plan, const char* name)
+    {
+        for (const ResourceRestore& restore : plan.restores)
+        {
+            if (restore.name == name)
+            {
+                return &restore;
+            }
+        }
+        return nullptr;
+    }
+
+    bool HasPassNamed(const AccessPlan& plan, const char* name)
+    {
+        for (const PassResourceState& state : plan.passes)
+        {
+            if (state.passName == name)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void CheckWriteSame(const PassResourceState* state, Access access, const char* message)
+    {
+        Check(state != nullptr && state->mode == AccessMode::Write && state->before == access &&
+                  state->required == access && state->after == access,
+            message);
+    }
+
+    void CheckReadTransition(
+        const PassResourceState* state,
+        Access before,
+        Access after,
+        const char* message)
+    {
+        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+                  state->required == after && state->after == after,
+            message);
     }
 }
 
@@ -77,6 +146,111 @@ int RunRdgAccessTests()
         BuildM1ShapedGraph(builder);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Dump empty before Plan");
+        executor.Plan();
+        Check(executor.GetErrors().empty(), "Plan without Allocate succeeds");
+        const AccessPlan& plan = executor.GetAccessPlan();
+
+        const ResourceBoundary* backBuffer = FindBoundary(plan, "BackBuffer");
+        Check(backBuffer != nullptr && backBuffer->imported && backBuffer->exported &&
+                  backBuffer->initial == Access::Present && backBuffer->final == Access::Present,
+            "BackBuffer initial/final Present");
+        const ResourceBoundary* gbufferA = FindBoundary(plan, "GBufferA");
+        Check(gbufferA != nullptr && gbufferA->initial == Access::RenderTarget &&
+                  gbufferA->final == Access::RenderTarget,
+            "GBufferA initial/final RenderTarget");
+        const ResourceBoundary* gbufferB = FindBoundary(plan, "GBufferB");
+        Check(gbufferB != nullptr && gbufferB->initial == Access::RenderTarget &&
+                  gbufferB->final == Access::RenderTarget,
+            "GBufferB initial/final RenderTarget");
+        const ResourceBoundary* gbufferC = FindBoundary(plan, "GBufferC");
+        Check(gbufferC != nullptr && gbufferC->initial == Access::RenderTarget &&
+                  gbufferC->final == Access::RenderTarget,
+            "GBufferC initial/final RenderTarget");
+        const ResourceBoundary* depth = FindBoundary(plan, "GBufferDepth");
+        Check(depth != nullptr && depth->initial == Access::DepthWrite && depth->final == Access::DepthWrite,
+            "GBufferDepth initial/final DepthWrite");
+        const ResourceBoundary* hdr = FindBoundary(plan, "HDRSceneColor");
+        Check(hdr != nullptr && hdr->initial == Access::RenderTarget && hdr->final == Access::RenderTarget,
+            "HDRSceneColor initial/final RenderTarget");
+
+        CheckWriteSame(FindPassState(plan, "GBuffer", "GBufferA"), Access::RenderTarget, "GBuffer writes A as RT");
+        CheckWriteSame(FindPassState(plan, "GBuffer", "GBufferB"), Access::RenderTarget, "GBuffer writes B as RT");
+        CheckWriteSame(FindPassState(plan, "GBuffer", "GBufferC"), Access::RenderTarget, "GBuffer writes C as RT");
+        CheckWriteSame(FindPassState(plan, "GBuffer", "GBufferDepth"), Access::DepthWrite, "GBuffer writes Depth");
+
+        CheckReadTransition(
+            FindPassState(plan, "DeferredLighting", "GBufferA"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "Deferred reads A RT to SR");
+        CheckReadTransition(
+            FindPassState(plan, "DeferredLighting", "GBufferB"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "Deferred reads B RT to SR");
+        CheckReadTransition(
+            FindPassState(plan, "DeferredLighting", "GBufferC"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "Deferred reads C RT to SR");
+        CheckReadTransition(
+            FindPassState(plan, "DeferredLighting", "GBufferDepth"),
+            Access::DepthWrite,
+            Access::ShaderResource,
+            "Deferred reads Depth DepthWrite to SR");
+        CheckWriteSame(
+            FindPassState(plan, "DeferredLighting", "HDRSceneColor"),
+            Access::RenderTarget,
+            "Deferred writes HDR as RT");
+
+        CheckReadTransition(
+            FindPassState(plan, "PostProcess", "HDRSceneColor"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "PostProcess reads HDR RT to SR");
+        const PassResourceState* postBackBuffer = FindPassState(plan, "PostProcess", "BackBuffer");
+        Check(postBackBuffer != nullptr && postBackBuffer->mode == AccessMode::Write &&
+                  postBackBuffer->before == Access::Present &&
+                  postBackBuffer->required == Access::RenderTarget &&
+                  postBackBuffer->after == Access::RenderTarget,
+            "PostProcess writes BackBuffer Present to RT");
+
+        const ResourceRestore* restoreBackBuffer = FindRestore(plan, "BackBuffer");
+        Check(restoreBackBuffer != nullptr && restoreBackBuffer->from == Access::RenderTarget &&
+                  restoreBackBuffer->to == Access::Present,
+            "BackBuffer restore RT to Present");
+        const ResourceRestore* restoreA = FindRestore(plan, "GBufferA");
+        Check(restoreA != nullptr && restoreA->from == Access::ShaderResource &&
+                  restoreA->to == Access::RenderTarget,
+            "GBufferA restore SR to RT");
+        const ResourceRestore* restoreB = FindRestore(plan, "GBufferB");
+        Check(restoreB != nullptr && restoreB->from == Access::ShaderResource &&
+                  restoreB->to == Access::RenderTarget,
+            "GBufferB restore SR to RT");
+        const ResourceRestore* restoreC = FindRestore(plan, "GBufferC");
+        Check(restoreC != nullptr && restoreC->from == Access::ShaderResource &&
+                  restoreC->to == Access::RenderTarget,
+            "GBufferC restore SR to RT");
+        const ResourceRestore* restoreDepth = FindRestore(plan, "GBufferDepth");
+        Check(restoreDepth != nullptr && restoreDepth->from == Access::ShaderResource &&
+                  restoreDepth->to == Access::DepthWrite,
+            "GBufferDepth restore SR to DepthWrite");
+        const ResourceRestore* restoreHdr = FindRestore(plan, "HDRSceneColor");
+        Check(restoreHdr != nullptr && restoreHdr->from == Access::ShaderResource &&
+                  restoreHdr->to == Access::RenderTarget,
+            "HDR restore SR to RT");
+
+        const std::string dump = plan.Dump();
+        Check(dump.find("resource 0 \"BackBuffer\" imported exported initial=Present final=Present") !=
+                  std::string::npos,
+            "Dump names BackBuffer Present boundary");
+        Check(dump.find("0 \"BackBuffer\" RenderTarget -> Present") != std::string::npos,
+            "Dump restores BackBuffer to Present");
+        Check(HasPassNamed(plan, "GBuffer") && HasPassNamed(plan, "DeferredLighting") &&
+                  HasPassNamed(plan, "PostProcess"),
+            "M1 live passes are in the plan");
+        Check(!HasPassNamed(plan, "Extra") && !HasPassNamed(plan, "Unused"),
+            "M1 plan has no extra pass names");
     }
 
     return g_failures;
