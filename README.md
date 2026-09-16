@@ -47,8 +47,10 @@ in `RenderLabRdgExec`, and `PassContext` resolves only declared handles
 without a GPU device. **S5.2 is complete**: `RenderLabRdgExec` maps
 `rdg::Format` to `nvrhi::Format` and allocates inspectable physical
 identities for internal Create* resources (CPU stubs in CI; optional
-`nvrhi::IDevice*` locally). The next executable task is
-**S5.3: implement access-state planning**.
+`nvrhi::IDevice*` locally). **S5.3 is complete**: `GraphExecutor::Plan()`
+declares an auditable raster access-state plan (`rdg::Access` + `AccessMap`)
+without issuing GPU barriers; `keepInitialState = true` stays the one NVRHI
+path. The next executable task is **S5.4: migrate tone mapping first**.
 
 ## Plans
 

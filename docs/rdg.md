@@ -1,8 +1,8 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.2)
+Status: **active design note — Stage 5** (implemented through S5.3)
 
-Step: S5.2
+Step: S5.3
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -10,6 +10,7 @@ dependency edges, topological order, output-driven pass culling, logical
 resource lifetimes, and compiled-graph text/DOT dumps. S5.1 adds the
 execution layer that binds imported handles to opaque physical tokens.
 S5.2 maps descriptors to NVRHI and allocates internal Create* identities.
+S5.3 plans raster access states from those declarations.
 How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
@@ -41,7 +42,8 @@ the **pure logical CPU model** of the render dependency graph:
 - Physical import bind, format mapping, and internal allocation live in a
   separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
   `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
-  (not donut). Access-state planning is S5.3. S5.7 reuses non-overlapping
+  (not donut). Access-state planning (`GraphExecutor::Plan()`) lives in this
+  same Exec target. S5.7 reuses non-overlapping
   logical intervals; this file only defines the intervals.
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
@@ -159,8 +161,9 @@ pass.Read(gbufferA);
 hdrSceneColor = pass.Write(hdrSceneColor);
 ```
 
-- `PassFlags` starts as `None | Raster | NeverCull`. `Raster` is
-  informational until S5.3 access planning; S4.6 dumps print it.
+- `PassFlags` starts as `None | Raster | NeverCull`. `Raster` is still
+  printed by S4.6 dumps; S5.3 infers access from Read/Write + format and
+  does not require the flag (every live pass access is planned).
   `NeverCull` is the side-effect flag (UE precedent — survey §4): the pass
   and its last-producer closure survive culling. Unknown bits are rejected.
   `Compute`/`Copy`/`Readback` are added when a real pass needs them.
@@ -177,7 +180,8 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 Every mutating call (`Create*`, `Import*`, `AddPass`, `Read`, `Write`,
 `Export*`) validates immediately. A rejected call records one or more
 structured errors and leaves the graph unchanged by that call. Execution-time
-lookup (`RegisterImport`, `GetExported`, `GetTexture` / `GetBuffer`) uses the
+lookup (`RegisterImport`, `GetExported`, `GetTexture` / `GetBuffer`,
+`Allocate`, `Plan`) uses the
 same `Error` values. Errors are
 **collected, never thrown**, and never implicitly asserted — the explicit
 `GraphBuilder::AssertNoErrors()` / `GraphExecutor::AssertNoErrors()` Debug
@@ -199,7 +203,7 @@ Naming both the pass and the resource is part of the contract from day one.
 | `SupersededUse` | Read, Write, or Export names an older version |
 | `ReadBeforeProduce` | Read or Export names an unproduced internal v0 |
 | `DuplicateWrite` | same pass writes the same resource again using its current handle |
-| `IncompatibleAccess` | same-pass read/write combination, Write after Export, RegisterImport of a non-imported or already-bound resource, GetExported of a non-exported resource, a second `Allocate()`, or `SetDevice` after `Allocate()` |
+| `IncompatibleAccess` | same-pass read/write combination, Write after Export, RegisterImport of a non-imported or already-bound resource, GetExported of a non-exported resource, a second `Allocate()`, a second `Plan()`, or `SetDevice` after `Allocate()` |
 | `TypeMismatch` | handle kind does not match the registry slot's kind (only reachable with a forged handle) |
 | `InvalidName` | empty pass or descriptor name |
 | `InvalidDescriptor` | zero extent, unknown texture format, zero element size/count, or `Allocate()` of an unmapped format |
@@ -208,8 +212,9 @@ Naming both the pass and the resource is part of the contract from day one.
 | `UndeclaredAccess` | `GetTexture` / `GetBuffer` names a resource that exists on the graph but is not in this pass's read/write list |
 | `ExpiredContext` | `Get*` after `ExecutePass` has returned |
 | `UnregisteredImport` | declared or exported handle has no physical token (imports before `RegisterImport`; internals before `Allocate()`) |
-| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass, or `Allocate()` after a failed compile |
+| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass, or `Allocate()` / `Plan()` after a failed compile |
 | `AllocationFailed` | `nvrhi::IDevice::createTexture` / `createBuffer` returned null |
+| `UnknownAccess` | `Plan()` cannot map a live access (buffer write; `Access::Unknown` or combined bits) |
 
 Validation order is deterministic — when a forged handle violates several
 rules at once, the earliest category wins:
@@ -291,6 +296,13 @@ slots remaining `RegisterImport`-only, failed-compile and second
 `Allocate()` errors, M1-shaped GBuffer/HDR resolve without a device, create/
 destroy of repeated graphs, `GetAllocationStats`, and `SetDevice` after
 `Allocate()`. CI never creates a D3D12 device.
+
+`tests/test_rdg_access.cpp` covers `rdg::Access` flags and masks,
+`AccessMap` enumerator mapping to `nvrhi::ResourceStates`, FormatMap
+initial-state agreement, M1-shaped before/after/restore including imported
+BackBuffer `Present`, repeated read keeping `ShaderResource`, culled-pass
+omission, buffer-write `UnknownAccess`, failed-compile and second `Plan()`,
+and `ExecutePass` without `Plan()`. CI never creates a D3D12 device.
 
 ## 8. Version dump
 
@@ -448,25 +460,55 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1–S5.2)
+## 10. Execution layer (S5.1–S5.3)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
-`renderlab::rdg::exec::GraphExecutor` binds imports and allocates internals:
+`renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
+and plans access states:
 
 ```text
 PhysicalTexture / PhysicalBuffer { void* native; std::string debugName; }
 GraphExecutor::SetDevice(nvrhi::IDevice*)   // optional; default null
 GraphExecutor::Allocate()
+GraphExecutor::Plan()
 GraphExecutor::GetAllocationStats()
+GraphExecutor::GetAccessPlan()
 GraphExecutor::RegisterImport(handle, physical)
 GraphExecutor::GetExported(handle)
 GraphExecutor::ExecutePass(passIndex, callback)
 PassContext::GetTexture / GetBuffer
 ```
 
+- `rdg::Access` is a neutral flag enum in `RenderLabRdg` (`Unknown`,
+  `ShaderResource`, `RenderTarget`, `DepthWrite`, `Present`) with
+  `kKnownAccessBits`, `kWritableMask` (`RenderTarget | DepthWrite`), and
+  `kReadableMask` (`ShaderResource`). `Present` is a graph-boundary state,
+  not inferred from Read/Write. UAV is deferred until a real pass needs it.
+- `AccessMap` maps a single known `Access` bit to `nvrhi::ResourceStates`
+  (`ToNvStates` / `FromNvStates` / `IsSingleKnownAccess`) and infers pass
+  access from existing declarations: Read → `ShaderResource`; Write of
+  `D32Float` → `DepthWrite`; Write of any other known color format →
+  `RenderTarget`; buffer Write → `Unknown`.
 - `FormatMap` (`ToNvFormat`, `MakeTextureDesc`, `MakeBufferDesc`) is CPU-only
   and needs no device. Usage flags come from format: `D32Float` is typeless
-  depth; every other known format is color RT+SRV. There is no access enum.
+  depth; every other known format is color RT+SRV. `keepInitialState` stays
+  `true` — that is the one NVRHI path. S5.3 declares the implied
+  before/after plan; it does not call `setTextureState` or record commands.
+- `Plan()` is a one-shot CPU walk of live passes after a successful compile.
+  It does not require `Allocate()`, `SetDevice()`, or `RegisterImport()`.
+  Culled passes are omitted. A second `Plan()` is `IncompatibleAccess`.
+  Failed compile is `InvalidPass`. Unmapped live access is `UnknownAccess`
+  and leaves the plan empty. `ExecutePass` does not require `Plan()`.
+- Imported initial/final convention: internals match FormatMap
+  `initialState` as `rdg::Access` (color `RenderTarget`, `D32Float`
+  `DepthWrite`, buffers `ShaderResource`); imported+exported textures
+  (BackBuffer) are `Present`; imported-only textures use FormatMap from the
+  logical descriptor. Final equals initial. `keepInitialState` restore-at-
+  close is recorded as `restore` rows when last-use `after` differs from
+  `final`.
+- `AccessPlan::Dump()` explains every planned raster state request using
+  `rdg::Access` names. `CompileResult::Dump()` / `--dump-rdg` stay
+  logical-only. PIX agreement is local, not a ctest.
 - `Allocate()` mints one physical identity per non-imported `Create*` slot
   after a successful compile. Imported slots are skipped. A second
   `Allocate()` is `IncompatibleAccess`. Failed compile is `InvalidPass` and
@@ -484,9 +526,10 @@ PassContext::GetTexture / GetBuffer
   Zero before `Allocate()`. PIX name agreement is a local check, not CI.
 - `GetExported` returns the registered or allocated token for the pinned
   exported version. It does not extract into a new object.
-- `ExecutePass` copies compile success and cull state in the constructor,
-  requires a live pass, activates one executor-owned `PassContext` for the
-  callback, then deactivates it. There is no command list.
+- `ExecutePass` copies compile success, cull states, and live pass order in
+  the constructor, requires a live pass, activates one executor-owned
+  `PassContext` for the callback, then deactivates it. There is no command
+  list.
 - `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
   list, including the exact declared version (read version or write output
   version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,

@@ -28,10 +28,10 @@ namespace renderlab::rdg::exec
     };
 
     // Binds logical imported handles to opaque physical tokens, allocates
-    // internal Create* identities, and runs synthetic pass callbacks. The
-    // builder must outlive the executor. Compile result is read in the
-    // constructor (success flag and cull states are copied); it does not
-    // need to outlive ExecutePass.
+    // internal Create* identities, plans access states, and runs synthetic
+    // pass callbacks. The builder must outlive the executor. Compile result
+    // is read in the constructor (success flag, cull states, and live pass
+    // order are copied); it does not need to outlive Plan or ExecutePass.
     class GraphExecutor
     {
     public:

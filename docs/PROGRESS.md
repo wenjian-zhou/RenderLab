@@ -5,11 +5,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.3 - Implement access-state planning**
-- State: **S5.2 complete** — `RenderLabRdgExec` maps `rdg::Format` to
-  `nvrhi::Format` and allocates inspectable physical identities for internal
-  Create* resources (CPU stubs in CI; optional `nvrhi::IDevice*` locally);
-  `RenderLabRdg` stays NVRHI-free; renderer/M1 GPU passes remain untouched
+- Active step: **S5.4 - Migrate tone mapping first**
+- State: **S5.3 complete** — `GraphExecutor::Plan()` declares an auditable
+  raster access-state plan (`rdg::Access` + `AccessMap` → NVRHI states);
+  `keepInitialState = true` remains the one NVRHI path; `RenderLabRdg`
+  stays NVRHI-free; renderer/M1 GPU passes remain untouched
   (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-16
 - Current branch: `main`
@@ -19,7 +19,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
-- Stage 5: **S5.1–S5.2 complete**; next is S5.3
+- Stage 5: **S5.1–S5.3 complete**; next is S5.4
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1502,6 +1502,60 @@ Known limitations: no pooling / interval aliasing (S5.7); no access-state
   (0,0,0,0) not the renderer (0,0,0,1); GraphBuilder still has no execute
   lambda.
 Next step: S5.3 - Implement access-state planning
+```
+
+### S5.3 - Implement access-state planning
+
+```text
+Step: S5.3
+State: Complete
+Date: 2026-09-16
+Commit: ccf1954 (code); docs commit follows
+Design: grill rounds froze rdg::Access in RenderLabRdg + AccessMap in Exec,
+  inference from Read/Write + format, UAV deferred, explicit Plan() one-shot,
+  declare-only keepInitialState=true path, imported+exported Present convention,
+  AccessPlan::Dump (CompileResult dump unchanged), test_rdg_access.cpp, docs list
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+  Select-String on src/rdg/*.h,src/rdg/*.cpp for nvrhi includes / donut includes
+  (exec/ may include nvrhi; donut is forbidden there too)
+Evidence: Debug and Release builds compiled RenderLabRdgExec (AccessMap,
+  AccessPlan, GraphExecutor::Plan/GetAccessPlan) with 0 errors, 0 warnings.
+  CTest 1/1 passed in each configuration; both executables printed
+  "RenderLab S5.3 RDG access tests" and 0 failures. git diff --check was
+  clean. RenderLabRdg still links only RenderLab::ProjectOptions.
+  RenderLabRdgExec links RenderLab::Rdg and nvrhi (not donut). nvrhi
+  includes exist only in src/rdg/exec (AccessMap.h, FormatMap.h,
+  GraphExecutor.cpp). src/renderer and src/app were not modified.
+Automated tests: 0 failures in both configurations. S5.3 checks cover
+  Access flags/masks, AccessMap enumerator mapping and FormatMap agreement,
+  M1-shaped GBuffer write / Deferred read / PostProcess BackBuffer Present
+  before/after plus restore, repeated read keeping ShaderResource, culled
+  Extra omitted, buffer Write UnknownAccess, failed-compile InvalidPass,
+  second Plan IncompatibleAccess, ExecutePass without Plan. Existing S4 and
+  S5.1/S5.2 suites stay green.
+GPU validation/capture: not applicable in CI; no D3D12 device. PIX dump
+  agreement is local-only. Renderer/M1 GPU passes remain untouched.
+Artifacts:
+  src/rdg/Pass.h (rdg::Access)
+  src/rdg/GraphBuilder.h (UnknownAccess)
+  src/rdg/exec/AccessMap.h / AccessMap.cpp
+  src/rdg/exec/AccessPlan.h / AccessPlan.cpp
+  src/rdg/exec/GraphExecutor.h / GraphExecutor.cpp
+  tests/test_rdg_access.cpp
+  tests/CMakeLists.txt / tests/test_renderer_data.cpp
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+  docs/superpowers/plans/2026-09-16-s53-implement-access-state-planning.md
+Known limitations: no UAV enumerator (deferred until a real pass needs it);
+  S5.3 only declares, does not issue setTextureState or record a command
+  list; no raster migration (S5.4+); --dump-rdg remains logical-only; PIX
+  agreement is not a ctest; GraphBuilder still has no execute lambda.
+Next step: S5.4 - Migrate tone mapping first
 ```
 
 Selected baseline:

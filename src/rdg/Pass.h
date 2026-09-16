@@ -11,7 +11,7 @@ namespace renderlab::rdg
     enum class PassFlags : uint32_t
     {
         None = 0,
-        Raster = 1u << 0, // informational; S4.6 dumps consume it, S5.3 plans access
+        Raster = 1u << 0, // dumps print it; S5.3 infers access from Read/Write, not this flag
         // Side-effect flag: the pass and its producers must survive culling
         // (S4.4). Mirrors UE ERDGPassFlags::NeverCull (ue-rdg-survey §4).
         NeverCull = 1u << 1,

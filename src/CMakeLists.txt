@@ -80,7 +80,7 @@ if(MSVC)
     target_compile_options(RenderLabRdg PRIVATE /wd4100)
 endif()
 
-# S5.2 execution layer: import bind, FormatMap, and physical allocation.
+# S5.3 execution layer: import bind, FormatMap, allocation, and access planning.
 # Links RenderLab::Rdg and nvrhi (not donut).
 set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/PhysicalResource.h

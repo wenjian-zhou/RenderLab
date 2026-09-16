@@ -37,8 +37,8 @@ namespace renderlab::rdg
     };
 
     // One collected failure: a rejected declaration/creation call, a
-    // compile-time ZeroUseAllocation, or an execution-time lookup / allocate
-    // failure. Dumps expose category plus pass and resource names.
+    // compile-time ZeroUseAllocation, or an execution-time lookup / allocate /
+    // Plan failure. Dumps expose category plus pass and resource names.
     struct Error
     {
         static constexpr uint32_t kNoPass = 0xFFFFFFFFu;

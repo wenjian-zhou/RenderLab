@@ -89,10 +89,10 @@ field exists to remove.
 UE derives read-vs-write from `WritableMask` on the access value (survey
 §4).
 
-Deferred to S5.3. The logical compiler layer has no RHI, so an explicit
-per-declaration read/write bit is the honest model; the access enum and
-its mask *shape* become the S5.3 access-state subset when NVRHI states are
-planned.
+Deferred to S5.3; implemented there as a neutral `rdg::Access` flag enum
+with Writable/Readable masks in `RenderLabRdg`, mapped to
+`nvrhi::ResourceStates` only in Exec. The logical compiler still uses
+explicit Read/Write declarations.
 
 ### 6. Format representation in descriptors
 
@@ -234,5 +234,16 @@ and owns the `rdg::Format` → `nvrhi::Format` table plus descriptor mapping
 (`FormatMap`). `GraphExecutor::Allocate()` mints per-index physical
 identities for non-imported `Create*` resources: CPU stubs when no device is
 set, or `nvrhi::ITexture*` / `IBuffer*` when `SetDevice` ran first. CI stays
-device-free. There is no access enum (S5.3) and no pooling (S5.7). The
-renderer remains frozen until S5.4.
+device-free. There is no pooling (S5.7). The renderer remains frozen until S5.4.
+
+## S5.3 Extension (2026-09-16)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`. ADR-003 option 5 is implemented as a neutral
+`rdg::Access` flag enum in `Pass.h` (raster subset + masks, no NVRHI types)
+plus `AccessMap` in `RenderLabRdgExec` mapping to `nvrhi::ResourceStates`.
+`GraphExecutor::Plan()` declares a CPU before/after plan from existing
+Read/Write + format; it does not issue barriers or record a command list.
+The one NVRHI path remains `keepInitialState = true` (FormatMap / M1).
+There is no second state tracker. UAV is deferred. The renderer remains
+frozen until S5.4.

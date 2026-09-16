@@ -6,7 +6,7 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-16): **S0.1 through S5.1 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-16): **S0.1 through S5.3 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
 [`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
@@ -28,7 +28,9 @@ diagnostics that name pass and resource, `--dump-rdg`, and an M1-shaped golden;
 physical tokens and `PassContext` resolves only declared resources
 (`RenderLabRdgExec`). **S5.2 is complete**: internals are allocated from
 logical descriptors (`FormatMap` + `GraphExecutor::Allocate()`; CI stays
-device-free). The next step is **S5.3 — Implement access-state planning**. The S3.1 exposure and output-transfer
+device-free). **S5.3 is complete**: `GraphExecutor::Plan()` declares raster
+access states (`rdg::Access` + `AccessMap`; `keepInitialState = true` remains
+the one NVRHI path). The next step is **S5.4 — Migrate tone mapping first**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -480,7 +482,7 @@ import/export writers and `NeverCull`. S4.5 is complete: logical lifetimes
 are first/last live-pass intervals on `CompileResult`. S4.6 is complete:
 compiled-graph dumps, `--dump-rdg`, and the M1-shaped golden. Stage 4 is
 satisfied. S5.1 is complete (`RenderLabRdgExec`). S5.2 is complete
-(FormatMap + Allocate). Next is S5.3.
+(FormatMap + Allocate). S5.3 is complete (`Plan()` access-state dump). Next is S5.4.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 
