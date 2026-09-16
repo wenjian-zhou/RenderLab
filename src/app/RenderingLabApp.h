@@ -87,6 +87,7 @@ namespace renderlab
         CameraPreset camera;
         bool lockCamera = false;
         bool verifyLights = false;
+        bool manualTonemap = false;
         PresentSource presentSource = kDefaultPresentSource;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
         LightingDebugMode lightingView = LightingDebugMode::Lit;

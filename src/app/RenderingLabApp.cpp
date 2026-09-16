@@ -1677,6 +1677,16 @@ namespace renderlab
             return;
         }
 
+        if (m_options.manualTonemap)
+        {
+            const PostProcessPassInputs postInputs =
+                MakePostProcessPassInputs(hdr, m_tonemapConstants);
+            PostProcessPassOutputs postOutputs;
+            postOutputs.finalColor = output;
+            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+            return;
+        }
+
         const nvrhi::TextureDesc& hdrDesc = hdr->getDesc();
         rdg::GraphBuilder builder;
         const rdg::ToneMapGraph graph =

@@ -46,6 +46,7 @@ namespace
         std::optional<std::string> dumpLightingViews;
         std::optional<std::string> dumpRdg;
         bool verifyLights = false;
+        bool manualTonemap = false;
     };
 
     struct ValidationLog
@@ -89,6 +90,10 @@ namespace
             "                      Write the M1-shaped compiled graph as rdg.txt and rdg.dot under\n"
             "                      <dir> and exit. CPU-only: does not create a device, touch NVRHI,\n"
             "                      or run the M1 pass list. Other flags are ignored.\n"
+            "  --manual-tonemap    Temporary S5.4 A/B: call PostProcessPass::Execute directly\n"
+            "                      for on-screen Final and --output-hdr final.png (pre-S5.4 path).\n"
+            "                      Default is RDG. Ignored by --dump-rdg. LightingDebug and\n"
+            "                      GBufferDebug stay manual. Removed when S5.6 drops the scheduler.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
@@ -161,6 +166,12 @@ namespace
             if (EqualsOption(argument, "--verify-lights"))
             {
                 options.verifyLights = true;
+                continue;
+            }
+
+            if (EqualsOption(argument, "--manual-tonemap"))
+            {
+                options.manualTonemap = true;
                 continue;
             }
 
@@ -570,6 +581,7 @@ int main(int argc, char** argv)
     launchOptions.gbufferView = gbufferView;
     launchOptions.lightingView = lightingView;
     launchOptions.verifyLights = options.verifyLights;
+    launchOptions.manualTonemap = options.manualTonemap;
     launchOptions.exposureEV = options.exposureEV.value_or(renderlab::kDefaultExposureEV);
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
