@@ -193,6 +193,7 @@ target_link_libraries(
     PRIVATE
         RenderLab::Renderer
         RenderLab::Rdg
+        RenderLab::RdgExec
         donut_app
         bcrypt
 )

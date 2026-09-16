@@ -8,6 +8,9 @@
 #include "renderer/HdrDump.h"
 #include "renderer/LightingDebugPass.h"
 #include "renderer/RendererData.h"
+#include "rdg/GraphCompiler.h"
+#include "rdg/ToneMapGraph.h"
+#include "rdg/exec/GraphExecutor.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -968,11 +971,11 @@ namespace renderlab
         }
 
         commandList->open();
-        const PostProcessPassInputs postInputs =
-            MakePostProcessPassInputs(m_hdrSceneColor.GetTexture(), m_tonemapConstants);
-        PostProcessPassOutputs postOutputs;
-        postOutputs.finalColor = finalDumpTarget;
-        m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+        ExecuteToneMap(
+            commandList,
+            m_hdrSceneColor.GetTexture(),
+            finalDumpTarget,
+            rdg::ToneMapOutput::DumpTarget);
         commandList->close();
         device->executeCommandList(commandList);
 
@@ -1334,11 +1337,11 @@ namespace renderlab
                     UpdateDebugHud();
                     if (m_presentSource == PresentSource::Final)
                     {
-                        const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
-                            m_hdrSceneColor.GetTexture(), m_tonemapConstants);
-                        PostProcessPassOutputs postOutputs;
-                        postOutputs.finalColor = debugColor;
-                        m_postProcessPass.Execute(m_commandList, postInputs, postOutputs);
+                        ExecuteToneMap(
+                            m_commandList,
+                            m_hdrSceneColor.GetTexture(),
+                            debugColor,
+                            rdg::ToneMapOutput::BackBuffer);
                     }
                     else if (m_presentSource == PresentSource::LightingDebug)
                     {
@@ -1661,6 +1664,59 @@ namespace renderlab
         const LightingDebugModeInfo& lightingInfo = GetLightingDebugModeInfo(m_lightingDebugHud.mode);
         m_lightingDebugHud.channelName = lightingInfo.channelName;
         m_lightingDebugHud.decodeConvention = lightingInfo.decodeConvention;
+    }
+
+    void RenderingLabApp::ExecuteToneMap(
+        nvrhi::ICommandList* commandList,
+        nvrhi::ITexture* hdr,
+        nvrhi::ITexture* output,
+        rdg::ToneMapOutput outputKind)
+    {
+        if (!commandList || !hdr || !output)
+        {
+            return;
+        }
+
+        const nvrhi::TextureDesc& hdrDesc = hdr->getDesc();
+        rdg::GraphBuilder builder;
+        const rdg::ToneMapGraph graph =
+            rdg::BuildToneMapGraph(builder, hdrDesc.width, hdrDesc.height, outputKind);
+        rdg::exec::GraphExecutor executor(builder, rdg::GraphCompiler::Compile(builder));
+        const char* outputName =
+            outputKind == rdg::ToneMapOutput::BackBuffer ? "BackBuffer" : "PostProcessColor";
+        executor.RegisterImport(graph.hdrSceneColor, {hdr, "HDRSceneColor"});
+        executor.RegisterImport(graph.outputImported, {output, outputName});
+        executor.Plan();
+
+        const auto logErrors = [&executor]() {
+            for (const rdg::Error& error : executor.GetErrors())
+            {
+                log::error("RDG tone map: %s", error.message.c_str());
+            }
+        };
+        if (!executor.GetErrors().empty())
+        {
+            logErrors();
+            return;
+        }
+
+        executor.ExecutePass(graph.postProcessPassIndex, [&](rdg::exec::PassContext& ctx) {
+            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrSceneColor);
+            const rdg::exec::PhysicalTexture* outPhys = ctx.GetTexture(graph.outputWritten);
+            if (!hdrPhys || !outPhys)
+            {
+                return;
+            }
+            const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
+                static_cast<nvrhi::ITexture*>(hdrPhys->native), m_tonemapConstants);
+            PostProcessPassOutputs postOutputs;
+            postOutputs.finalColor = static_cast<nvrhi::ITexture*>(outPhys->native);
+            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+        });
+        if (!executor.GetErrors().empty())
+        {
+            logErrors();
+        }
     }
 
     void RenderingLabApp::UpdateSceneHud()

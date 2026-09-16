@@ -10,6 +10,7 @@
 #include "renderer/LightingContract.h"
 #include "renderer/PostProcessPass.h"
 #include "renderer/RendererData.h"
+#include "rdg/ToneMapGraph.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
@@ -186,6 +187,11 @@ namespace renderlab
         void RebuildDrawList();
         void UpdateFrameViewConstants();
         void UpdateDebugHud();
+        void ExecuteToneMap(
+            nvrhi::ICommandList* commandList,
+            nvrhi::ITexture* hdr,
+            nvrhi::ITexture* output,
+            rdg::ToneMapOutput outputKind);
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;
