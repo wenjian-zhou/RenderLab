@@ -50,7 +50,10 @@ identities for internal Create* resources (CPU stubs in CI; optional
 `nvrhi::IDevice*` locally). **S5.3 is complete**: `GraphExecutor::Plan()`
 declares an auditable raster access-state plan (`rdg::Access` + `AccessMap`)
 without issuing GPU barriers; `keepInitialState = true` stays the one NVRHI
-path. The next executable task is **S5.4: migrate tone mapping first**.
+path. **S5.4 is complete**: RDG controls order and resources for tone
+mapping (`BuildToneMapGraph` + app `ExecutePass`); `PostProcessPass::Execute`
+is unchanged; `--manual-tonemap` is the temporary A/B. The next executable
+task is **S5.5: migrate deferred lighting**.
 
 ## Plans
 

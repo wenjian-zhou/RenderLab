@@ -247,3 +247,14 @@ Read/Write + format; it does not issue barriers or record a command list.
 The one NVRHI path remains `keepInitialState = true` (FormatMap / M1).
 There is no second state tracker. UAV is deferred. The renderer remains
 frozen until S5.4.
+
+## S5.4 Extension (2026-09-16)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`. `RenderingLabApp` links `RenderLab::RdgExec`
+and schedules the existing `PostProcessPass` through a one-pass imported
+leaf (`BuildToneMapGraph`). `PassContext` still has no command list; the
+app captures `nvrhi::ICommandList*` in the `ExecutePass` callback.
+`Plan()` remains the CPU audit of `keepInitialState = true` auto-tracking;
+S5.4 does not issue `setTextureState`. GBuffer, deferred lighting, and
+debug present stay manual. `--dump-rdg` stays the M1-shaped representative.

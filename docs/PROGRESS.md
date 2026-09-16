@@ -5,12 +5,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.4 - Migrate tone mapping first**
-- State: **S5.3 complete** — `GraphExecutor::Plan()` declares an auditable
-  raster access-state plan (`rdg::Access` + `AccessMap` → NVRHI states);
-  `keepInitialState = true` remains the one NVRHI path; `RenderLabRdg`
-  stays NVRHI-free; renderer/M1 GPU passes remain untouched
-  (docs/rdg.md, ADR-003)
+- Active step: **S5.5 - Migrate deferred lighting**
+- State: **S5.4 complete** — RDG controls order and resources for tone
+  mapping (`BuildToneMapGraph` + app `ExecutePass`); `PostProcessPass::Execute`
+  is unchanged; `Plan()` stays the audit of `keepInitialState` auto-tracking;
+  `--manual-tonemap` is the temporary A/B (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-16
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -19,7 +18,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
-- Stage 5: **S5.1–S5.3 complete**; next is S5.4
+- Stage 5: **S5.1–S5.4 complete**; next is S5.5
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1556,6 +1555,56 @@ Known limitations: no UAV enumerator (deferred until a real pass needs it);
   list; no raster migration (S5.4+); --dump-rdg remains logical-only; PIX
   agreement is not a ctest; GraphBuilder still has no execute lambda.
 Next step: S5.4 - Migrate tone mapping first
+```
+
+### S5.4 - Migrate tone mapping first
+
+```text
+Step: S5.4
+State: Complete
+Date: 2026-09-16
+Commit: (docs this file); code c82e819 4ade6d1 d775763 ba981c4 6b78d5b bd24b74
+Design: grill rounds froze app-owned ExecutePass + BuildToneMapGraph in
+  RenderLabRdg, callback-captured command list, Plan() audit-only
+  keepInitialState path, --manual-tonemap default-off covering Final and
+  final.png, rebuild-each-run, CPU dump Checks not a new CLI, test_rdg_tonemap.cpp
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+  Select-String on src/rdg/*.h,src/rdg/*.cpp for nvrhi includes / donut includes
+  (exec/ may include nvrhi; donut is forbidden there too)
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.4 RDG tone-map tests". RenderLab links RenderLab::RdgExec.
+  RenderLabRdg still links only RenderLab::ProjectOptions. PostProcessPass
+  draw/shaders/markers/goldens unchanged. --dump-rdg still matches
+  tests/golden/rdg/rdg.txt. golden.ps1 and golden-hdr.ps1 Verify Debug
+  passed (final.png mae=0 on the default RDG path). git diff --check clean.
+Automated tests: 0 failures in both configurations. S5.4 checks cover
+  one live Raster PostProcess, HDR imported-only, BackBuffer
+  imported+exported Present, AccessPlan before/after/restore, DumpTarget
+  PostProcessColor imported-only, Plan then ExecutePass resolve,
+  UnregisteredImport, NullHandle/ForeignGraph/SupersededUse. Existing S4
+  and S5.1–S5.3 suites stay green.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug
+  (NVIDIA GeForce RTX 5060 Laptop GPU). No D3D12 ctest.
+Artifacts:
+  src/rdg/ToneMapGraph.h / ToneMapGraph.cpp
+  tests/test_rdg_tonemap.cpp
+  src/app/RenderingLabApp.cpp ExecuteToneMap
+  src/app/main.cpp --manual-tonemap
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+  docs/superpowers/plans/2026-09-16-s54-migrate-tone-mapping.md
+Known limitations: --manual-tonemap is temporary until S5.6; GBuffer,
+  DeferredLighting, and debug present stay manual; Plan() is not issued
+  (no setTextureState); --dump-rdg remains the M1-shaped 3-pass graph;
+  PIX agreement is local-only; GraphBuilder still has no execute lambda.
+Next step: S5.5 - Migrate deferred lighting
 ```
 
 Selected baseline:

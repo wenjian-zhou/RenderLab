@@ -1,8 +1,8 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.3)
+Status: **active design note — Stage 5** (implemented through S5.4)
 
-Step: S5.3
+Step: S5.4
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -10,7 +10,8 @@ dependency edges, topological order, output-driven pass culling, logical
 resource lifetimes, and compiled-graph text/DOT dumps. S5.1 adds the
 execution layer that binds imported handles to opaque physical tokens.
 S5.2 maps descriptors to NVRHI and allocates internal Create* identities.
-S5.3 plans raster access states from those declarations.
+S5.3 plans raster access states from those declarations. S5.4 schedules
+the existing `PostProcessPass` through a one-pass imported leaf.
 How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
@@ -43,11 +44,14 @@ the **pure logical CPU model** of the render dependency graph:
   separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
   `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
   (not donut). Access-state planning (`GraphExecutor::Plan()`) lives in this
-  same Exec target. S5.7 reuses non-overlapping
+  same Exec target. S5.4's `BuildToneMapGraph` lives in `RenderLabRdg`
+  (NVRHI-free, like `BuildM1ShapedGraph`). S5.7 reuses non-overlapping
   logical intervals; this file only defines the intervals.
 
-The renderer is untouched by Stage 4; integration begins at S5.4 against the
-frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
+The renderer is untouched by Stage 4. S5.4 begins integration against the
+frozen M1 reference ([`m1-reference.md`](m1-reference.md)): RDG controls
+order and resources for tone mapping; GBuffer, deferred lighting, and
+debug present stay manual.
 
 ## 2. Handles
 
@@ -460,7 +464,7 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1–S5.3)
+## 10. Execution layer (S5.1–S5.4)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
 `renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
@@ -494,6 +498,12 @@ PassContext::GetTexture / GetBuffer
   depth; every other known format is color RT+SRV. `keepInitialState` stays
   `true` — that is the one NVRHI path. S5.3 declares the implied
   before/after plan; it does not call `setTextureState` or record commands.
+  S5.4 consumes `Plan()` as the audit of NVRHI auto-tracking on imported
+  HDR (RT) and imported+exported BackBuffer (Present). Restores happen at
+  command-list close because those textures already have
+  `keepInitialState = true`. S5.4 does not call `setTextureState` or
+  `beginTracking` (the HDR-capture readback `beginTracking` stays on its
+  own command list).
 - `Plan()` is a one-shot CPU walk of live passes after a successful compile.
   It does not require `Allocate()`, `SetDevice()`, or `RegisterImport()`.
   Culled passes are omitted. A second `Plan()` is `IncompatibleAccess`.
@@ -529,10 +539,21 @@ PassContext::GetTexture / GetBuffer
 - `ExecutePass` copies compile success, cull states, and live pass order in
   the constructor, requires a live pass, activates one executor-owned
   `PassContext` for the callback, then deactivates it. There is no command
-  list.
+  list on `PassContext`. The S5.4 app captures `nvrhi::ICommandList*` in
+  the `ExecutePass` lambda and calls `PostProcessPass::Execute`.
 - `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
   list, including the exact declared version (read version or write output
   version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,
   and unbound lookups return `nullptr` and append an `rdg::Error` in every
   configuration. The callback does not receive the registry, the compile
   result, or renderer tables.
+- S5.4 one-pass leaf: `BuildToneMapGraph` imports `HDRSceneColor`
+  (`RGBA16Float`) and either `BackBuffer` (imported+exported Present) or
+  `PostProcessColor` (imported-only dump target). One live Raster
+  `PostProcess` pass. The app (`RenderLab` links `RenderLab::RdgExec`)
+  rebuilds GraphBuilder + Compile + GraphExecutor on every tone-map run,
+  `RegisterImport`s, `Plan()`s, then `ExecutePass`. No `Allocate` (no
+  `Create*`). `--manual-tonemap` restores the pre-S5.4 `Execute` call for
+  `PresentSource::Final` and `--output-hdr` `final.png`. `--dump-rdg` stays
+  the M1-shaped 3-pass graph; the one-pass dump is asserted in
+  `tests/test_rdg_tonemap.cpp`.
