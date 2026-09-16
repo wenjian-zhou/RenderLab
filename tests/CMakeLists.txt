@@ -20,6 +20,7 @@ add_executable(
     test_rdg_exec.cpp
     test_rdg_alloc.cpp
     test_rdg_access.cpp
+    test_rdg_tonemap.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp

@@ -40,6 +40,7 @@ int RunRdgDumpTests();
 int RunRdgExecTests();
 int RunRdgAllocTests();
 int RunRdgAccessTests();
+int RunRdgTonemapTests();
 
 namespace
 {
@@ -297,6 +298,7 @@ int main()
     g_failures += RunRdgExecTests();
     g_failures += RunRdgAllocTests();
     g_failures += RunRdgAccessTests();
+    g_failures += RunRdgTonemapTests();
 
     std::printf("\n%d failure(s)\n", g_failures);
     return g_failures == 0 ? 0 : 1;

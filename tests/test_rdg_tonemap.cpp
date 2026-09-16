@@ -1,0 +1,64 @@
+#include "rdg/GraphCompiler.h"
+#include "rdg/Pass.h"
+#include "rdg/ToneMapGraph.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <string>
+
+using namespace renderlab::rdg;
+
+namespace
+{
+    int g_failures = 0;
+
+    void Check(bool condition, const char* message)
+    {
+        if (condition)
+        {
+            std::printf("  PASS  %s\n", message);
+            return;
+        }
+        std::printf("  FAIL  %s\n", message);
+        ++g_failures;
+    }
+}
+
+int RunRdgTonemapTests()
+{
+    std::printf("RenderLab S5.4 RDG tone-map tests\n");
+
+    {
+        GraphBuilder builder;
+        const ToneMapGraph graph =
+            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
+        const CompileResult result = GraphCompiler::Compile(builder);
+        Check(builder.GetErrors().empty() && result.IsSuccess(), "tone-map graph compiles");
+        Check(builder.GetResourceCount() == 2, "two resources");
+        Check(result.GetLivePassOrder().size() == 1, "one live pass");
+        Check(result.GetLivePassOrder()[0] == graph.postProcessPassIndex, "live pass is PostProcess");
+        Check((builder.GetPass(graph.postProcessPassIndex).flags & PassFlags::Raster) == PassFlags::Raster,
+            "PostProcess is Raster");
+
+        const ResourceRecord& hdr = builder.GetResource(graph.hdrSceneColor.index);
+        Check(hdr.name == "HDRSceneColor" && hdr.imported && !hdr.exported,
+            "HDRSceneColor imported not exported");
+        const ResourceRecord& backBuffer = builder.GetResource(graph.outputImported.index);
+        Check(backBuffer.name == "BackBuffer" && backBuffer.imported && backBuffer.exported,
+            "BackBuffer imported and exported");
+
+        const std::string dump = result.Dump();
+        Check(dump.find("order: [0 \"PostProcess\"]") != std::string::npos, "dump order is PostProcess");
+        Check(dump.find("0 \"PostProcess\" live root-output") != std::string::npos,
+            "PostProcess is live root-output");
+        Check(dump.find("read texture 0 \"HDRSceneColor\"") != std::string::npos, "dump reads HDRSceneColor");
+        Check(dump.find("write texture 1 \"BackBuffer\"") != std::string::npos, "dump writes BackBuffer");
+        Check(dump.find("texture 0 \"HDRSceneColor\" imported\n") != std::string::npos,
+            "dump HDR imported-only");
+        Check(dump.find("texture 1 \"BackBuffer\" imported exported") != std::string::npos,
+            "dump BackBuffer imported exported");
+        Check(dump.find("0 \"PostProcess\" Raster") != std::string::npos, "dump flags Raster");
+    }
+
+    return g_failures;
+}
