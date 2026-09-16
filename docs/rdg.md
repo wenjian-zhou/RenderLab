@@ -1,15 +1,16 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.1)
+Status: **active design note — Stage 5** (implemented through S5.2)
 
-Step: S5.1
+Step: S5.2
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
 dependency edges, topological order, output-driven pass culling, logical
 resource lifetimes, and compiled-graph text/DOT dumps. S5.1 adds the
-NVRHI-free execution layer that binds imported handles to opaque physical
-tokens. How this design relates to UE 5.8.1's render
+execution layer that binds imported handles to opaque physical tokens.
+S5.2 maps descriptors to NVRHI and allocates internal Create* identities.
+How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
@@ -37,11 +38,11 @@ the **pure logical CPU model** of the render dependency graph:
   keeps it that way (ADR-003).
 - Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
   runs entirely on CPU, including the CI runners.
-- Physical import bind and pass execution context live in a separate
-  target, `RenderLabRdgExec` (`src/rdg/exec`, namespace `renderlab::rdg::exec`).
-  That target links only `RenderLab::Rdg` in S5.1. Internal allocation and
-  format mapping are S5.2; access-state planning is S5.3. S5.7 reuses
-  non-overlapping logical intervals; this file only defines the intervals.
+- Physical import bind, format mapping, and internal allocation live in a
+  separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
+  `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
+  (not donut). Access-state planning is S5.3. S5.7 reuses non-overlapping
+  logical intervals; this file only defines the intervals.
 
 The renderer is untouched by Stage 4; integration begins at S5.4 against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)).
@@ -90,7 +91,7 @@ Both are value types with `operator==` — the future pooling key for S5.7
 `Format` is a **neutral owned enum** (`SRGBA8Unorm`, `RGBA8Unorm`,
 `RGBA16Float`, `RGBA32Float`, `R32Float`, `D32Float`), covering the frozen
 M1 pipeline resources. S5.2 owns the mapping table from these values to
-`nvrhi::FormatType`; Stage 4 never names an RHI type. Extend the enum only
+`nvrhi::Format`; Stage 4 never names an RHI type. Extend the enum only
 when a real resource needs a new value.
 
 A resource enters the graph three ways, mirroring UE's semantics (survey
@@ -198,16 +199,17 @@ Naming both the pass and the resource is part of the contract from day one.
 | `SupersededUse` | Read, Write, or Export names an older version |
 | `ReadBeforeProduce` | Read or Export names an unproduced internal v0 |
 | `DuplicateWrite` | same pass writes the same resource again using its current handle |
-| `IncompatibleAccess` | same-pass read/write combination, Write after Export, RegisterImport of a non-imported or already-bound resource, or GetExported of a non-exported resource |
+| `IncompatibleAccess` | same-pass read/write combination, Write after Export, RegisterImport of a non-imported or already-bound resource, GetExported of a non-exported resource, a second `Allocate()`, or `SetDevice` after `Allocate()` |
 | `TypeMismatch` | handle kind does not match the registry slot's kind (only reachable with a forged handle) |
 | `InvalidName` | empty pass or descriptor name |
-| `InvalidDescriptor` | zero extent, unknown texture format, or zero element size/count |
+| `InvalidDescriptor` | zero extent, unknown texture format, zero element size/count, or `Allocate()` of an unmapped format |
 | `InvalidPassFlags` | pass flags outside the known bit set |
 | `ZeroUseAllocation` | compile-time: a non-imported resource has no live-pass access after culling |
 | `UndeclaredAccess` | `GetTexture` / `GetBuffer` names a resource that exists on the graph but is not in this pass's read/write list |
 | `ExpiredContext` | `Get*` after `ExecutePass` has returned |
-| `UnregisteredImport` | declared or exported handle has no physical token (S5.1 internals stay unbound) |
-| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass |
+| `UnregisteredImport` | declared or exported handle has no physical token (imports before `RegisterImport`; internals before `Allocate()`) |
+| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass, or `Allocate()` after a failed compile |
+| `AllocationFailed` | `nvrhi::IDevice::createTexture` / `createBuffer` returned null |
 
 Validation order is deterministic — when a forged handle violates several
 rules at once, the earliest category wins:
@@ -282,6 +284,13 @@ declared `GetTexture` / `GetBuffer` during `ExecutePass`, undeclared /
 stale / null / foreign / type-mismatch / expired lookup, unbound internals,
 culled and out-of-range `ExecutePass`, imported buffers, and the M1-shaped
 BackBuffer rule (only PostProcess may resolve it). No GPU device.
+
+`tests/test_rdg_alloc.cpp` covers `FormatMap` round-trips for every
+`rdg::Format`, `Allocate()` of internal textures and buffers, imported
+slots remaining `RegisterImport`-only, failed-compile and second
+`Allocate()` errors, M1-shaped GBuffer/HDR resolve without a device, create/
+destroy of repeated graphs, `GetAllocationStats`, and `SetDevice` after
+`Allocate()`. CI never creates a D3D12 device.
 
 ## 8. Version dump
 
@@ -439,26 +448,42 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1)
+## 10. Execution layer (S5.1–S5.2)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
-`renderlab::rdg::exec::GraphExecutor` binds already-existing objects:
+`renderlab::rdg::exec::GraphExecutor` binds imports and allocates internals:
 
 ```text
 PhysicalTexture / PhysicalBuffer { void* native; std::string debugName; }
+GraphExecutor::SetDevice(nvrhi::IDevice*)   // optional; default null
+GraphExecutor::Allocate()
+GraphExecutor::GetAllocationStats()
 GraphExecutor::RegisterImport(handle, physical)
 GraphExecutor::GetExported(handle)
 GraphExecutor::ExecutePass(passIndex, callback)
 PassContext::GetTexture / GetBuffer
 ```
 
-- `native` is non-owning. Tests pass the address of a stack dummy. S5.2 will
-  store device pointers as `void*` in the same slot. Physical identity is per
-  resource index; `RegisterImport` accepts any in-range version of an
-  imported resource.
-- `GetExported` returns that same token once the import is registered. It
-  does not extract into a new object. The handle must be the pinned exported
-  (current) version.
+- `FormatMap` (`ToNvFormat`, `MakeTextureDesc`, `MakeBufferDesc`) is CPU-only
+  and needs no device. Usage flags come from format: `D32Float` is typeless
+  depth; every other known format is color RT+SRV. There is no access enum.
+- `Allocate()` mints one physical identity per non-imported `Create*` slot
+  after a successful compile. Imported slots are skipped. A second
+  `Allocate()` is `IncompatibleAccess`. Failed compile is `InvalidPass` and
+  fills nothing. There is no pooling; S5.7 owns exact-match reuse.
+- `native` is non-owning. With a null device, the executor owns CPU stubs
+  and `native` is the stub address. With `SetDevice` before `Allocate()`,
+  `native` is `nvrhi::ITexture*` / `IBuffer*` and the executor owns the
+  NVRHI handles. `SetDevice` after `Allocate()` is `IncompatibleAccess`.
+  Physical identity is per resource index; versions do not mint new natives.
+- `RegisterImport` still refuses `Create*` slots. After `Allocate()` without
+  `RegisterImport`, `GetTexture` of an imported handle is
+  `UnregisteredImport`.
+- `GetAllocationStats()` reports successfully minted Create* counts and
+  estimated bytes (`width * height * BytesPerPixel`, or buffer `byteSize`).
+  Zero before `Allocate()`. PIX name agreement is a local check, not CI.
+- `GetExported` returns the registered or allocated token for the pinned
+  exported version. It does not extract into a new object.
 - `ExecutePass` copies compile success and cull state in the constructor,
   requires a live pass, activates one executor-owned `PassContext` for the
   callback, then deactivates it. There is no command list.
@@ -468,5 +493,3 @@ PassContext::GetTexture / GetBuffer
   and unbound lookups return `nullptr` and append an `rdg::Error` in every
   configuration. The callback does not receive the registry, the compile
   result, or renderer tables.
-- `RegisterImport` refuses `CreateTexture` / `CreateBuffer` slots. Internal
-  physical allocation is S5.2.

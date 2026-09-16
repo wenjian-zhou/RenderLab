@@ -45,6 +45,7 @@ namespace renderlab::rdg
             case ErrorCategory::ExpiredContext: return "ExpiredContext";
             case ErrorCategory::UnregisteredImport: return "UnregisteredImport";
             case ErrorCategory::InvalidPass: return "InvalidPass";
+            case ErrorCategory::AllocationFailed: return "AllocationFailed";
             }
             return "Unknown";
         }

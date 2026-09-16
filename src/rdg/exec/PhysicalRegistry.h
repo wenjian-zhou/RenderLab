@@ -9,8 +9,8 @@
 
 namespace renderlab::rdg::exec
 {
-    // Per-resource-index slots for imported physical tokens. Internal
-    // CreateTexture/CreateBuffer resources stay empty until S5.2.
+    // Per-resource-index slots for physical tokens. Imports are filled by
+    // RegisterImport; internals are filled by GraphExecutor::Allocate.
     class PhysicalRegistry
     {
     public:

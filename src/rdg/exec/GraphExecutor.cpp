@@ -1,8 +1,12 @@
 #include "GraphExecutor.h"
+#include "FormatMap.h"
+
+#include <nvrhi/nvrhi.h>
 
 #include <cassert>
 #include <format>
 #include <utility>
+#include <variant>
 
 namespace renderlab::rdg::exec
 {
@@ -14,12 +18,156 @@ namespace renderlab::rdg::exec
         }
     }
 
+    struct GraphExecutor::GpuStorage
+    {
+        std::vector<nvrhi::TextureHandle> textures;
+        std::vector<nvrhi::BufferHandle> buffers;
+    };
+
     GraphExecutor::GraphExecutor(const GraphBuilder& builder, const CompileResult& result)
         : m_builder(&builder)
         , m_compileSuccess(result.IsSuccess())
         , m_cullStates(result.GetPassCullStates().begin(), result.GetPassCullStates().end())
     {
         m_registry.Reset(builder.GetResourceCount());
+    }
+
+    GraphExecutor::~GraphExecutor() = default;
+
+    void GraphExecutor::SetDevice(nvrhi::IDevice* device)
+    {
+        if (m_allocated)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                "SetDevice after Allocate()",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+        m_device = device;
+    }
+
+    void GraphExecutor::Allocate()
+    {
+        if (!m_compileSuccess)
+        {
+            AddError(
+                ErrorCategory::InvalidPass,
+                "Allocate() requires a successful compile",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+        if (m_allocated)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                "Allocate() already ran",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+
+        m_allocated = true;
+        const size_t resourceCount = m_builder->GetResourceCount();
+        if (m_device != nullptr)
+        {
+            m_gpu = std::make_unique<GpuStorage>();
+            m_gpu->textures.resize(resourceCount);
+            m_gpu->buffers.resize(resourceCount);
+        }
+
+        for (uint32_t index = 0; index < resourceCount; ++index)
+        {
+            const ResourceRecord& record = m_builder->GetResource(index);
+            if (record.imported)
+            {
+                continue;
+            }
+
+            if (record.kind == ResourceKind::Texture)
+            {
+                const TextureDesc& desc = std::get<TextureDesc>(record.desc);
+                const nvrhi::TextureDesc nv = MakeTextureDesc(desc);
+                if (nv.format == nvrhi::Format::UNKNOWN)
+                {
+                    AddError(
+                        ErrorCategory::InvalidDescriptor,
+                        std::format("Allocate() cannot map format for texture '{}'", record.name),
+                        Error::kNoPass,
+                        "",
+                        record.name);
+                    continue;
+                }
+
+                if (m_device != nullptr)
+                {
+                    nvrhi::TextureHandle handle = m_device->createTexture(nv);
+                    if (!handle)
+                    {
+                        AddError(
+                            ErrorCategory::AllocationFailed,
+                            std::format("Allocate() failed to create texture '{}'", record.name),
+                            Error::kNoPass,
+                            "",
+                            record.name);
+                        continue;
+                    }
+                    nvrhi::ITexture* const native = handle;
+                    m_gpu->textures[index] = std::move(handle);
+                    m_registry.SetTexture(index, PhysicalTexture{native, record.name});
+                }
+                else
+                {
+                    auto stub = std::make_unique<CpuIdentity>();
+                    stub->index = index;
+                    m_registry.SetTexture(index, PhysicalTexture{stub.get(), record.name});
+                    m_cpuTextures.push_back(std::move(stub));
+                }
+
+                ++m_stats.textureCount;
+                m_stats.estimatedBytes +=
+                    static_cast<uint64_t>(desc.width) * desc.height * BytesPerPixel(desc.format);
+            }
+            else
+            {
+                const BufferDesc& desc = std::get<BufferDesc>(record.desc);
+                const nvrhi::BufferDesc nv = MakeBufferDesc(desc);
+                const uint64_t byteSize = nv.byteSize;
+
+                if (m_device != nullptr)
+                {
+                    nvrhi::BufferHandle handle = m_device->createBuffer(nv);
+                    if (!handle)
+                    {
+                        AddError(
+                            ErrorCategory::AllocationFailed,
+                            std::format("Allocate() failed to create buffer '{}'", record.name),
+                            Error::kNoPass,
+                            "",
+                            record.name);
+                        continue;
+                    }
+                    nvrhi::IBuffer* const native = handle;
+                    m_gpu->buffers[index] = std::move(handle);
+                    m_registry.SetBuffer(index, PhysicalBuffer{native, record.name});
+                }
+                else
+                {
+                    auto stub = std::make_unique<CpuIdentity>();
+                    stub->index = index;
+                    m_registry.SetBuffer(index, PhysicalBuffer{stub.get(), record.name});
+                    m_cpuBuffers.push_back(std::move(stub));
+                }
+
+                ++m_stats.bufferCount;
+                m_stats.estimatedBytes += byteSize;
+            }
+        }
     }
 
     void GraphExecutor::RegisterImport(TextureHandle handle, PhysicalTexture physical)

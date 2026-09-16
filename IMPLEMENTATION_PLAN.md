@@ -26,8 +26,9 @@ compile. **S4.6 is complete**: compiled-graph text and DOT dumps, compile
 diagnostics that name pass and resource, `--dump-rdg`, and an M1-shaped golden;
 **Stage 4 is satisfied**. **S5.1 is complete**: imported handles bind to opaque
 physical tokens and `PassContext` resolves only declared resources
-(`RenderLabRdgExec`, zero NVRHI). The next step is **S5.2 — Allocate physical
-textures and buffers**. The S3.1 exposure and output-transfer
+(`RenderLabRdgExec`). **S5.2 is complete**: internals are allocated from
+logical descriptors (`FormatMap` + `GraphExecutor::Allocate()`; CI stays
+device-free). The next step is **S5.3 — Implement access-state planning**. The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -478,7 +479,8 @@ S4.4 is complete: output-driven culling un-culls last-producer closures from
 import/export writers and `NeverCull`. S4.5 is complete: logical lifetimes
 are first/last live-pass intervals on `CompileResult`. S4.6 is complete:
 compiled-graph dumps, `--dump-rdg`, and the M1-shaped golden. Stage 4 is
-satisfied. S5.1 is complete (`RenderLabRdgExec`). Next is S5.2.
+satisfied. S5.1 is complete (`RenderLabRdgExec`). S5.2 is complete
+(FormatMap + Allocate). Next is S5.3.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

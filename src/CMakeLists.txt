@@ -80,8 +80,8 @@ if(MSVC)
     target_compile_options(RenderLabRdg PRIVATE /wd4100)
 endif()
 
-# S5.1 execution layer: imported physical bind and PassContext. Links only
-# RenderLab::Rdg (no nvrhi or donut). S5.2 adds nvrhi to this target.
+# S5.2 execution layer: import bind, FormatMap, and physical allocation.
+# Links RenderLab::Rdg and nvrhi (not donut).
 set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/PhysicalResource.h
     rdg/exec/PhysicalRegistry.h
@@ -90,6 +90,8 @@ set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/PassContext.cpp
     rdg/exec/GraphExecutor.h
     rdg/exec/GraphExecutor.cpp
+    rdg/exec/FormatMap.h
+    rdg/exec/FormatMap.cpp
 )
 
 add_library(RenderLabRdgExec STATIC ${RENDERLAB_RDG_EXEC_SOURCES})
@@ -101,6 +103,7 @@ target_link_libraries(
     RenderLabRdgExec
     PUBLIC
         RenderLab::Rdg
+        nvrhi
 )
 
 set_target_properties(

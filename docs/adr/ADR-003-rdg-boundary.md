@@ -102,7 +102,7 @@ descriptors unable to describe the M1 resources.
 
 Selected: a small neutral owned enum covering the frozen M1 formats
 ([`../rdg.md`](../rdg.md) §3). S5.2 owns the mapping table to
-`nvrhi::FormatType`.
+`nvrhi::Format`.
 
 ### 7. UE's fatal validation style
 
@@ -133,7 +133,7 @@ budgeting.
   the safety net.
 - `graphId` from a global counter allows multiple concurrent builders; no
   single-active-builder restriction (UE has one).
-- S5.2 must map `Format` → `nvrhi::FormatType` and descriptors → NVRHI
+- S5.2 must map `Format` → `nvrhi::Format` and descriptors → NVRHI
   descriptors; S5.7 uses descriptor equality as the pooling key; S4.4
   consumes `imported || exported` as the cull-root rule.
 - In S4.1, `StaleVersion` and `TypeMismatch` are reachable only through
@@ -225,3 +225,14 @@ and links only `RenderLab::Rdg`. Opaque `{native, debugName}` tokens stand in
 for already-existing objects so CI needs no device. S5.2 will add NVRHI to
 `RenderLabRdgExec` only, to allocate internal resources. `GraphBuilder` still
 has no execute lambda. The renderer remains frozen until S5.4.
+
+## S5.2 Extension (2026-09-16)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`. `RenderLabRdgExec` now links `nvrhi` (not donut)
+and owns the `rdg::Format` → `nvrhi::Format` table plus descriptor mapping
+(`FormatMap`). `GraphExecutor::Allocate()` mints per-index physical
+identities for non-imported `Create*` resources: CPU stubs when no device is
+set, or `nvrhi::ITexture*` / `IBuffer*` when `SetDevice` ran first. CI stays
+device-free. There is no access enum (S5.3) and no pooling (S5.7). The
+renderer remains frozen until S5.4.

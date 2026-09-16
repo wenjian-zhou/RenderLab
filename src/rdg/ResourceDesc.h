@@ -6,7 +6,7 @@
 namespace renderlab::rdg
 {
     // Neutral logical format: Stage 4 has no NVRHI dependency, and S5.2 owns
-    // the mapping table from these values to nvrhi::FormatType. The set
+    // the mapping table from these values to nvrhi::Format. The set
     // covers the frozen M1 pipeline resources (docs/m1-reference.md §4);
     // extend it only when a real resource needs a new value.
     enum class Format : uint8_t

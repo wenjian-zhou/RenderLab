@@ -32,10 +32,11 @@ namespace renderlab::rdg
         ExpiredContext,
         UnregisteredImport,
         InvalidPass,
+        AllocationFailed,
     };
 
     // One collected failure: a rejected declaration/creation call, a
-    // compile-time ZeroUseAllocation, or an S5.1 execution-time lookup
+    // compile-time ZeroUseAllocation, or an execution-time lookup / allocate
     // failure. Dumps expose category plus pass and resource names.
     struct Error
     {

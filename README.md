@@ -44,8 +44,11 @@ compile. **S4.6 is complete**: compiled graphs emit stable text and DOT dumps
 CPU-only, and the M1-shaped golden is committed. Stage 4 is satisfied.
 **S5.1 is complete**: imported logical handles bind to opaque physical tokens
 in `RenderLabRdgExec`, and `PassContext` resolves only declared handles
-without a GPU device. The next executable task is
-**S5.2: allocate physical textures and buffers**.
+without a GPU device. **S5.2 is complete**: `RenderLabRdgExec` maps
+`rdg::Format` to `nvrhi::Format` and allocates inspectable physical
+identities for internal Create* resources (CPU stubs in CI; optional
+`nvrhi::IDevice*` locally). The next executable task is
+**S5.3: implement access-state planning**.
 
 ## Plans
 

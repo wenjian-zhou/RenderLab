@@ -4,9 +4,10 @@
 
 namespace renderlab::rdg::exec
 {
-    // Non-owning physical identity for an imported resource. S5.1 stores an
-    // opaque native pointer (tests use a stack dummy; S5.2 stores device
-    // objects as void*). The registry copies the token and never frees native.
+    // Non-owning physical identity. Imports store a caller pointer (tests use
+    // a stack dummy; a device path stores ITexture*/IBuffer*). Internals store
+    // an executor-owned CPU stub or device object. The registry copies the
+    // token and never frees native.
     struct PhysicalTexture
     {
         void* native = nullptr;

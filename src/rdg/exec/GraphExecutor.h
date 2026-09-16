@@ -5,24 +5,44 @@
 #include "PhysicalRegistry.h"
 #include "PhysicalResource.h"
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
+namespace nvrhi
+{
+    class IDevice;
+}
+
 namespace renderlab::rdg::exec
 {
-    // Binds logical imported handles to opaque physical tokens and runs
-    // synthetic pass callbacks. The builder must outlive the executor.
-    // Compile result is read in the constructor (success flag and cull states
-    // are copied); it does not need to outlive ExecutePass.
+    struct AllocationStats
+    {
+        uint32_t textureCount = 0;
+        uint32_t bufferCount = 0;
+        uint64_t estimatedBytes = 0;
+    };
+
+    // Binds logical imported handles to opaque physical tokens, allocates
+    // internal Create* identities, and runs synthetic pass callbacks. The
+    // builder must outlive the executor. Compile result is read in the
+    // constructor (success flag and cull states are copied); it does not
+    // need to outlive ExecutePass.
     class GraphExecutor
     {
     public:
         GraphExecutor(const GraphBuilder& builder, const CompileResult& result);
+        ~GraphExecutor();
 
         GraphExecutor(const GraphExecutor&) = delete;
         GraphExecutor& operator=(const GraphExecutor&) = delete;
+
+        void SetDevice(nvrhi::IDevice* device);
+        void Allocate();
+        AllocationStats GetAllocationStats() const { return m_stats; }
 
         void RegisterImport(TextureHandle handle, PhysicalTexture physical);
         void RegisterImport(BufferHandle handle, PhysicalBuffer physical);
@@ -60,11 +80,23 @@ namespace renderlab::rdg::exec
             std::string passName,
             std::string resourceName);
 
+        struct CpuIdentity
+        {
+            uint32_t index = 0;
+        };
+        struct GpuStorage;
+
         const GraphBuilder* m_builder = nullptr;
         bool m_compileSuccess = false;
         std::vector<PassCullState> m_cullStates;
         PhysicalRegistry m_registry;
         PassContext m_context;
         std::vector<Error> m_errors;
+        nvrhi::IDevice* m_device = nullptr;
+        bool m_allocated = false;
+        AllocationStats m_stats{};
+        std::vector<std::unique_ptr<CpuIdentity>> m_cpuTextures;
+        std::vector<std::unique_ptr<CpuIdentity>> m_cpuBuffers;
+        std::unique_ptr<GpuStorage> m_gpu;
     };
 }
