@@ -223,5 +223,29 @@ int RunRdgTonemapTests()
             "SupersededUse on outputImported v0");
     }
 
+    {
+        GraphBuilder builder;
+        const ToneMapGraph graph =
+            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::DumpTarget);
+        const CompileResult result = GraphCompiler::Compile(builder);
+        Check(result.IsSuccess() && result.GetLivePassOrder().size() == 1,
+            "dump-target graph one live pass");
+        const std::string dump = result.Dump();
+        Check(dump.find("\"PostProcessColor\"") != std::string::npos, "output named PostProcessColor");
+        Check(dump.find("\"PostProcessColor\" imported exported") == std::string::npos,
+            "PostProcessColor is not exported");
+        GraphExecutor executor(builder, result);
+        executor.Plan();
+        Check(executor.GetErrors().empty(), "Plan of dump-target graph succeeds");
+        const AccessPlan& plan = executor.GetAccessPlan();
+        const ResourceBoundary* out = FindBoundary(plan, "PostProcessColor");
+        Check(out && out->imported && !out->exported && out->initial == Access::RenderTarget &&
+                  out->final == Access::RenderTarget,
+            "dump target imported-only RT");
+        Check(FindRestore(plan, "PostProcessColor") == nullptr, "dump target needs no restore");
+        Check(FindRestore(plan, "HDRSceneColor") != nullptr, "HDR still restores SR to RT");
+        Check(graph.outputImported.index == out->resourceIndex, "dump target handle matches plan");
+    }
+
     return g_failures;
 }
