@@ -1,12 +1,15 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/Pass.h"
 #include "rdg/ToneMapGraph.h"
+#include "rdg/exec/AccessPlan.h"
+#include "rdg/exec/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
 
 using namespace renderlab::rdg;
+using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -21,6 +24,59 @@ namespace
         }
         std::printf("  FAIL  %s\n", message);
         ++g_failures;
+    }
+
+    const ResourceBoundary* FindBoundary(const AccessPlan& plan, const char* name)
+    {
+        for (const ResourceBoundary& resource : plan.resources)
+        {
+            if (resource.name == name)
+            {
+                return &resource;
+            }
+        }
+        return nullptr;
+    }
+
+    const PassResourceState* FindPassState(
+        const AccessPlan& plan, const char* passName, const char* resourceName)
+    {
+        for (const PassResourceState& state : plan.passes)
+        {
+            if (state.passName == passName && state.resourceName == resourceName)
+            {
+                return &state;
+            }
+        }
+        return nullptr;
+    }
+
+    const ResourceRestore* FindRestore(const AccessPlan& plan, const char* name)
+    {
+        for (const ResourceRestore& restore : plan.restores)
+        {
+            if (restore.name == name)
+            {
+                return &restore;
+            }
+        }
+        return nullptr;
+    }
+
+    void CheckReadTransition(
+        const PassResourceState* state, Access before, Access after, const char* message)
+    {
+        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+                  state->required == after && state->after == after,
+            message);
+    }
+
+    void CheckWriteTransition(
+        const PassResourceState* state, Access before, Access after, const char* message)
+    {
+        Check(state != nullptr && state->mode == AccessMode::Write && state->before == before &&
+                  state->required == after && state->after == after,
+            message);
     }
 }
 
@@ -58,6 +114,40 @@ int RunRdgTonemapTests()
         Check(dump.find("texture 1 \"BackBuffer\" imported exported") != std::string::npos,
             "dump BackBuffer imported exported");
         Check(dump.find("0 \"PostProcess\" Raster") != std::string::npos, "dump flags Raster");
+    }
+
+    {
+        GraphBuilder builder;
+        BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Dump empty before Plan");
+        executor.Plan();
+        Check(executor.GetErrors().empty(), "Plan of tone-map graph succeeds");
+        const AccessPlan& plan = executor.GetAccessPlan();
+        const ResourceBoundary* hdr = FindBoundary(plan, "HDRSceneColor");
+        Check(hdr && hdr->imported && !hdr->exported && hdr->initial == Access::RenderTarget &&
+                  hdr->final == Access::RenderTarget,
+            "HDR imported-only RT/RT");
+        const ResourceBoundary* bb = FindBoundary(plan, "BackBuffer");
+        Check(bb && bb->imported && bb->exported && bb->initial == Access::Present &&
+                  bb->final == Access::Present,
+            "BackBuffer imported+exported Present");
+        CheckReadTransition(
+            FindPassState(plan, "PostProcess", "HDRSceneColor"),
+            Access::RenderTarget,
+            Access::ShaderResource,
+            "HDR RT to SR");
+        CheckWriteTransition(
+            FindPassState(plan, "PostProcess", "BackBuffer"),
+            Access::Present,
+            Access::RenderTarget,
+            "BackBuffer Present to RT");
+        const ResourceRestore* hdrR = FindRestore(plan, "HDRSceneColor");
+        Check(hdrR && hdrR->from == Access::ShaderResource && hdrR->to == Access::RenderTarget,
+            "HDR restore SR to RT");
+        const ResourceRestore* bbR = FindRestore(plan, "BackBuffer");
+        Check(bbR && bbR->from == Access::RenderTarget && bbR->to == Access::Present,
+            "BackBuffer restore RT to Present");
     }
 
     return g_failures;
