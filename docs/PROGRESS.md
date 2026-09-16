@@ -1510,7 +1510,7 @@ Next step: S5.3 - Implement access-state planning
 Step: S5.3
 State: Complete
 Date: 2026-09-16
-Commit: ccf1954 (code); docs commit follows
+Commit: 1de65ec (docs); code 8de4b9d a7beb15 3eb7b70 c0ac510 ccf1954
 Design: grill rounds froze rdg::Access in RenderLabRdg + AccessMap in Exec,
   inference from Read/Write + format, UAV deferred, explicit Plan() one-shot,
   declare-only keepInitialState=true path, imported+exported Present convention,
