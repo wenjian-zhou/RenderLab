@@ -46,6 +46,7 @@ namespace renderlab::rdg
             case ErrorCategory::UnregisteredImport: return "UnregisteredImport";
             case ErrorCategory::InvalidPass: return "InvalidPass";
             case ErrorCategory::AllocationFailed: return "AllocationFailed";
+            case ErrorCategory::UnknownAccess: return "UnknownAccess";
             }
             return "Unknown";
         }

@@ -33,6 +33,7 @@ namespace renderlab::rdg
         UnregisteredImport,
         InvalidPass,
         AllocationFailed,
+        UnknownAccess,
     };
 
     // One collected failure: a rejected declaration/creation call, a

@@ -38,6 +38,37 @@ namespace renderlab::rdg
         Write,
     };
 
+    // Raster access subset (S5.3). Exec infers these from Read/Write + format.
+    // Present is a graph-boundary state only; UAV is deferred.
+    enum class Access : uint32_t
+    {
+        Unknown = 0,
+        ShaderResource = 1u << 0,
+        RenderTarget = 1u << 1,
+        DepthWrite = 1u << 2,
+        Present = 1u << 3,
+    };
+
+    constexpr Access operator|(Access a, Access b)
+    {
+        return static_cast<Access>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+    }
+
+    constexpr Access operator&(Access a, Access b)
+    {
+        return static_cast<Access>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+    }
+
+    constexpr Access& operator|=(Access& a, Access b)
+    {
+        return a = a | b;
+    }
+
+    constexpr Access kKnownAccessBits =
+        Access::ShaderResource | Access::RenderTarget | Access::DepthWrite | Access::Present;
+    constexpr Access kWritableMask = Access::RenderTarget | Access::DepthWrite;
+    constexpr Access kReadableMask = Access::ShaderResource;
+
     struct ResourceAccess
     {
         ResourceKind kind = ResourceKind::Texture;
