@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 
 using namespace renderlab::rdg;
@@ -78,6 +79,18 @@ namespace
                   state->required == after && state->after == after,
             message);
     }
+
+    bool HasCategory(std::span<const Error> errors, ErrorCategory category)
+    {
+        for (const Error& error : errors)
+        {
+            if (error.category == category)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 int RunRdgTonemapTests()
@@ -148,6 +161,66 @@ int RunRdgTonemapTests()
         const ResourceRestore* bbR = FindRestore(plan, "BackBuffer");
         Check(bbR && bbR->from == Access::RenderTarget && bbR->to == Access::Present,
             "BackBuffer restore RT to Present");
+    }
+
+    {
+        GraphBuilder builder;
+        const ToneMapGraph graph =
+            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
+        int hdrNative = 1;
+        int bbNative = 2;
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RegisterImport(graph.hdrSceneColor, PhysicalTexture{&hdrNative, "HDRSceneColor"});
+        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        executor.Plan();
+        Check(!executor.GetAccessPlan().passes.empty(), "Plan consumed before ExecutePass");
+        const PhysicalTexture* gotHdr = nullptr;
+        const PhysicalTexture* gotOut = nullptr;
+        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
+            gotHdr = ctx.GetTexture(graph.hdrSceneColor);
+            gotOut = ctx.GetTexture(graph.outputWritten);
+        });
+        Check(gotHdr && gotHdr->native == &hdrNative, "PostProcess resolves HDR");
+        Check(gotOut && gotOut->native == &bbNative, "PostProcess resolves written BackBuffer");
+        Check(executor.GetErrors().empty(), "registered resolve has no errors");
+    }
+
+    {
+        GraphBuilder builder;
+        const ToneMapGraph graph =
+            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.Plan();
+        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
+            Check(ctx.GetTexture(graph.hdrSceneColor) == nullptr, "unregistered HDR is null");
+        });
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
+            "UnregisteredImport on HDR");
+    }
+
+    {
+        GraphBuilder builder;
+        GraphBuilder other;
+        const ToneMapGraph graph =
+            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
+        int hdrNative = 3;
+        int bbNative = 4;
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RegisterImport(graph.hdrSceneColor, PhysicalTexture{&hdrNative, "HDRSceneColor"});
+        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        executor.Plan();
+        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
+            Check(ctx.GetTexture({}) == nullptr, "null handle is null");
+            TextureHandle foreign{
+                graph.hdrSceneColor.index, graph.hdrSceneColor.version, other.GetGraphId()};
+            Check(ctx.GetTexture(foreign) == nullptr, "foreign-graph handle is null");
+            Check(ctx.GetTexture(graph.outputImported) == nullptr, "imported v0 during write is null");
+        });
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::NullHandle), "NullHandle on default handle");
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::ForeignGraph),
+            "ForeignGraph on foreign handle");
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::SupersededUse),
+            "SupersededUse on outputImported v0");
     }
 
     return g_failures;
