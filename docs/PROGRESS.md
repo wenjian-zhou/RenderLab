@@ -1855,7 +1855,7 @@ State: complete — one handle per resource ({index, graphId}). Passes
   returned to their final access. Non-exported plan restores are not
   issued. Pass Execute still clears and calls setGraphicsState.
 Date: 2026-09-26
-Commit: uncommitted working tree
+Commit: 8b4adc19f24664b3257cfe1a4089d06361e5c496
 Commands:
   cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
   out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
