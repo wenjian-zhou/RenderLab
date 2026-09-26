@@ -44,6 +44,19 @@ namespace renderlab
             return physical != nullptr ? static_cast<nvrhi::ITexture*>(physical->native) : nullptr;
         }
 
+        // RDG Create* textures leave the frame in ShaderResource. A later
+        // command list has to begin tracking from that state because
+        // keepInitialState is false.
+        void TrackShaderResource(nvrhi::ICommandList* commandList, nvrhi::ITexture* texture)
+        {
+            if (commandList == nullptr || texture == nullptr)
+            {
+                return;
+            }
+            commandList->beginTrackingTextureState(
+                texture, nvrhi::AllSubresources, nvrhi::ResourceStates::ShaderResource);
+        }
+
         bool SnapshotHasGBuffer(const RasterFrameSnapshot& snapshot)
         {
             return snapshot.valid && snapshot.gbufferA && snapshot.gbufferB && snapshot.gbufferC &&
@@ -692,6 +705,10 @@ namespace renderlab
             const std::filesystem::path filePath = outputDir / info.dumpFileName;
 
             commandList->open();
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferA);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferB);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferC);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferDepth);
             GBufferDebugPassInputs debugInputs;
             debugInputs.gbufferA = m_frameSnapshot.gbufferA;
             debugInputs.gbufferB = m_frameSnapshot.gbufferB;
@@ -792,6 +809,11 @@ namespace renderlab
             const std::filesystem::path filePath = outputDir / info.dumpFileName;
 
             commandList->open();
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferA);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferB);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferC);
+            TrackShaderResource(commandList, m_frameSnapshot.gbufferDepth);
+            TrackShaderResource(commandList, m_frameSnapshot.hdrSceneColor);
             LightingDebugPassInputs debugInputs;
             debugInputs.gbufferA = m_frameSnapshot.gbufferA;
             debugInputs.gbufferB = m_frameSnapshot.gbufferB;
@@ -900,10 +922,7 @@ namespace renderlab
         }
 
         commandList->open();
-        commandList->beginTrackingTextureState(
-            hdr,
-            nvrhi::TextureSubresourceSet(0, 1, 0, 1),
-            nvrhi::ResourceStates::RenderTarget);
+        TrackShaderResource(commandList, hdr);
         commandList->copyTexture(staging, nvrhi::TextureSlice(), hdr, nvrhi::TextureSlice());
         commandList->close();
         device->executeCommandList(commandList);
@@ -965,6 +984,11 @@ namespace renderlab
         }
 
         commandList->open();
+        TrackShaderResource(commandList, m_frameSnapshot.gbufferA);
+        TrackShaderResource(commandList, m_frameSnapshot.gbufferB);
+        TrackShaderResource(commandList, m_frameSnapshot.gbufferC);
+        TrackShaderResource(commandList, m_frameSnapshot.gbufferDepth);
+        TrackShaderResource(commandList, hdr);
         LightingDebugPassInputs debugInputs;
         debugInputs.gbufferA = m_frameSnapshot.gbufferA;
         debugInputs.gbufferB = m_frameSnapshot.gbufferB;
@@ -1010,6 +1034,7 @@ namespace renderlab
         }
 
         commandList->open();
+        TrackShaderResource(commandList, hdr);
         const PostProcessPassInputs postInputs = MakePostProcessPassInputs(hdr, m_tonemapConstants);
         PostProcessPassOutputs postOutputs;
         postOutputs.finalColor = finalDumpTarget;
@@ -1678,6 +1703,7 @@ namespace renderlab
             built.CreateTexture({"GBufferDepth", width, height, rdg::Format::D32Float});
         rdg::TextureHandle outputImported =
             built.ImportTexture({"BackBuffer", width, height, rdg::Format::SRGBA8Unorm});
+        built.SetInitialAccess(outputImported, rdg::Access::Present);
 
         rdg::PassBuilder gbufferPass = built.AddPass(
             "GBuffer",
@@ -1714,10 +1740,10 @@ namespace renderlab
                 m_frameSnapshot.height = m_backBufferHeight;
                 m_frameSnapshot.valid = true;
             });
-        gbufferA = gbufferPass.Write(gbufferA);
-        gbufferB = gbufferPass.Write(gbufferB);
-        gbufferC = gbufferPass.Write(gbufferC);
-        gbufferDepth = gbufferPass.Write(gbufferDepth);
+        gbufferPass.Use(gbufferA, rdg::Access::RenderTarget);
+        gbufferPass.Use(gbufferB, rdg::Access::RenderTarget);
+        gbufferPass.Use(gbufferC, rdg::Access::RenderTarget);
+        gbufferPass.Use(gbufferDepth, rdg::Access::DepthWrite);
 
         rdg::TextureHandle hdrWritten;
         if (withHdr)
@@ -1755,11 +1781,12 @@ namespace renderlab
                     m_frameSnapshot.hdrSceneColor = hdr;
                     m_frameSnapshot.hasHdr = true;
                 });
-            lightingPass.Read(gbufferA);
-            lightingPass.Read(gbufferB);
-            lightingPass.Read(gbufferC);
-            lightingPass.Read(gbufferDepth);
-            hdrWritten = lightingPass.Write(hdrCreated);
+            lightingPass.Use(gbufferA, rdg::Access::ShaderResource);
+            lightingPass.Use(gbufferB, rdg::Access::ShaderResource);
+            lightingPass.Use(gbufferC, rdg::Access::ShaderResource);
+            lightingPass.Use(gbufferDepth, rdg::Access::ShaderResource);
+            lightingPass.Use(hdrCreated, rdg::Access::RenderTarget);
+            hdrWritten = hdrCreated;
         }
 
         const char* presentName = "PostProcess";
@@ -1850,17 +1877,18 @@ namespace renderlab
             });
         if (present != rdg::RasterPresent::Final)
         {
-            presentPass.Read(gbufferA);
-            presentPass.Read(gbufferB);
-            presentPass.Read(gbufferC);
-            presentPass.Read(gbufferDepth);
+            presentPass.Use(gbufferA, rdg::Access::ShaderResource);
+            presentPass.Use(gbufferB, rdg::Access::ShaderResource);
+            presentPass.Use(gbufferC, rdg::Access::ShaderResource);
+            presentPass.Use(gbufferDepth, rdg::Access::ShaderResource);
         }
         if (withHdr)
         {
-            presentPass.Read(hdrWritten);
+            presentPass.Use(hdrWritten, rdg::Access::ShaderResource);
         }
-        rdg::TextureHandle outputWritten = presentPass.Write(outputImported);
-        built.ExportTexture(outputWritten);
+        presentPass.Use(outputImported, rdg::Access::RenderTarget);
+        rdg::TextureHandle outputWritten = outputImported;
+        built.ExportTexture(outputWritten, rdg::Access::Present);
 
         m_frameHandles.gbufferA = gbufferA;
         m_frameHandles.gbufferB = gbufferB;

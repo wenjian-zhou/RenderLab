@@ -57,12 +57,10 @@ namespace renderlab::rdg
         const ResourceRecord* record = m_executor->ValidateHandle(
             ResourceKind::Texture,
             handle.index,
-            handle.version,
             handle.graphId,
             m_passIndex,
             pass.name,
-            "GetTexture",
-            GraphExecutor::VersionRule::AnyInRange);
+            "GetTexture");
         if (record == nullptr)
         {
             return nullptr;
@@ -74,24 +72,9 @@ namespace renderlab::rdg
             m_executor->AddError(
                 ErrorCategory::UndeclaredAccess,
                 std::format(
-                    "GetTexture of '{}' on pass '{}' is not in this pass's read/write list",
+                    "GetTexture of '{}' on pass '{}' is not in this pass's use list",
                     record->name,
                     pass.name),
-                m_passIndex,
-                pass.name,
-                record->name);
-            return nullptr;
-        }
-        if (declared->version != handle.version)
-        {
-            m_executor->AddError(
-                handle.version < declared->version ? ErrorCategory::SupersededUse : ErrorCategory::StaleVersion,
-                std::format(
-                    "GetTexture of '{}' version {} on pass '{}' does not match declared version {}",
-                    record->name,
-                    handle.version,
-                    pass.name,
-                    declared->version),
                 m_passIndex,
                 pass.name,
                 record->name);
@@ -129,12 +112,10 @@ namespace renderlab::rdg
         const ResourceRecord* record = m_executor->ValidateHandle(
             ResourceKind::Buffer,
             handle.index,
-            handle.version,
             handle.graphId,
             m_passIndex,
             pass.name,
-            "GetBuffer",
-            GraphExecutor::VersionRule::AnyInRange);
+            "GetBuffer");
         if (record == nullptr)
         {
             return nullptr;
@@ -146,24 +127,9 @@ namespace renderlab::rdg
             m_executor->AddError(
                 ErrorCategory::UndeclaredAccess,
                 std::format(
-                    "GetBuffer of '{}' on pass '{}' is not in this pass's read/write list",
+                    "GetBuffer of '{}' on pass '{}' is not in this pass's use list",
                     record->name,
                     pass.name),
-                m_passIndex,
-                pass.name,
-                record->name);
-            return nullptr;
-        }
-        if (declared->version != handle.version)
-        {
-            m_executor->AddError(
-                handle.version < declared->version ? ErrorCategory::SupersededUse : ErrorCategory::StaleVersion,
-                std::format(
-                    "GetBuffer of '{}' version {} on pass '{}' does not match declared version {}",
-                    record->name,
-                    handle.version,
-                    pass.name,
-                    declared->version),
                 m_passIndex,
                 pass.name,
                 record->name);

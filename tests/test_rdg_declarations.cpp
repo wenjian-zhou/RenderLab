@@ -64,7 +64,7 @@ int RunRdgDeclarationTests()
         Check(record.name == "HDRSceneColor", "The record keeps the descriptor name");
         Check(record.kind == ResourceKind::Texture, "The record is a texture");
         Check(!record.imported && !record.exported, "Created resources start unflagged");
-        Check(record.currentVersion == 0, "Records start at version 0");
+        Check(!record.hasInitialAccess && !record.hasFinalAccess, "Created resources have no boundary access");
         const TextureDesc* stored = std::get_if<TextureDesc>(&record.desc);
         Check(stored != nullptr && *stored == desc, "The record stores the descriptor; equality is the pooling-key shape");
     }
@@ -77,13 +77,13 @@ int RunRdgDeclarationTests()
         Check(builder.GetResource(backBuffer.index).imported, "ImportTexture sets Imported");
         Check(!builder.GetResource(backBuffer.index).exported, "Imported is not Exported");
         Check(builder.GetResource(external.index).imported, "ImportBuffer sets Imported");
-        builder.ExportTexture(backBuffer);
+        builder.ExportTexture(backBuffer, Access::Present);
         Check(builder.GetResource(backBuffer.index).exported, "ExportTexture sets Exported");
-        builder.ExportTexture(backBuffer);
+        builder.ExportTexture(backBuffer, Access::Present);
         Check(
             builder.GetErrors().empty() && builder.GetResource(backBuffer.index).exported,
             "Exporting twice stays legal and idempotent");
-        builder.ExportBuffer(BufferHandle{});
+        builder.ExportBuffer(BufferHandle{}, Access::ShaderResource);
         Check(
             builder.GetErrors().size() == 1 && builder.GetErrors()[0].category == ErrorCategory::NullHandle,
             "Exporting a null handle is NullHandle");
@@ -107,7 +107,7 @@ int RunRdgDeclarationTests()
         GraphBuilder builder;
         auto bad = builder.AddPass("", PassFlags::Raster);
         Check(!bad.IsValid(), "An empty pass name yields an invalid PassBuilder");
-        bad.Read(TextureHandle{});
+        bad.Use(TextureHandle{}, Access::ShaderResource);
         Check(builder.GetErrors().size() == 1, "Declarations on an invalid PassBuilder are no-ops");
         Check(builder.GetPassCount() == 0, "A rejected pass allocates no pass record");
 
@@ -132,11 +132,11 @@ int RunRdgDeclarationTests()
         GraphBuilder builder;
         TextureHandle good = builder.CreateTexture({"Good", 8, 8, Format::RGBA8Unorm});
         auto pass = builder.AddPass("Mixed", PassFlags::Raster);
-        pass.Read(TextureHandle{});
-        pass.Write(good);
+        pass.Use(TextureHandle{}, Access::ShaderResource);
+        pass.Use(good, Access::RenderTarget);
         Check(builder.GetErrors().size() == 1, "Only the invalid declaration errors");
         Check(builder.GetPass(0).accesses.size() == 1, "Only the valid declaration is recorded");
-        Check(builder.GetPass(0).accesses[0].mode == AccessMode::Write, "The surviving declaration is the write");
+        Check(builder.GetPass(0).accesses[0].access == Access::RenderTarget, "The surviving declaration is the write");
     }
 
     // Declaration scopes stay bound to their own pass when interleaved
@@ -145,13 +145,15 @@ int RunRdgDeclarationTests()
         TextureHandle texture = builder.ImportTexture({"T", 8, 8, Format::RGBA8Unorm});
         auto first = builder.AddPass("First", PassFlags::Raster);
         auto second = builder.AddPass("Second", PassFlags::NeverCull);
-        first.Read(texture);
-        second.Write(texture);
+        first.Use(texture, Access::ShaderResource);
+        second.Use(texture, Access::RenderTarget);
         Check(
-            builder.GetPass(0).accesses.size() == 1 && builder.GetPass(0).accesses[0].mode == AccessMode::Read,
+            builder.GetPass(0).accesses.size() == 1 &&
+                builder.GetPass(0).accesses[0].access == Access::ShaderResource,
             "An older PassBuilder still targets its own pass");
         Check(
-            builder.GetPass(1).accesses.size() == 1 && builder.GetPass(1).accesses[0].mode == AccessMode::Write,
+            builder.GetPass(1).accesses.size() == 1 &&
+                builder.GetPass(1).accesses[0].access == Access::RenderTarget,
             "The newer PassBuilder targets its own pass");
     }
 

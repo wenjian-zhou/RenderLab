@@ -98,29 +98,30 @@ int RunRdgDumpTests()
         TextureHandle second = MakeTexture(graph, "Second");
         auto passA = graph.AddPass("A", PassFlags::Raster);
         auto passB = graph.AddPass("B", PassFlags::Raster);
-        first = passA.Write(first);
-        second = passB.Write(second);
-        passA.Read(second);
-        passB.Read(first);
+        passA.Use(first, Access::RenderTarget);
+        passB.Use(second, Access::RenderTarget);
+        passA.Use(second, Access::ShaderResource);
+        passB.Use(first, Access::ShaderResource);
         const std::string dump = GraphCompiler::Compile(graph).Dump();
-        Check(dump.find("cycle:") != std::string::npos && dump.find("\"A\"") != std::string::npos &&
+        Check(dump.find("ReadBeforeProduce") != std::string::npos && dump.find("\"A\"") != std::string::npos &&
                 dump.find("\"B\"") != std::string::npos && dump.find("\"First\"") != std::string::npos &&
                 dump.find("\"Second\"") != std::string::npos && dump.find("cull: skipped") != std::string::npos &&
                 dump.find("lifetime: skipped") != std::string::npos && dump.find("flags:") != std::string::npos &&
-                dump.find("accesses:") != std::string::npos && dump.find("versions:") != std::string::npos,
-            "Cycle dump names involved passes and resources");
+                dump.find("accesses:") != std::string::npos && dump.find("cycle:") == std::string::npos &&
+                dump.find("versions:") == std::string::npos,
+            "Backward-read dump names involved passes and resources");
     }
 
     {
         GraphBuilder graph;
         auto pass = graph.AddPass("Invalid", PassFlags::Raster);
-        pass.Read(TextureHandle{});
+        pass.Use(TextureHandle{}, Access::ShaderResource);
         const std::string dump = GraphCompiler::Compile(graph).Dump();
         Check(dump.find("NullHandle") != std::string::npos && dump.find("pass=0") != std::string::npos &&
                 dump.find("\"Invalid\"") != std::string::npos && dump.find("resource=") != std::string::npos &&
                 dump.find("cull: skipped") != std::string::npos && dump.find("lifetime: skipped") != std::string::npos &&
                 dump.find("flags:") != std::string::npos && dump.find("accesses:") != std::string::npos &&
-                dump.find("versions:") != std::string::npos,
+                dump.find("versions:") == std::string::npos,
             "Builder error dump names pass and resource and skips cull/lifetime");
     }
 
@@ -128,8 +129,8 @@ int RunRdgDumpTests()
         GraphBuilder graph;
         TextureHandle output = MakeTexture(graph, "Output");
         TextureHandle unused = MakeTexture(graph, "Unused");
-        output = graph.AddPass("Keep", PassFlags::NeverCull).Write(output);
-        unused = graph.AddPass("Drop", PassFlags::Raster).Write(unused);
+        graph.AddPass("Keep", PassFlags::NeverCull).Use(output, Access::RenderTarget);
+        graph.AddPass("Drop", PassFlags::Raster).Use(unused, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const std::string dump = result.Dump();
         const std::string dot = result.DumpDot();

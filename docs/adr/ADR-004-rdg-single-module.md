@@ -1,5 +1,9 @@
 # ADR-004: RDG Is One Module
 
+> **Superseded in part by [ADR-005](ADR-005-rdg-ue-resource-identity.md).**
+> Versioned handles and explicit `Read` / `Write` are no longer the resource
+> model. The single-module boundary below still stands.
+
 - Status: Accepted
 - Date: 2026-09-26
 - Supersedes: the NVRHI-free compiler target vs execution target split in

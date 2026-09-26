@@ -28,29 +28,6 @@ namespace renderlab::rdg
 
     bool IsSingleKnownAccess(Access access)
     {
-        const uint32_t bits = static_cast<uint32_t>(access);
-        const uint32_t known = static_cast<uint32_t>(kKnownAccessBits);
-        return bits != 0 && (bits & known) == bits && (bits & (bits - 1u)) == 0;
-    }
-
-    Access InferAccess(AccessMode mode, ResourceKind kind, Format format)
-    {
-        if (mode == AccessMode::Read)
-        {
-            return Access::ShaderResource;
-        }
-        if (kind == ResourceKind::Buffer)
-        {
-            return Access::Unknown;
-        }
-        if (format == Format::D32Float)
-        {
-            return Access::DepthWrite;
-        }
-        if (format == Format::Unknown)
-        {
-            return Access::Unknown;
-        }
-        return Access::RenderTarget;
+        return IsBoundaryAccess(access);
     }
 }

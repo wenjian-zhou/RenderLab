@@ -66,7 +66,7 @@ namespace
     void CheckReadTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -74,7 +74,7 @@ namespace
     void CheckWriteTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Write && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -132,9 +132,7 @@ int RunRdgRasterFrameTests()
         Check(depth.name == "GBufferDepth" && !depth.imported && !depth.exported, "GBufferDepth is Create*");
         const ResourceRecord& hdr = builder.GetResource(graph.hdrCreated.index);
         Check(hdr.name == "HDRSceneColor" && !hdr.imported && !hdr.exported, "HDRSceneColor is Create*");
-        Check(graph.hdrWritten.index == graph.hdrCreated.index &&
-                  graph.hdrWritten.version != graph.hdrCreated.version,
-            "lighting Write minted a new HDR version");
+        Check(graph.hdrWritten == graph.hdrCreated, "lighting write uses the created HDR handle");
         const ResourceRecord& backBuffer = builder.GetResource(graph.outputImported.index);
         Check(backBuffer.name == "BackBuffer" && backBuffer.imported && backBuffer.exported,
             "BackBuffer imported and exported");
@@ -147,7 +145,7 @@ int RunRdgRasterFrameTests()
             "dump PostProcess live root-output");
         Check(dump.find("\"GBufferA\" imported") == std::string::npos, "dump GBufferA is not imported");
         Check(dump.find("\"HDRSceneColor\" imported") == std::string::npos, "dump HDR is not imported");
-        Check(dump.find("\"BackBuffer\" imported exported") != std::string::npos,
+        Check(dump.find("\"BackBuffer\" first=0 last=2 imported exported") != std::string::npos,
             "dump BackBuffer imported exported");
     }
 
@@ -342,23 +340,24 @@ int RunRdgRasterFrameTests()
         PassBuilder first = graph.AddPass("First", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             ran.push_back("First");
         });
-        a = first.Write(a);
+        first.Use(a, Access::RenderTarget);
         PassBuilder second = graph.AddPass("Second", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             ran.push_back("Second");
         });
-        second.Read(a);
-        b = second.Write(b);
+        second.Use(a, Access::ShaderResource);
+        second.Use(b, Access::RenderTarget);
         PassBuilder third = graph.AddPass("Third", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             ran.push_back("Third");
         });
-        third.Read(b);
-        output = third.Write(output);
-        graph.ExportTexture(output);
+        third.Use(b, Access::ShaderResource);
+        third.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         GraphExecutor executor(graph, compiled);
         executor.Execute(nullptr);
         Check(executor.GetErrors().empty(), "Execute of a fully bound graph has no errors");
+        Check(executor.GetIssuedTransitions().empty(), "Execute without Plan issues no barriers");
         Check(ran.size() == compiled.GetLivePassOrder().size(), "Execute visits every live pass");
         bool orderMatches = ran.size() == 3 && ran[0] == "First" && ran[1] == "Second" && ran[2] == "Third";
         if (orderMatches)
@@ -384,8 +383,8 @@ int RunRdgRasterFrameTests()
         PassBuilder live = graph.AddPass("Live", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             liveRan = true;
         });
-        output = live.Write(output);
-        graph.ExportTexture(output);
+        live.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(liveRan && !culledRan, "Execute skips a culled pass lambda");
@@ -399,13 +398,13 @@ int RunRdgRasterFrameTests()
         TextureHandle output = graph.ImportTexture({"BackBuffer", 4, 4, Format::SRGBA8Unorm});
         bool secondRan = false;
         PassBuilder first = graph.AddPass("First", PassFlags::Raster, PassLambda{});
-        internal = first.Write(internal);
+        first.Use(internal, Access::RenderTarget);
         PassBuilder second = graph.AddPass("Second", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             secondRan = true;
         });
-        second.Read(internal);
-        output = second.Write(output);
-        graph.ExportTexture(output);
+        second.Use(internal, Access::ShaderResource);
+        second.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(!secondRan, "missing lambda stops later passes");
@@ -438,30 +437,88 @@ int RunRdgRasterFrameTests()
         built.outputImported = graph.ImportTexture({"BackBuffer", 8, 8, Format::SRGBA8Unorm});
         const PhysicalTexture* backBuffer = nullptr;
         PassBuilder gbuffer = graph.AddPass("GBuffer", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
-        built.gbufferA = gbuffer.Write(built.gbufferA);
-        built.gbufferB = gbuffer.Write(built.gbufferB);
-        built.gbufferC = gbuffer.Write(built.gbufferC);
-        built.gbufferDepth = gbuffer.Write(built.gbufferDepth);
+        gbuffer.Use(built.gbufferA, Access::RenderTarget);
+        gbuffer.Use(built.gbufferB, Access::RenderTarget);
+        gbuffer.Use(built.gbufferC, Access::RenderTarget);
+        gbuffer.Use(built.gbufferDepth, Access::DepthWrite);
         PassBuilder lighting =
             graph.AddPass("DeferredLighting", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
-        lighting.Read(built.gbufferA);
-        lighting.Read(built.gbufferB);
-        lighting.Read(built.gbufferC);
-        lighting.Read(built.gbufferDepth);
-        built.hdrWritten = lighting.Write(built.hdrCreated);
+        lighting.Use(built.gbufferA, Access::ShaderResource);
+        lighting.Use(built.gbufferB, Access::ShaderResource);
+        lighting.Use(built.gbufferC, Access::ShaderResource);
+        lighting.Use(built.gbufferDepth, Access::ShaderResource);
+        lighting.Use(built.hdrCreated, Access::RenderTarget);
+        built.hdrWritten = built.hdrCreated;
         PassBuilder post = graph.AddPass(
             "PostProcess", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 backBuffer = ctx.GetTexture(built.outputWritten);
             });
-        post.Read(built.hdrWritten);
-        built.outputWritten = post.Write(built.outputImported);
-        graph.ExportTexture(built.outputWritten);
+        post.Use(built.hdrWritten, Access::ShaderResource);
+        post.Use(built.outputImported, Access::RenderTarget);
+        built.outputWritten = built.outputImported;
+        graph.ExportTexture(built.outputWritten, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
         Check(backBuffer == nullptr, "unregistered BackBuffer resolves to null");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
             "UnregisteredImport of BackBuffer");
+    }
+
+    {
+        GraphBuilder graph;
+        TextureHandle gbufferA = graph.CreateTexture({"GBufferA", 8, 8, Format::SRGBA8Unorm});
+        TextureHandle gbufferB = graph.CreateTexture({"GBufferB", 8, 8, Format::RGBA16Float});
+        TextureHandle gbufferC = graph.CreateTexture({"GBufferC", 8, 8, Format::RGBA8Unorm});
+        TextureHandle gbufferDepth = graph.CreateTexture({"GBufferDepth", 8, 8, Format::D32Float});
+        TextureHandle hdr = graph.CreateTexture({"HDRSceneColor", 8, 8, Format::RGBA16Float});
+        TextureHandle backBuffer = graph.ImportTexture({"BackBuffer", 8, 8, Format::SRGBA8Unorm});
+        graph.SetInitialAccess(backBuffer, Access::Present);
+        PassBuilder gbuffer = graph.AddPass("GBuffer", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
+        gbuffer.Use(gbufferA, Access::RenderTarget);
+        gbuffer.Use(gbufferB, Access::RenderTarget);
+        gbuffer.Use(gbufferC, Access::RenderTarget);
+        gbuffer.Use(gbufferDepth, Access::DepthWrite);
+        PassBuilder lighting =
+            graph.AddPass("DeferredLighting", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
+        lighting.Use(gbufferA, Access::ShaderResource);
+        lighting.Use(gbufferB, Access::ShaderResource);
+        lighting.Use(gbufferC, Access::ShaderResource);
+        lighting.Use(gbufferDepth, Access::ShaderResource);
+        lighting.Use(hdr, Access::RenderTarget);
+        PassBuilder post = graph.AddPass("PostProcess", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
+        post.Use(hdr, Access::ShaderResource);
+        post.Use(backBuffer, Access::RenderTarget);
+        graph.ExportTexture(backBuffer, Access::Present);
+
+        int native = 1;
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
+        executor.RegisterImport(backBuffer, PhysicalTexture{&native, "BackBuffer"});
+        executor.Allocate();
+        executor.Plan();
+        Check(executor.GetErrors().empty(), "Final-frame Plan succeeds");
+        executor.Execute(nullptr);
+        Check(executor.GetErrors().empty(), "Final-frame Execute(nullptr) issues no NVRHI errors");
+
+        const std::span<const GraphExecutor::IssuedTransition> log = executor.GetIssuedTransitions();
+        const GraphExecutor::IssuedTransition expected[] = {
+            {"GBufferA", lighting.PassIndex(), Access::RenderTarget, Access::ShaderResource},
+            {"GBufferB", lighting.PassIndex(), Access::RenderTarget, Access::ShaderResource},
+            {"GBufferC", lighting.PassIndex(), Access::RenderTarget, Access::ShaderResource},
+            {"GBufferDepth", lighting.PassIndex(), Access::DepthWrite, Access::ShaderResource},
+            {"HDRSceneColor", post.PassIndex(), Access::RenderTarget, Access::ShaderResource},
+            {"BackBuffer", post.PassIndex(), Access::Present, Access::RenderTarget},
+            {"BackBuffer", Error::kNoPass, Access::RenderTarget, Access::Present},
+        };
+        bool matches = log.size() == std::size(expected);
+        for (size_t index = 0; matches && index < log.size(); ++index)
+        {
+            matches = log[index].resourceName == expected[index].resourceName &&
+                log[index].passIndex == expected[index].passIndex &&
+                log[index].before == expected[index].before &&
+                log[index].after == expected[index].after;
+        }
+        Check(matches, "Final-frame transition log is lighting reads, HDR read, and back-buffer present");
     }
 
     return g_failures;

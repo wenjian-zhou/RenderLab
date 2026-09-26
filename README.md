@@ -66,8 +66,14 @@ reports reuse pairs and logical/physical bytes, and honors
 `GraphBuilder::AddPass` takes an optional pass lambda. `Compile()` stays a
 public CPU step, and `RenderLabDataContractTests` still runs with no GPU
 device ([ADR-004](docs/adr/ADR-004-rdg-single-module.md)).
-**Stage 5 / M2 is satisfied.** The next executable task is **S6.1: define
-DXR capability and scene contracts**.
+**Stage 5 / M2 is satisfied.** Resource identity now follows
+[ADR-005](docs/adr/ADR-005-rdg-ue-resource-identity.md): one handle per
+resource, `Use(handle, Access)`, `AddPass` order, last-producer edges,
+explicit initial and final access, and barriers issued in
+`GraphExecutor::Execute`. That replaces the versioned-handle and `Read` /
+`Write` model, and `FormatMap` no longer leaves `keepInitialState` set on
+the textures and buffers it creates. The next executable task is **S6.1:
+define DXR capability and scene contracts**.
 
 ## Plans
 

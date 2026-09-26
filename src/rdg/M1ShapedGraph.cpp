@@ -10,24 +10,25 @@ namespace renderlab::rdg
         TextureHandle gbufferC = builder.CreateTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
         TextureHandle gbufferDepth = builder.CreateTexture({"GBufferDepth", 1280, 720, Format::D32Float});
         TextureHandle hdrSceneColor = builder.CreateTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
+        builder.SetInitialAccess(backBuffer, Access::Present);
 
         PassBuilder gbufferPass = builder.AddPass("GBuffer", PassFlags::Raster);
-        gbufferA = gbufferPass.Write(gbufferA);
-        gbufferB = gbufferPass.Write(gbufferB);
-        gbufferC = gbufferPass.Write(gbufferC);
-        gbufferDepth = gbufferPass.Write(gbufferDepth);
+        gbufferPass.Use(gbufferA, Access::RenderTarget);
+        gbufferPass.Use(gbufferB, Access::RenderTarget);
+        gbufferPass.Use(gbufferC, Access::RenderTarget);
+        gbufferPass.Use(gbufferDepth, Access::DepthWrite);
 
         PassBuilder deferredPass = builder.AddPass("DeferredLighting", PassFlags::Raster);
-        deferredPass.Read(gbufferA);
-        deferredPass.Read(gbufferB);
-        deferredPass.Read(gbufferC);
-        deferredPass.Read(gbufferDepth);
-        hdrSceneColor = deferredPass.Write(hdrSceneColor);
+        deferredPass.Use(gbufferA, Access::ShaderResource);
+        deferredPass.Use(gbufferB, Access::ShaderResource);
+        deferredPass.Use(gbufferC, Access::ShaderResource);
+        deferredPass.Use(gbufferDepth, Access::ShaderResource);
+        deferredPass.Use(hdrSceneColor, Access::RenderTarget);
 
         PassBuilder postPass = builder.AddPass("PostProcess", PassFlags::Raster);
-        postPass.Read(hdrSceneColor);
-        backBuffer = postPass.Write(backBuffer);
+        postPass.Use(hdrSceneColor, Access::ShaderResource);
+        postPass.Use(backBuffer, Access::RenderTarget);
 
-        builder.ExportTexture(backBuffer);
+        builder.ExportTexture(backBuffer, Access::Present);
     }
 }

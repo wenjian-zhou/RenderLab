@@ -66,7 +66,6 @@ int RunRdgHandleTests()
         GraphBuilder builder;
         TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
         Check(!texture.IsNull(), "A created texture handle is not null");
-        Check(texture.version == 0, "A created handle carries version 0");
         Check(texture.graphId == builder.GetGraphId(), "A created handle carries the owning graph id");
 
         TextureHandle nullTexture;
@@ -81,9 +80,9 @@ int RunRdgHandleTests()
         GraphBuilder builder;
         builder.CreateTexture(MakeTextureDesc("T"));
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Read(TextureHandle{});
-        pass.Write(BufferHandle{});
-        builder.ExportTexture(TextureHandle{});
+        pass.Use(TextureHandle{}, Access::ShaderResource);
+        pass.Use(BufferHandle{}, Access::RenderTarget);
+        builder.ExportTexture(TextureHandle{}, Access::RenderTarget);
         Check(builder.GetErrors().size() == 3, "Null-handle use records one error per call");
         Check(AllOfCategory(builder.GetErrors(), ErrorCategory::NullHandle), "Every null use is NullHandle");
         Check(builder.GetErrors()[0].passName == "P", "A pass-scoped null error names the pass");
@@ -96,8 +95,8 @@ int RunRdgHandleTests()
         GraphBuilder b;
         TextureHandle fromA = a.CreateTexture(MakeTextureDesc("A.T"));
         auto passInB = b.AddPass("PassInB", PassFlags::Raster);
-        passInB.Read(fromA);
-        b.ExportTexture(fromA);
+        passInB.Use(fromA, Access::ShaderResource);
+        b.ExportTexture(fromA, Access::RenderTarget);
         Check(b.GetErrors().size() == 2, "Both cross-graph uses record errors");
         Check(AllOfCategory(b.GetErrors(), ErrorCategory::ForeignGraph), "Cross-graph use is ForeignGraph");
         Check(b.GetPass(0).accesses.empty(), "Cross-graph declaration is rejected");
@@ -108,24 +107,20 @@ int RunRdgHandleTests()
     {
         GraphBuilder builder;
         TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
-        TextureHandle stale = texture;
-        stale.version = 7;
-        auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Read(stale);
-        Check(AllOfCategory(builder.GetErrors(), ErrorCategory::StaleVersion), "Version mismatch is StaleVersion");
-        Check(builder.GetErrors()[0].resourceName == "T", "The stale error names the resource");
-        Check(builder.GetErrors()[0].passName == "P", "The stale error names the pass");
-        Check(builder.GetPass(0).accesses.empty(), "The stale declaration is rejected");
+        builder.SetInitialAccess(texture, Access::Present);
+        Check(AllOfCategory(builder.GetErrors(), ErrorCategory::IncompatibleAccess),
+            "SetInitialAccess on Create* is IncompatibleAccess");
+        Check(builder.GetErrors()[0].resourceName == "T", "The initial-access error names the resource");
     }
 
     // Out-of-range index (forged with the correct graph id)
     {
         GraphBuilder builder;
         builder.CreateTexture(MakeTextureDesc("T"));
-        TextureHandle forged{99, 0, builder.GetGraphId()};
+        TextureHandle forged{99, builder.GetGraphId()};
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Write(forged);
-        Check(AllOfCategory(builder.GetErrors(), ErrorCategory::StaleVersion), "Out-of-range index is StaleVersion");
+        pass.Use(forged, Access::RenderTarget);
+        Check(AllOfCategory(builder.GetErrors(), ErrorCategory::IncompatibleAccess), "Out-of-range index is IncompatibleAccess");
         Check(builder.GetPass(0).accesses.empty(), "The out-of-range declaration is rejected");
     }
 
@@ -134,18 +129,18 @@ int RunRdgHandleTests()
     {
         GraphBuilder builder;
         TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
-        BufferHandle forgedAsBuffer{texture.index, 0, builder.GetGraphId()};
+        BufferHandle forgedAsBuffer{texture.index, builder.GetGraphId()};
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Read(forgedAsBuffer);
+        pass.Use(forgedAsBuffer, Access::ShaderResource);
         Check(AllOfCategory(builder.GetErrors(), ErrorCategory::TypeMismatch), "A buffer handle over a texture slot is TypeMismatch");
         Check(builder.GetErrors()[0].resourceName == "T", "The type-mismatch error names the target resource");
     }
     {
         GraphBuilder builder;
         BufferHandle buffer = builder.CreateBuffer(MakeBufferDesc("B"));
-        TextureHandle forgedAsTexture{buffer.index, 0, builder.GetGraphId()};
+        TextureHandle forgedAsTexture{buffer.index, builder.GetGraphId()};
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Write(forgedAsTexture);
+        pass.Use(forgedAsTexture, Access::RenderTarget);
         Check(AllOfCategory(builder.GetErrors(), ErrorCategory::TypeMismatch), "A texture handle over a buffer slot is TypeMismatch");
     }
 
@@ -155,13 +150,13 @@ int RunRdgHandleTests()
         GraphBuilder builder;
         TextureHandle texture = builder.CreateTexture(MakeTextureDesc("T"));
 
-        BufferHandle foreignAndMismatched{texture.index, 9, texture.graphId + 1u};
+        BufferHandle foreignAndMismatched{texture.index, texture.graphId + 1u};
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Read(foreignAndMismatched);
+        pass.Use(foreignAndMismatched, Access::ShaderResource);
         Check(AllOfCategory(builder.GetErrors(), ErrorCategory::ForeignGraph), "Foreign graph is checked before kind and version");
 
-        TextureHandle nullWithBogusGraph{kNullHandleIndex, 3, 999};
-        pass.Write(nullWithBogusGraph);
+        TextureHandle nullWithBogusGraph{kNullHandleIndex, 999};
+        pass.Use(nullWithBogusGraph, Access::RenderTarget);
         Check(
             builder.GetErrors().size() == 2 && builder.GetErrors()[1].category == ErrorCategory::NullHandle,
             "Null is checked before owning graph");
@@ -172,18 +167,18 @@ int RunRdgHandleTests()
         TextureHandle texture = builder.ImportTexture(MakeTextureDesc("T"));
         BufferHandle buffer = builder.ImportBuffer(MakeBufferDesc("B"));
         auto pass = builder.AddPass("P", PassFlags::Raster);
-        pass.Read(texture);
-        pass.Read(texture);
-        pass.Read(buffer);
+        pass.Use(texture, Access::ShaderResource);
+        pass.Use(texture, Access::ShaderResource);
+        pass.Use(buffer, Access::ShaderResource);
         Check(builder.GetErrors().empty(), "Valid declarations record no errors");
         Check(builder.GetPass(0).accesses.size() == 3, "Read declarations are recorded verbatim, including duplicates");
         const ResourceAccess& first = builder.GetPass(0).accesses[0];
         Check(
-            first.kind == ResourceKind::Texture && first.index == texture.index && first.version == 0 &&
-                first.mode == AccessMode::Read,
-            "An access record pins kind, index, version, and mode");
-        Check(builder.GetResource(texture.index).versions[0].readerPasses.size() == 1,
-            "Duplicate declarations register the reader pass only once");
+            first.kind == ResourceKind::Texture && first.index == texture.index &&
+                first.access == Access::ShaderResource,
+            "An access record pins kind, index, and access");
+        Check(builder.GetPass(0).accesses[1].index == texture.index,
+            "A second ShaderResource use of the same resource is recorded");
         Check(
             builder.GetPass(0).accesses[2].kind == ResourceKind::Buffer && builder.GetPass(0).accesses[2].index == buffer.index,
             "A buffer access records against the same registry");

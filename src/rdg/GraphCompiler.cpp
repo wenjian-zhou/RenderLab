@@ -3,9 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
-#include <functional>
-#include <map>
-#include <queue>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -14,31 +11,18 @@ namespace renderlab::rdg
 {
     namespace
     {
-        const char* ToString(DependencyType type)
-        {
-            switch (type)
-            {
-            case DependencyType::RAW: return "RAW";
-            case DependencyType::WAR: return "WAR";
-            case DependencyType::WAW: return "WAW";
-            }
-            return "Unknown";
-        }
-
         const char* ToString(ErrorCategory category)
         {
             switch (category)
             {
             case ErrorCategory::NullHandle: return "NullHandle";
             case ErrorCategory::ForeignGraph: return "ForeignGraph";
-            case ErrorCategory::StaleVersion: return "StaleVersion";
             case ErrorCategory::TypeMismatch: return "TypeMismatch";
             case ErrorCategory::InvalidName: return "InvalidName";
             case ErrorCategory::InvalidDescriptor: return "InvalidDescriptor";
             case ErrorCategory::InvalidPassFlags: return "InvalidPassFlags";
             case ErrorCategory::ReadBeforeProduce: return "ReadBeforeProduce";
             case ErrorCategory::DuplicateWrite: return "DuplicateWrite";
-            case ErrorCategory::SupersededUse: return "SupersededUse";
             case ErrorCategory::IncompatibleAccess: return "IncompatibleAccess";
             case ErrorCategory::ZeroUseAllocation: return "ZeroUseAllocation";
             case ErrorCategory::UndeclaredAccess: return "UndeclaredAccess";
@@ -97,11 +81,6 @@ namespace renderlab::rdg
             return kind == ResourceKind::Texture ? "texture" : "buffer";
         }
 
-        const char* ToString(AccessMode mode)
-        {
-            return mode == AccessMode::Read ? "read" : "write";
-        }
-
         std::string FormatFlags(PassFlags flags)
         {
             std::string text;
@@ -125,12 +104,6 @@ namespace renderlab::rdg
             return passIndex == Error::kNoPass ? std::string("none") : std::to_string(passIndex);
         }
 
-        std::string DumpReason(const DependencyReason& reason, const std::string& resourceName)
-        {
-            return std::format("{} resource {} {} v{} -> v{}", ToString(reason.type),
-                reason.resourceIndex, Quote(resourceName), reason.sourceVersion, reason.targetVersion);
-        }
-
         std::string DotQuote(std::string_view value)
         {
             std::string quoted = "\"";
@@ -149,99 +122,16 @@ namespace renderlab::rdg
             return quoted + '"';
         }
 
-        CycleDiagnostic FindCycle(
-            const std::vector<DependencyEdge>& edges,
-            const std::vector<std::vector<size_t>>& adjacency,
-            const std::vector<size_t>& indegrees,
-            const std::vector<std::string>& passNames,
-            const std::vector<std::string>& resourceNames)
-        {
-            struct Frame
-            {
-                uint32_t passIndex;
-                size_t nextEdge = 0;
-            };
-
-            std::vector<uint8_t> colors(adjacency.size(), 0);
-            std::vector<size_t> parentEdges(adjacency.size(), edges.size());
-            std::vector<Frame> stack;
-            for (uint32_t start = 0; start < adjacency.size(); ++start)
-            {
-                if (indegrees[start] == 0 || colors[start] != 0)
-                {
-                    continue;
-                }
-                colors[start] = 1;
-                stack.push_back({start});
-                while (!stack.empty())
-                {
-                    Frame& frame = stack.back();
-                    if (frame.nextEdge == adjacency[frame.passIndex].size())
-                    {
-                        colors[frame.passIndex] = 2;
-                        stack.pop_back();
-                        continue;
-                    }
-                    const size_t edgeIndex = adjacency[frame.passIndex][frame.nextEdge++];
-                    const DependencyEdge& edge = edges[edgeIndex];
-                    if (indegrees[edge.toPass] == 0 || colors[edge.toPass] == 2)
-                    {
-                        continue;
-                    }
-                    if (colors[edge.toPass] == 0)
-                    {
-                        colors[edge.toPass] = 1;
-                        parentEdges[edge.toPass] = edgeIndex;
-                        stack.push_back({edge.toPass});
-                        continue;
-                    }
-
-                    std::vector<size_t> cycleEdges;
-                    for (uint32_t current = edge.fromPass; current != edge.toPass;
-                         current = edges[parentEdges[current]].fromPass)
-                    {
-                        cycleEdges.push_back(parentEdges[current]);
-                    }
-                    std::reverse(cycleEdges.begin(), cycleEdges.end());
-                    cycleEdges.push_back(edgeIndex);
-                    CycleDiagnostic cycle;
-                    cycle.passes.push_back({edge.toPass, passNames[edge.toPass]});
-                    for (const size_t cycleEdgeIndex : cycleEdges)
-                    {
-                        const DependencyEdge& cycleEdge = edges[cycleEdgeIndex];
-                        const DependencyReason& reason = cycleEdge.reasons.front();
-                        cycle.reasons.push_back({reason, resourceNames[reason.resourceIndex]});
-                        cycle.passes.push_back({cycleEdge.toPass, passNames[cycleEdge.toPass]});
-                    }
-                    return cycle;
-                }
-            }
-            assert(false && "Incomplete topological order must contain a cycle");
-            return {};
-        }
-
         bool WritesCullRoot(const GraphBuilder& builder, uint32_t passIndex)
         {
             for (const ResourceAccess& access : builder.GetPass(passIndex).accesses)
             {
-                if (access.mode != AccessMode::Write)
+                if (!IsWritableAccess(access.access))
                 {
                     continue;
                 }
                 const ResourceRecord& resource = builder.GetResource(access.index);
                 if (resource.imported || resource.exported)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        bool IsProducerEdge(const DependencyEdge& edge)
-        {
-            for (const DependencyReason& reason : edge.reasons)
-            {
-                if (reason.type == DependencyType::RAW || reason.type == DependencyType::WAW)
                 {
                     return true;
                 }
@@ -269,10 +159,6 @@ namespace renderlab::rdg
         std::vector<uint8_t> hasOutgoingProducerEdge(passCount, 0);
         for (const DependencyEdge& edge : result.m_edges)
         {
-            if (!IsProducerEdge(edge))
-            {
-                continue;
-            }
             producers[edge.toPass].push_back(edge.fromPass);
             hasOutgoingProducerEdge[edge.fromPass] = 1;
         }
@@ -339,35 +225,27 @@ namespace renderlab::rdg
 
     void GraphCompiler::AnalyzeLifetimes(CompileResult& result, const GraphBuilder& builder)
     {
-        struct VersionUse
+        struct ResourceUse
         {
             bool seen = false;
-            uint32_t firstSlot = 0;
-            uint32_t lastSlot = 0;
             uint32_t firstPass = Error::kNoPass;
             uint32_t lastPass = Error::kNoPass;
         };
 
         const uint32_t resourceCount = static_cast<uint32_t>(builder.GetResourceCount());
-        std::vector<std::vector<VersionUse>> uses(resourceCount);
-        for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
-        {
-            uses[resourceIndex].resize(builder.GetResource(resourceIndex).versions.size());
-        }
+        std::vector<ResourceUse> uses(resourceCount);
 
         for (uint32_t slot = 0; slot < result.m_livePassOrder.size(); ++slot)
         {
             const uint32_t passIndex = result.m_livePassOrder[slot];
             for (const ResourceAccess& access : builder.GetPass(passIndex).accesses)
             {
-                VersionUse& use = uses[access.index][access.version];
+                ResourceUse& use = uses[access.index];
                 if (!use.seen)
                 {
                     use.seen = true;
-                    use.firstSlot = slot;
                     use.firstPass = passIndex;
                 }
-                use.lastSlot = slot;
                 use.lastPass = passIndex;
             }
         }
@@ -380,26 +258,14 @@ namespace renderlab::rdg
         for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
         {
             const ResourceRecord& resource = builder.GetResource(resourceIndex);
-            if (resource.imported && !uses[resourceIndex].empty() && !uses[resourceIndex][0].seen)
+            if (resource.imported && !uses[resourceIndex].seen)
             {
-                VersionUse& v0 = uses[resourceIndex][0];
-                v0.seen = true;
-                v0.firstSlot = 0;
-                v0.lastSlot = 0;
-                v0.firstPass = firstLivePass;
-                v0.lastPass = firstLivePass;
+                ResourceUse& unusedImport = uses[resourceIndex];
+                unusedImport.seen = true;
+                unusedImport.firstPass = firstLivePass;
+                unusedImport.lastPass = firstLivePass;
             }
-
-            bool hasLiveAccess = false;
-            for (const VersionUse& use : uses[resourceIndex])
-            {
-                if (use.seen)
-                {
-                    hasLiveAccess = true;
-                    break;
-                }
-            }
-            if (!hasLiveAccess && !resource.imported)
+            if (!uses[resourceIndex].seen && !resource.imported)
             {
                 result.m_errors.push_back({
                     ErrorCategory::ZeroUseAllocation,
@@ -418,35 +284,13 @@ namespace renderlab::rdg
         for (uint32_t resourceIndex = 0; resourceIndex < resourceCount; ++resourceIndex)
         {
             const ResourceRecord& resource = builder.GetResource(resourceIndex);
-            bool any = false;
-            uint32_t minSlot = 0;
-            uint32_t maxSlot = 0;
-            uint32_t minPass = Error::kNoPass;
-            uint32_t maxPass = Error::kNoPass;
-            for (uint32_t version = 0; version < uses[resourceIndex].size(); ++version)
-            {
-                const VersionUse& use = uses[resourceIndex][version];
-                if (!use.seen)
-                {
-                    continue;
-                }
-                result.m_versionLifetimes.push_back({resourceIndex, version, use.firstPass, use.lastPass});
-                if (!any || use.firstSlot < minSlot)
-                {
-                    minSlot = use.firstSlot;
-                    minPass = use.firstPass;
-                }
-                if (!any || use.lastSlot > maxSlot)
-                {
-                    maxSlot = use.lastSlot;
-                    maxPass = use.lastPass;
-                }
-                any = true;
-            }
-            if (!any)
+            const ResourceUse& use = uses[resourceIndex];
+            if (!use.seen)
             {
                 continue;
             }
+            uint32_t minPass = use.firstPass;
+            uint32_t maxPass = use.lastPass;
             if (resource.imported)
             {
                 minPass = firstLivePass;
@@ -478,7 +322,6 @@ namespace renderlab::rdg
             result.m_resourceKinds.push_back(resource.kind);
             result.m_resourceImported.push_back(resource.imported ? 1 : 0);
             result.m_resourceExported.push_back(resource.exported ? 1 : 0);
-            result.m_resourceVersions.push_back(resource.versions);
         }
         result.m_errors.assign(builder.GetErrors().begin(), builder.GetErrors().end());
         if (!result.m_errors.empty())
@@ -486,79 +329,66 @@ namespace renderlab::rdg
             return result;
         }
 
-        std::map<std::pair<uint32_t, uint32_t>, std::vector<DependencyReason>> mergedEdges;
-        const auto addReason = [&](uint32_t fromPass, uint32_t toPass, DependencyReason reason)
+        const uint32_t passCount = static_cast<uint32_t>(builder.GetPassCount());
+        const uint32_t resourceCount = static_cast<uint32_t>(builder.GetResourceCount());
+        std::vector<uint32_t> lastWriter(resourceCount, Error::kNoPass);
+        struct PendingLink
         {
-            if (fromPass != Error::kNoPass && toPass != Error::kNoPass)
-            {
-                mergedEdges[{fromPass, toPass}].push_back(reason);
-            }
+            uint32_t fromPass = 0;
+            uint32_t toPass = 0;
+            EdgeResource resource;
         };
-        for (uint32_t resourceIndex = 0; resourceIndex < builder.GetResourceCount(); ++resourceIndex)
+        std::vector<PendingLink> links;
+        for (uint32_t passIndex = 0; passIndex < passCount; ++passIndex)
         {
-            const ResourceRecord& resource = builder.GetResource(resourceIndex);
-            for (uint32_t version = 0; version < resource.versions.size(); ++version)
+            for (const ResourceAccess& access : builder.GetPass(passIndex).accesses)
             {
-                const ResourceVersionRecord& current = resource.versions[version];
-                for (const uint32_t reader : current.readerPasses)
+                if (IsWritableAccess(access.access))
                 {
-                    addReason(current.producerPass, reader, {DependencyType::RAW, resourceIndex, version, version});
+                    lastWriter[access.index] = passIndex;
+                    continue;
                 }
-                if (version != 0)
+                if (access.access != Access::ShaderResource)
                 {
-                    const ResourceVersionRecord& previous = resource.versions[version - 1];
-                    for (const uint32_t reader : previous.readerPasses)
-                    {
-                        addReason(reader, current.producerPass, {DependencyType::WAR, resourceIndex, version - 1, version});
-                    }
-                    addReason(previous.producerPass, current.producerPass,
-                        {DependencyType::WAW, resourceIndex, version - 1, version});
+                    continue;
                 }
+                const uint32_t producer = lastWriter[access.index];
+                if (producer == Error::kNoPass || producer == passIndex)
+                {
+                    continue;
+                }
+                links.push_back(PendingLink{
+                    producer,
+                    passIndex,
+                    EdgeResource{access.kind, access.index}});
             }
+        }
+        std::sort(links.begin(), links.end(), [](const PendingLink& left, const PendingLink& right)
+        {
+            const uint32_t leftKind = static_cast<uint32_t>(left.resource.kind);
+            const uint32_t rightKind = static_cast<uint32_t>(right.resource.kind);
+            return std::tie(left.toPass, left.fromPass, left.resource.resourceIndex, leftKind) <
+                std::tie(right.toPass, right.fromPass, right.resource.resourceIndex, rightKind);
+        });
+        for (const PendingLink& link : links)
+        {
+            if (!result.m_edges.empty() && result.m_edges.back().fromPass == link.fromPass &&
+                result.m_edges.back().toPass == link.toPass)
+            {
+                std::vector<EdgeResource>& resources = result.m_edges.back().resources;
+                if (resources.empty() || resources.back().resourceIndex != link.resource.resourceIndex)
+                {
+                    resources.push_back(link.resource);
+                }
+                continue;
+            }
+            result.m_edges.push_back(DependencyEdge{link.fromPass, link.toPass, {link.resource}});
         }
 
-        std::vector<std::vector<size_t>> adjacency(builder.GetPassCount());
-        std::vector<size_t> indegrees(builder.GetPassCount(), 0);
-        for (auto& [passes, reasons] : mergedEdges)
+        result.m_passOrder.resize(passCount);
+        for (uint32_t passIndex = 0; passIndex < passCount; ++passIndex)
         {
-            std::sort(reasons.begin(), reasons.end(), [](const DependencyReason& left, const DependencyReason& right)
-            {
-                return std::tie(left.resourceIndex, left.sourceVersion, left.targetVersion, left.type) <
-                    std::tie(right.resourceIndex, right.sourceVersion, right.targetVersion, right.type);
-            });
-            reasons.erase(std::unique(reasons.begin(), reasons.end()), reasons.end());
-            adjacency[passes.first].push_back(result.m_edges.size());
-            ++indegrees[passes.second];
-            result.m_edges.push_back({passes.first, passes.second, std::move(reasons)});
-        }
-
-        std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<uint32_t>> ready;
-        for (uint32_t passIndex = 0; passIndex < builder.GetPassCount(); ++passIndex)
-        {
-            if (indegrees[passIndex] == 0)
-            {
-                ready.push(passIndex);
-            }
-        }
-        while (!ready.empty())
-        {
-            const uint32_t passIndex = ready.top();
-            ready.pop();
-            result.m_passOrder.push_back(passIndex);
-            for (const size_t edgeIndex : adjacency[passIndex])
-            {
-                const uint32_t nextPass = result.m_edges[edgeIndex].toPass;
-                if (--indegrees[nextPass] == 0)
-                {
-                    ready.push(nextPass);
-                }
-            }
-        }
-        if (result.m_passOrder.size() != builder.GetPassCount())
-        {
-            result.m_passOrder.clear();
-            result.m_cycle = FindCycle(result.m_edges, adjacency, indegrees, result.m_passNames, result.m_resourceNames);
-            return result;
+            result.m_passOrder[passIndex] = passIndex;
         }
         ApplyCulling(result, builder, options);
         AnalyzeLifetimes(result, builder);
@@ -578,9 +408,10 @@ namespace renderlab::rdg
         {
             dump += std::format("  {} {} -> {} {}\n", edge.fromPass, Quote(m_passNames[edge.fromPass]),
                 edge.toPass, Quote(m_passNames[edge.toPass]));
-            for (const DependencyReason& reason : edge.reasons)
+            for (const EdgeResource& resource : edge.resources)
             {
-                dump += std::format("    {}\n", DumpReason(reason, m_resourceNames[reason.resourceIndex]));
+                dump += std::format("    {} {} {}\n", ToString(resource.kind), resource.resourceIndex,
+                    Quote(m_resourceNames[resource.resourceIndex]));
             }
         }
         dump += "errors:\n";
@@ -589,23 +420,6 @@ namespace renderlab::rdg
             dump += std::format("  {} pass={} {} resource={} {}\n", ToString(error.category),
                 error.passIndex == Error::kNoPass ? "none" : std::to_string(error.passIndex),
                 Quote(error.passName), Quote(error.resourceName), Quote(error.message));
-        }
-        dump += "cycle:";
-        if (!m_cycle)
-        {
-            dump += " none\n";
-        }
-        else
-        {
-            dump += "\n";
-            for (size_t step = 0; step < m_cycle->reasons.size(); ++step)
-            {
-                const CyclePass& from = m_cycle->passes[step];
-                const CyclePass& to = m_cycle->passes[step + 1];
-                const CycleReason& reason = m_cycle->reasons[step];
-                dump += std::format("  {} {} -> {} {}: {}\n", from.passIndex, Quote(from.name), to.passIndex,
-                    Quote(to.name), DumpReason(reason.dependency, reason.resourceName));
-            }
         }
         if (!m_cullingApplied)
         {
@@ -642,12 +456,6 @@ namespace renderlab::rdg
                 }
                 dump += "\n";
             }
-            for (const VersionLifetime& lifetime : m_versionLifetimes)
-            {
-                dump += std::format("  version {} {} v{} first={} last={}\n", lifetime.resourceIndex,
-                    Quote(m_resourceNames[lifetime.resourceIndex]), lifetime.version,
-                    FormatPassIndex(lifetime.firstPass), FormatPassIndex(lifetime.lastPass));
-            }
         }
         dump += "flags:\n";
         for (uint32_t passIndex = 0; passIndex < m_passNames.size(); ++passIndex)
@@ -661,43 +469,8 @@ namespace renderlab::rdg
             dump += std::format("  {} {}\n", passIndex, Quote(m_passNames[passIndex]));
             for (const ResourceAccess& access : m_passAccesses[passIndex])
             {
-                dump += std::format("    {} {} {} {} v{}\n", ToString(access.mode), ToString(access.kind),
-                    access.index, Quote(m_resourceNames[access.index]), access.version);
-            }
-        }
-        dump += "versions:\n";
-        for (uint32_t resourceIndex = 0; resourceIndex < m_resourceNames.size(); ++resourceIndex)
-        {
-            dump += std::format("  {} {} {}", ToString(m_resourceKinds[resourceIndex]), resourceIndex,
-                Quote(m_resourceNames[resourceIndex]));
-            if (m_resourceImported[resourceIndex] != 0)
-            {
-                dump += " imported";
-            }
-            if (m_resourceExported[resourceIndex] != 0)
-            {
-                dump += " exported";
-            }
-            dump += "\n";
-            for (uint32_t version = 0; version < m_resourceVersions[resourceIndex].size(); ++version)
-            {
-                const ResourceVersionRecord& record = m_resourceVersions[resourceIndex][version];
-                dump += std::format("    v{} producer=", version);
-                if (record.producerPass != Error::kNoPass)
-                {
-                    dump += std::format("{} {}", record.producerPass, Quote(m_passNames[record.producerPass]));
-                }
-                else
-                {
-                    dump += record.produced ? "external" : "unproduced";
-                }
-                dump += " readers=[";
-                for (size_t reader = 0; reader < record.readerPasses.size(); ++reader)
-                {
-                    const uint32_t passIndex = record.readerPasses[reader];
-                    dump += std::format("{}{} {}", reader == 0 ? "" : ", ", passIndex, Quote(m_passNames[passIndex]));
-                }
-                dump += "]\n";
+                dump += std::format("    {} {} {} {}\n", ToString(access.access), ToString(access.kind),
+                    access.index, Quote(m_resourceNames[access.index]));
             }
         }
         return dump;
@@ -719,12 +492,17 @@ namespace renderlab::rdg
         }
         for (const DependencyEdge& edge : m_edges)
         {
-            for (const DependencyReason& reason : edge.reasons)
+            std::string label;
+            for (const EdgeResource& resource : edge.resources)
             {
-                const std::string label = std::format("{} {} v{}", ToString(reason.type),
-                    Quote(m_resourceNames[reason.resourceIndex]), reason.sourceVersion);
-                dump += std::format("  p{} -> p{} [label={}];\n", edge.fromPass, edge.toPass, DotQuote(label));
+                if (!label.empty())
+                {
+                    label += "\n";
+                }
+                label += std::format("{} {} {}", ToString(resource.kind), resource.resourceIndex,
+                    Quote(m_resourceNames[resource.resourceIndex]));
             }
+            dump += std::format("  p{} -> p{} [label={}];\n", edge.fromPass, edge.toPass, DotQuote(label));
         }
         if (!m_resourceNames.empty())
         {

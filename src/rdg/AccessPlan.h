@@ -25,7 +25,6 @@ namespace renderlab::rdg
         uint32_t resourceIndex = 0;
         std::string resourceName;
         ResourceKind kind = ResourceKind::Texture;
-        AccessMode mode = AccessMode::Read;
         Access before = Access::Unknown;
         Access required = Access::Unknown;
         Access after = Access::Unknown;

@@ -75,7 +75,7 @@ int RunRdgCullingTests()
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Unused", PassFlags::Raster).Write(resource);
+        graph.AddPass("Unused", PassFlags::Raster).Use(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && result.GetPassOrder().size() == 1 && result.GetLivePassOrder().empty() &&
             HasCull(result, 0, true, CullReason::UnusedLeaf) &&
@@ -89,9 +89,9 @@ int RunRdgCullingTests()
         TextureHandle unusedOut = MakeTexture(graph, "UnusedOut");
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
-        intermediate = producer.Write(intermediate);
-        consumer.Read(intermediate);
-        unusedOut = consumer.Write(unusedOut);
+        producer.Use(intermediate, Access::RenderTarget);
+        consumer.Use(intermediate, Access::ShaderResource);
+        consumer.Use(unusedOut, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetLivePassOrder().empty() &&
             HasCull(result, 0, true, CullReason::UnusedChain) &&
@@ -111,10 +111,10 @@ int RunRdgCullingTests()
         TextureHandle output = MakeTexture(graph, "Output");
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
-        intermediate = producer.Write(intermediate);
-        consumer.Read(intermediate);
-        output = consumer.Write(output);
-        graph.ExportTexture(output);
+        producer.Use(intermediate, Access::RenderTarget);
+        consumer.Use(intermediate, Access::ShaderResource);
+        consumer.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && LiveOrderIs(result, {0, 1}) &&
             HasCull(result, 1, false, CullReason::RootOutput) &&
@@ -124,7 +124,7 @@ int RunRdgCullingTests()
     {
         GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
-        graph.AddPass("Writer", PassFlags::Raster).Write(imported);
+        graph.AddPass("Writer", PassFlags::Raster).Use(imported, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && LiveOrderIs(result, {0}) &&
             HasCull(result, 0, false, CullReason::RootOutput),
@@ -136,9 +136,9 @@ int RunRdgCullingTests()
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         auto forced = graph.AddPass("Forced", PassFlags::NeverCull);
         auto unused = graph.AddPass("Unused", PassFlags::Raster);
-        resource = producer.Write(resource);
-        forced.Read(resource);
-        unused.Read(resource);
+        producer.Use(resource, Access::RenderTarget);
+        forced.Use(resource, Access::ShaderResource);
+        unused.Use(resource, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && LiveOrderIs(result, {0, 1}) &&
             HasCull(result, 1, false, CullReason::RootNeverCull) &&
@@ -153,11 +153,11 @@ int RunRdgCullingTests()
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         auto live = graph.AddPass("Live", PassFlags::Raster);
         auto unused = graph.AddPass("Unused", PassFlags::Raster);
-        shared = producer.Write(shared);
-        live.Read(shared);
-        output = live.Write(output);
-        unused.Read(shared);
-        graph.ExportTexture(output);
+        producer.Use(shared, Access::RenderTarget);
+        live.Use(shared, Access::ShaderResource);
+        live.Use(output, Access::RenderTarget);
+        unused.Use(shared, Access::ShaderResource);
+        graph.ExportTexture(output, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && LiveOrderIs(result, {0, 1}) &&
             HasCull(result, 1, false, CullReason::RootOutput) &&
@@ -168,7 +168,7 @@ int RunRdgCullingTests()
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Unused", PassFlags::Raster).Write(resource);
+        graph.AddPass("Unused", PassFlags::Raster).Use(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph, CompileOptions{.disableCulling = true});
         Check(result.IsSuccess() && LiveOrderIs(result, {0}) &&
             HasCull(result, 0, false, CullReason::CullingDisabled) &&
@@ -179,28 +179,28 @@ int RunRdgCullingTests()
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
         auto writer = graph.AddPass("Writer", PassFlags::Raster);
-        resource = writer.Write(resource);
+        writer.Use(resource, Access::RenderTarget);
         auto reader = graph.AddPass("Reader", PassFlags::Raster);
-        reader.Read(resource);
+        reader.Use(resource, Access::ShaderResource);
         auto overwrite = graph.AddPass("Overwrite", PassFlags::Raster);
-        resource = overwrite.Write(resource);
+        overwrite.Use(resource, Access::RenderTarget);
         TextureHandle output = MakeTexture(graph, "Output");
         auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
-        consumer.Read(resource);
-        output = consumer.Write(output);
-        graph.ExportTexture(output);
+        consumer.Use(resource, Access::ShaderResource);
+        consumer.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(result.IsSuccess() && LiveOrderIs(result, {0, 2, 3}) &&
+        Check(result.IsSuccess() && LiveOrderIs(result, {2, 3}) &&
             HasCull(result, 3, false, CullReason::RootOutput) &&
             HasCull(result, 2, false, CullReason::Producer) &&
-            HasCull(result, 0, false, CullReason::Producer) &&
+            HasCull(result, 0, true, CullReason::UnusedChain) &&
             HasCull(result, 1, true, CullReason::UnusedLeaf),
-            "Exported overwrite keeps the previous writer via WAW and culls the unused previous reader");
+            "An overwritten writer is culled when nothing live reads it before the next write");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Unused", PassFlags::Raster).Write(resource);
+        graph.AddPass("Unused", PassFlags::Raster).Use(resource, Access::RenderTarget);
         const CompileResult first = GraphCompiler::Compile(graph);
         Check(first.Dump() == GraphCompiler::Compile(graph).Dump() &&
             first.Dump().find("cull:") != std::string::npos &&
@@ -211,7 +211,7 @@ int RunRdgCullingTests()
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Invalid", PassFlags::Raster).Read(resource);
+        graph.AddPass("Invalid", PassFlags::Raster).Use(resource, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && result.GetPassCullStates().empty() && result.GetLivePassOrder().empty() &&
             result.Dump().find("cull: skipped") != std::string::npos &&
@@ -224,15 +224,17 @@ int RunRdgCullingTests()
         TextureHandle second = MakeTexture(graph, "Second");
         auto passA = graph.AddPass("A", PassFlags::Raster);
         auto passB = graph.AddPass("B", PassFlags::Raster);
-        first = passA.Write(first);
-        second = passB.Write(second);
-        passA.Read(second);
-        passB.Read(first);
+        passA.Use(first, Access::RenderTarget);
+        passB.Use(second, Access::RenderTarget);
+        passA.Use(second, Access::ShaderResource);
+        passB.Use(first, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.HasCycle() && result.GetPassCullStates().empty() &&
-            result.GetLivePassOrder().empty() && result.Dump().find("cull: skipped") != std::string::npos &&
-            result.Dump().find("lifetime: skipped") != std::string::npos,
-            "Cycles skip cull results");
+        Check(!result.IsSuccess() && result.GetErrors()[0].category == ErrorCategory::ReadBeforeProduce &&
+            result.GetPassCullStates().empty() && result.GetLivePassOrder().empty() &&
+            result.Dump().find("cull: skipped") != std::string::npos &&
+            result.Dump().find("lifetime: skipped") != std::string::npos &&
+            result.Dump().find("cycle:") == std::string::npos,
+            "A backward read is ReadBeforeProduce and skips cull results");
     }
     return failures;
 }

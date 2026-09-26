@@ -59,23 +59,29 @@ namespace
         built.backImported = built.graph.ImportTexture({"BackBuffer", 1280, 720, Format::SRGBA8Unorm});
 
         PassBuilder gbuffer = built.graph.AddPass("GBuffer", PassFlags::Raster, std::move(gbufferPass));
-        built.gbufferA = gbuffer.Write(gbufferA);
-        built.gbufferB = gbuffer.Write(gbufferB);
-        built.gbufferC = gbuffer.Write(gbufferC);
-        built.gbufferDepth = gbuffer.Write(gbufferDepth);
+        gbuffer.Use(gbufferA, Access::RenderTarget);
+        built.gbufferA = gbufferA;
+        gbuffer.Use(gbufferB, Access::RenderTarget);
+        built.gbufferB = gbufferB;
+        gbuffer.Use(gbufferC, Access::RenderTarget);
+        built.gbufferC = gbufferC;
+        gbuffer.Use(gbufferDepth, Access::DepthWrite);
+        built.gbufferDepth = gbufferDepth;
 
         PassBuilder deferred =
             built.graph.AddPass("DeferredLighting", PassFlags::Raster, std::move(deferredPass));
-        deferred.Read(built.gbufferA);
-        deferred.Read(built.gbufferB);
-        deferred.Read(built.gbufferC);
-        deferred.Read(built.gbufferDepth);
-        built.hdr = deferred.Write(hdr);
+        deferred.Use(built.gbufferA, Access::ShaderResource);
+        deferred.Use(built.gbufferB, Access::ShaderResource);
+        deferred.Use(built.gbufferC, Access::ShaderResource);
+        deferred.Use(built.gbufferDepth, Access::ShaderResource);
+        deferred.Use(hdr, Access::RenderTarget);
+        built.hdr = hdr;
 
         PassBuilder post = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(postPass));
-        post.Read(built.hdr);
-        built.backBuffer = post.Write(built.backImported);
-        built.graph.ExportTexture(built.backBuffer);
+        post.Use(built.hdr, Access::ShaderResource);
+        post.Use(built.backImported, Access::RenderTarget);
+        built.backBuffer = built.backImported;
+        built.graph.ExportTexture(built.backBuffer, Access::Present);
     }
 
     PassLambda Noop()
@@ -122,7 +128,7 @@ namespace
         Check(color.isRenderTarget && color.isShaderResource && !color.isUAV && !color.isTypeless,
               "Color desc is RT+SRV, not UAV or typeless");
         Check(color.initialState == nvrhi::ResourceStates::RenderTarget, "Color initial state is RenderTarget");
-        Check(color.keepInitialState, "Color keepInitialState is true");
+        Check(!color.keepInitialState, "Color keepInitialState is false");
         Check(color.useClearValue && color.clearValue == nvrhi::Color(0.f, 0.f, 0.f, 1.f),
               "UNORM clear is (0,0,0,1)");
 
@@ -130,7 +136,7 @@ namespace
         Check(depth.format == nvrhi::Format::D32, "Depth desc uses D32");
         Check(depth.isTypeless, "Depth desc is typeless");
         Check(depth.initialState == nvrhi::ResourceStates::DepthWrite, "Depth initial state is DepthWrite");
-        Check(depth.keepInitialState, "Depth keepInitialState is true");
+        Check(!depth.keepInitialState, "Depth keepInitialState is false");
         Check(depth.isRenderTarget && depth.isShaderResource && !depth.isUAV,
               "Depth desc is RT+SRV, not UAV");
         Check(depth.useClearValue && depth.clearValue == nvrhi::Color(0.f), "Depth clear is 0");
@@ -153,7 +159,7 @@ namespace
         Check(buffer.debugName == "Buf", "Buffer desc copies debug name");
         Check(buffer.canHaveRawViews, "Buffer canHaveRawViews is true");
         Check(buffer.initialState == nvrhi::ResourceStates::ShaderResource, "Buffer initial state is ShaderResource");
-        Check(buffer.keepInitialState, "Buffer keepInitialState is true");
+        Check(!buffer.keepInitialState, "Buffer keepInitialState is false");
     }
 }
 
@@ -172,11 +178,13 @@ int RunRdgAllocTests()
         PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             resolved = ctx.GetTexture(internal);
         });
-        internal = produce.Write(internalCreated);
+        produce.Use(internalCreated, Access::RenderTarget);
+        internal = internalCreated;
         PassBuilder consume = graph.AddPass("Consume", PassFlags::Raster, Noop());
-        consume.Read(internal);
-        output = consume.Write(outputImported);
-        graph.ExportTexture(output);
+        consume.Use(internal, Access::ShaderResource);
+        consume.Use(outputImported, Access::RenderTarget);
+        output = outputImported;
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         const AllocationStats before = executor.GetAllocationStats();
         Check(before.textureCount == 0 && before.bufferCount == 0 && before.estimatedBytes == 0,
@@ -198,11 +206,13 @@ int RunRdgAllocTests()
         PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             resolved = ctx.GetBuffer(internal);
         });
-        internal = produce.Write(internalCreated);
+        produce.Use(internalCreated, Access::RenderTarget);
+        internal = internalCreated;
         PassBuilder consume = graph.AddPass("Consume", PassFlags::Raster, Noop());
-        consume.Read(internal);
-        output = consume.Write(outputImported);
-        graph.ExportTexture(output);
+        consume.Use(internal, Access::ShaderResource);
+        consume.Use(outputImported, Access::RenderTarget);
+        output = outputImported;
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
@@ -221,7 +231,8 @@ int RunRdgAllocTests()
         TextureHandle internal;
         TextureHandle backBuffer;
         PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, Noop());
-        internal = produce.Write(internalCreated);
+        produce.Use(internalCreated, Access::RenderTarget);
+        internal = internalCreated;
         PassBuilder present = graph.AddPass("Present", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             if (phase == 0)
             {
@@ -231,9 +242,10 @@ int RunRdgAllocTests()
             imported = ctx.GetTexture(backBuffer);
             allocated = ctx.GetTexture(internal);
         });
-        present.Read(internal);
-        backBuffer = present.Write(backImported);
-        graph.ExportTexture(backBuffer);
+        present.Use(internal, Access::ShaderResource);
+        present.Use(backImported, Access::RenderTarget);
+        backBuffer = backImported;
+        graph.ExportTexture(backBuffer, Access::Present);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
@@ -254,8 +266,8 @@ int RunRdgAllocTests()
         GraphBuilder builder;
         TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("Live", PassFlags::Raster);
-        output = pass.Write(output);
-        builder.ExportTexture(output);
+        pass.Use(output, Access::RenderTarget);
+        builder.ExportTexture(output, Access::RenderTarget);
         builder.CreateTexture({"", 8, 8, Format::RGBA8Unorm});
         const CompileResult compiled = GraphCompiler::Compile(builder);
         Check(!compiled.IsSuccess(), "Empty-name CreateTexture fails compile");
@@ -271,11 +283,11 @@ int RunRdgAllocTests()
         TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle internal = builder.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         PassBuilder produce = builder.AddPass("Produce", PassFlags::Raster);
-        internal = produce.Write(internal);
+        produce.Use(internal, Access::RenderTarget);
         PassBuilder consume = builder.AddPass("Consume", PassFlags::Raster);
-        consume.Read(internal);
-        output = consume.Write(output);
-        builder.ExportTexture(output);
+        consume.Use(internal, Access::ShaderResource);
+        consume.Use(output, Access::RenderTarget);
+        builder.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.Allocate();
         const AllocationStats afterFirst = executor.GetAllocationStats();
@@ -379,11 +391,11 @@ int RunRdgAllocTests()
         TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle internal = builder.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         PassBuilder produce = builder.AddPass("Produce", PassFlags::Raster);
-        internal = produce.Write(internal);
+        produce.Use(internal, Access::RenderTarget);
         PassBuilder consume = builder.AddPass("Consume", PassFlags::Raster);
-        consume.Read(internal);
-        output = consume.Write(output);
-        builder.ExportTexture(output);
+        consume.Use(internal, Access::ShaderResource);
+        consume.Use(output, Access::RenderTarget);
+        builder.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.Allocate();
         executor.SetDevice(nullptr);

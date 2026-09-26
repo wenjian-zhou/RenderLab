@@ -96,30 +96,58 @@ namespace renderlab::rdg
         std::vector<Access> current(resourceCount, Access::Unknown);
         const size_t errorCountBefore = m_errors.size();
 
+        const auto initialAccessOf = [](const ResourceRecord& record) -> Access
+        {
+            if (record.imported)
+            {
+                return record.hasInitialAccess ? record.initialAccess : Access::Unknown;
+            }
+            if (record.kind == ResourceKind::Buffer)
+            {
+                return Access::ShaderResource;
+            }
+            const Format format = std::get<TextureDesc>(record.desc).format;
+            return format == Format::D32Float ? Access::DepthWrite : Access::RenderTarget;
+        };
+
         for (uint32_t index = 0; index < resourceCount; ++index)
         {
             const ResourceRecord& record = m_builder->GetResource(index);
-            Access initial = Access::ShaderResource;
-            if (record.kind == ResourceKind::Texture)
+            const Access initial = initialAccessOf(record);
+            if (record.imported && !record.hasInitialAccess)
             {
-                if (record.imported && record.exported)
-                {
-                    initial = Access::Present;
-                }
-                else
-                {
-                    const Format format = std::get<TextureDesc>(record.desc).format;
-                    initial = format == Format::D32Float ? Access::DepthWrite : Access::RenderTarget;
-                }
+                AddError(
+                    ErrorCategory::UnknownAccess,
+                    std::format("Plan() has no initial access for imported '{}'", record.name),
+                    Error::kNoPass,
+                    "",
+                    record.name);
+                continue;
             }
+            if (!IsSingleKnownAccess(initial))
+            {
+                AddError(
+                    ErrorCategory::UnknownAccess,
+                    std::format("Plan() cannot map access for '{}'", record.name),
+                    Error::kNoPass,
+                    "",
+                    record.name);
+                continue;
+            }
+            const Access finalAccess = record.exported && record.hasFinalAccess ? record.finalAccess : initial;
             plan.resources.push_back(ResourceBoundary{
                 index,
                 record.name,
                 initial,
-                initial,
+                finalAccess,
                 record.imported,
                 record.exported});
             current[index] = initial;
+        }
+
+        if (m_errors.size() != errorCountBefore)
+        {
+            return;
         }
 
         for (const uint32_t passIndex : m_livePassOrder)
@@ -132,12 +160,7 @@ namespace renderlab::rdg
             for (const ResourceAccess& access : pass.accesses)
             {
                 const ResourceRecord& record = m_builder->GetResource(access.index);
-                Format format = Format::Unknown;
-                if (record.kind == ResourceKind::Texture)
-                {
-                    format = std::get<TextureDesc>(record.desc).format;
-                }
-                const Access required = InferAccess(access.mode, access.kind, format);
+                const Access required = access.access;
                 if (!IsSingleKnownAccess(required))
                 {
                     AddError(
@@ -154,7 +177,6 @@ namespace renderlab::rdg
                     access.index,
                     record.name,
                     access.kind,
-                    access.mode,
                     current[access.index],
                     required,
                     required});
@@ -412,25 +434,65 @@ namespace renderlab::rdg
         const ResourceRecord* record = ValidateHandle(
             ResourceKind::Texture,
             handle.index,
-            handle.version,
             handle.graphId,
             Error::kNoPass,
             "",
-            "import bind",
-            VersionRule::AnyInRange);
+            "import bind");
         if (record == nullptr)
         {
             return;
         }
-        if (!record->imported || m_registry.HasTexture(handle.index))
+        if (!record->imported)
         {
             AddError(
                 ErrorCategory::IncompatibleAccess,
                 std::format(
-                    "cannot bind physical texture '{}' (index {}): {}",
+                    "cannot bind physical texture '{}' (index {}): resource is not imported",
                     record->name,
-                    handle.index,
-                    record->imported ? "already registered" : "resource is not imported"),
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        if (physical.native != nullptr)
+        {
+            for (uint32_t index = 0; index < m_builder->GetResourceCount(); ++index)
+            {
+                if (index == handle.index)
+                {
+                    continue;
+                }
+                const PhysicalTexture* existing = m_registry.GetTexture(index);
+                if (existing != nullptr && existing->native == physical.native)
+                {
+                    AddError(
+                        ErrorCategory::IncompatibleAccess,
+                        std::format(
+                            "cannot bind physical texture '{}' (index {}): native is already bound to index {}",
+                            record->name,
+                            handle.index,
+                            index),
+                        Error::kNoPass,
+                        "",
+                        record->name);
+                    return;
+                }
+            }
+        }
+        if (m_registry.HasTexture(handle.index))
+        {
+            const PhysicalTexture* existing = m_registry.GetTexture(handle.index);
+            if (existing != nullptr && existing->native == physical.native)
+            {
+                return;
+            }
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot bind physical texture '{}' (index {}): already registered",
+                    record->name,
+                    handle.index),
                 Error::kNoPass,
                 "",
                 record->name);
@@ -444,25 +506,65 @@ namespace renderlab::rdg
         const ResourceRecord* record = ValidateHandle(
             ResourceKind::Buffer,
             handle.index,
-            handle.version,
             handle.graphId,
             Error::kNoPass,
             "",
-            "import bind",
-            VersionRule::AnyInRange);
+            "import bind");
         if (record == nullptr)
         {
             return;
         }
-        if (!record->imported || m_registry.HasBuffer(handle.index))
+        if (!record->imported)
         {
             AddError(
                 ErrorCategory::IncompatibleAccess,
                 std::format(
-                    "cannot bind physical buffer '{}' (index {}): {}",
+                    "cannot bind physical buffer '{}' (index {}): resource is not imported",
                     record->name,
-                    handle.index,
-                    record->imported ? "already registered" : "resource is not imported"),
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        if (physical.native != nullptr)
+        {
+            for (uint32_t index = 0; index < m_builder->GetResourceCount(); ++index)
+            {
+                if (index == handle.index)
+                {
+                    continue;
+                }
+                const PhysicalBuffer* existing = m_registry.GetBuffer(index);
+                if (existing != nullptr && existing->native == physical.native)
+                {
+                    AddError(
+                        ErrorCategory::IncompatibleAccess,
+                        std::format(
+                            "cannot bind physical buffer '{}' (index {}): native is already bound to index {}",
+                            record->name,
+                            handle.index,
+                            index),
+                        Error::kNoPass,
+                        "",
+                        record->name);
+                    return;
+                }
+            }
+        }
+        if (m_registry.HasBuffer(handle.index))
+        {
+            const PhysicalBuffer* existing = m_registry.GetBuffer(handle.index);
+            if (existing != nullptr && existing->native == physical.native)
+            {
+                return;
+            }
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot bind physical buffer '{}' (index {}): already registered",
+                    record->name,
+                    handle.index),
                 Error::kNoPass,
                 "",
                 record->name);
@@ -476,12 +578,10 @@ namespace renderlab::rdg
         const ResourceRecord* record = ValidateHandle(
             ResourceKind::Texture,
             handle.index,
-            handle.version,
             handle.graphId,
             Error::kNoPass,
             "",
-            "export lookup",
-            VersionRule::Current);
+            "export lookup");
         if (record == nullptr)
         {
             return nullptr;
@@ -515,12 +615,10 @@ namespace renderlab::rdg
         const ResourceRecord* record = ValidateHandle(
             ResourceKind::Buffer,
             handle.index,
-            handle.version,
             handle.graphId,
             Error::kNoPass,
             "",
-            "export lookup",
-            VersionRule::Current);
+            "export lookup");
         if (record == nullptr)
         {
             return nullptr;
@@ -559,6 +657,97 @@ namespace renderlab::rdg
         return graphicsCommandList;
     }
 
+    void* GraphExecutor::FindNative(uint32_t resourceIndex) const
+    {
+        const ResourceRecord& record = m_builder->GetResource(resourceIndex);
+        if (record.kind == ResourceKind::Texture)
+        {
+            const PhysicalTexture* physical = m_registry.GetTexture(resourceIndex);
+            return physical != nullptr ? physical->native : nullptr;
+        }
+        const PhysicalBuffer* physical = m_registry.GetBuffer(resourceIndex);
+        return physical != nullptr ? physical->native : nullptr;
+    }
+
+    void GraphExecutor::BeginTrackingPlanned(nvrhi::ICommandList* commandList)
+    {
+        for (const ResourceBoundary& resource : m_accessPlan.resources)
+        {
+            void* native = FindNative(resource.resourceIndex);
+            if (native == nullptr)
+            {
+                continue;
+            }
+            const nvrhi::ResourceStates state = ToNvStates(resource.initial);
+            const ResourceRecord& record = m_builder->GetResource(resource.resourceIndex);
+            if (record.kind == ResourceKind::Texture)
+            {
+                nvrhi::ITexture* texture = static_cast<nvrhi::ITexture*>(native);
+                if (texture->getDesc().keepInitialState)
+                {
+                    continue;
+                }
+                commandList->beginTrackingTextureState(texture, nvrhi::AllSubresources, state);
+            }
+            else
+            {
+                nvrhi::IBuffer* buffer = static_cast<nvrhi::IBuffer*>(native);
+                if (buffer->getDesc().keepInitialState)
+                {
+                    continue;
+                }
+                commandList->beginTrackingBufferState(buffer, state);
+            }
+        }
+    }
+
+    bool GraphExecutor::QueueTransition(
+        nvrhi::ICommandList* commandList,
+        uint32_t resourceIndex,
+        uint32_t passIndex,
+        Access after)
+    {
+        if (resourceIndex >= m_trackedAccess.size() || m_trackedAccess[resourceIndex] == after)
+        {
+            return false;
+        }
+
+        const ResourceRecord& record = m_builder->GetResource(resourceIndex);
+        const Access before = m_trackedAccess[resourceIndex];
+        m_issuedTransitions.push_back(IssuedTransition{record.name, passIndex, before, after});
+
+        void* native = FindNative(resourceIndex);
+        bool queued = false;
+        if (native == nullptr)
+        {
+            const std::string passName =
+                passIndex == Error::kNoPass ? std::string() : m_builder->GetPass(passIndex).name;
+            AddError(
+                ErrorCategory::UnregisteredImport,
+                std::format("barrier for unregistered resource '{}'", record.name),
+                passIndex,
+                passName,
+                record.name);
+        }
+        else if (commandList != nullptr)
+        {
+            const nvrhi::ResourceStates state = ToNvStates(after);
+            if (record.kind == ResourceKind::Texture)
+            {
+                commandList->setTextureState(
+                    static_cast<nvrhi::ITexture*>(native), nvrhi::AllSubresources, state);
+            }
+            else
+            {
+                commandList->setBufferState(static_cast<nvrhi::IBuffer*>(native), state);
+            }
+            queued = true;
+        }
+
+        m_trackedAccess[resourceIndex] = after;
+        return queued;
+    }
+
     bool GraphExecutor::RunLivePass(nvrhi::ICommandList* commandList, uint32_t passIndex)
     {
         const std::string& passName = m_builder->GetPass(passIndex).name;
@@ -582,6 +771,7 @@ namespace renderlab::rdg
 
     void GraphExecutor::Execute(nvrhi::ICommandList* graphicsCommandList)
     {
+        m_issuedTransitions.clear();
         if (!m_compileSuccess)
         {
             AddError(
@@ -593,6 +783,22 @@ namespace renderlab::rdg
             return;
         }
 
+        if (m_planned)
+        {
+            m_trackedAccess.assign(m_builder->GetResourceCount(), Access::Unknown);
+            for (const ResourceBoundary& resource : m_accessPlan.resources)
+            {
+                if (resource.resourceIndex < m_trackedAccess.size())
+                {
+                    m_trackedAccess[resource.resourceIndex] = resource.initial;
+                }
+            }
+            if (graphicsCommandList != nullptr)
+            {
+                BeginTrackingPlanned(graphicsCommandList);
+            }
+        }
+
         for (const uint32_t passIndex : m_livePassOrder)
         {
             if (passIndex >= m_cullStates.size() || m_cullStates[passIndex].culled)
@@ -600,9 +806,45 @@ namespace renderlab::rdg
                 continue;
             }
             nvrhi::ICommandList* commandList = SelectCommandList(passIndex, graphicsCommandList);
+            if (m_planned)
+            {
+                bool queued = false;
+                for (const ResourceAccess& access : m_builder->GetPass(passIndex).accesses)
+                {
+                    if (QueueTransition(commandList, access.index, passIndex, access.access))
+                    {
+                        queued = true;
+                    }
+                }
+                if (queued && commandList != nullptr)
+                {
+                    commandList->commitBarriers();
+                }
+            }
             if (!RunLivePass(commandList, passIndex))
             {
                 return;
+            }
+        }
+
+        if (m_planned)
+        {
+            bool queued = false;
+            for (const ResourceBoundary& resource : m_accessPlan.resources)
+            {
+                if (!resource.exported)
+                {
+                    continue;
+                }
+                if (QueueTransition(
+                        graphicsCommandList, resource.resourceIndex, Error::kNoPass, resource.final))
+                {
+                    queued = true;
+                }
+            }
+            if (queued && graphicsCommandList != nullptr)
+            {
+                graphicsCommandList->commitBarriers();
             }
         }
     }
@@ -615,12 +857,10 @@ namespace renderlab::rdg
     const ResourceRecord* GraphExecutor::ValidateHandle(
         ResourceKind kind,
         uint32_t index,
-        uint32_t version,
         uint32_t graphId,
         uint32_t passIndex,
         const std::string& passName,
-        const char* operation,
-        VersionRule versionRule)
+        const char* operation)
     {
         const std::string context =
             passName.empty() ? std::string(operation) : std::format("{} on pass '{}'", operation, passName);
@@ -639,10 +879,9 @@ namespace renderlab::rdg
             AddError(
                 ErrorCategory::ForeignGraph,
                 std::format(
-                    "{} handle (index {}, version {}) in {} belongs to graph {}, not this graph {}",
+                    "{} handle (index {}) in {} belongs to graph {}, not this graph {}",
                     ToString(kind),
                     index,
-                    version,
                     context,
                     graphId,
                     m_builder->GetGraphId()),
@@ -654,7 +893,7 @@ namespace renderlab::rdg
         if (index >= m_builder->GetResourceCount())
         {
             AddError(
-                ErrorCategory::StaleVersion,
+                ErrorCategory::IncompatibleAccess,
                 std::format(
                     "{} handle index {} in {} is out of range (this graph has {} resources)",
                     ToString(kind),
@@ -678,41 +917,6 @@ namespace renderlab::rdg
                     record.name,
                     index,
                     ToString(record.kind)),
-                passIndex,
-                passName,
-                record.name);
-            return nullptr;
-        }
-        if (versionRule == VersionRule::Current)
-        {
-            if (version != record.currentVersion)
-            {
-                AddError(
-                    version < record.currentVersion ? ErrorCategory::SupersededUse : ErrorCategory::StaleVersion,
-                    std::format(
-                        "{} handle version {} in {} does not match current version {} of resource '{}'",
-                        ToString(kind),
-                        version,
-                        context,
-                        record.currentVersion,
-                        record.name),
-                    passIndex,
-                    passName,
-                    record.name);
-                return nullptr;
-            }
-        }
-        else if (version >= record.versions.size())
-        {
-            AddError(
-                ErrorCategory::StaleVersion,
-                std::format(
-                    "{} handle version {} in {} is out of range for resource '{}' ({} versions)",
-                    ToString(kind),
-                    version,
-                    context,
-                    record.name,
-                    record.versions.size()),
                 passIndex,
                 passName,
                 record.name);

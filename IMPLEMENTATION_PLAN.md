@@ -47,7 +47,13 @@ is one target:** `RenderLab::Rdg` links `nvrhi` (not donut).
 `GraphBuilder::AddPass` takes an optional pass lambda. `Compile()` stays a
 public CPU step, and `RenderLabDataContractTests` still runs with no GPU
 device ([ADR-004](docs/adr/ADR-004-rdg-single-module.md)). **Stage 5 / M2 is
-satisfied.** The next step is **S6.1 — Define DXR capability and scene contracts**.
+satisfied.** Resource identity now follows
+[ADR-005](docs/adr/ADR-005-rdg-ue-resource-identity.md): one handle per
+resource, `Use(handle, Access)`, `AddPass` order, last-producer edges,
+explicit initial and final access, and barriers issued in
+`GraphExecutor::Execute`. That replaces the versioned-handle and `Read` /
+`Write` model, and `FormatMap` no longer leaves `keepInitialState` set on
+the textures and buffers it creates. The next step is **S6.1 — Define DXR capability and scene contracts**.
 The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is

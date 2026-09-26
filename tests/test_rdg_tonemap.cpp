@@ -67,7 +67,7 @@ namespace
     void CheckReadTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -75,7 +75,7 @@ namespace
     void CheckWriteTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Write && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -106,12 +106,16 @@ namespace
         const bool exportOutput = output == ToneMapOutput::BackBuffer;
         const char* outputName = exportOutput ? "BackBuffer" : "PostProcessColor";
         built.outputImported = built.graph.ImportTexture({outputName, 1280, 720, Format::SRGBA8Unorm});
+        built.graph.SetInitialAccess(built.hdr, Access::RenderTarget);
+        built.graph.SetInitialAccess(
+            built.outputImported, exportOutput ? Access::Present : Access::RenderTarget);
         PassBuilder postPass = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(post));
-        postPass.Read(built.hdr);
-        built.outputWritten = postPass.Write(built.outputImported);
+        postPass.Use(built.hdr, Access::ShaderResource);
+        postPass.Use(built.outputImported, Access::RenderTarget);
+        built.outputWritten = built.outputImported;
         if (exportOutput)
         {
-            built.graph.ExportTexture(built.outputWritten);
+            built.graph.ExportTexture(built.outputWritten, Access::Present);
         }
     }
 }
@@ -143,11 +147,12 @@ int RunRdgTonemapTests()
         Check(dump.find("order: [0 \"PostProcess\"]") != std::string::npos, "dump order is PostProcess");
         Check(dump.find("0 \"PostProcess\" live root-output") != std::string::npos,
             "PostProcess is live root-output");
-        Check(dump.find("read texture 0 \"HDRSceneColor\"") != std::string::npos, "dump reads HDRSceneColor");
-        Check(dump.find("write texture 1 \"BackBuffer\"") != std::string::npos, "dump writes BackBuffer");
-        Check(dump.find("texture 0 \"HDRSceneColor\" imported\n") != std::string::npos,
+        Check(dump.find("ShaderResource texture 0 \"HDRSceneColor\"") != std::string::npos,
+            "dump reads HDRSceneColor");
+        Check(dump.find("RenderTarget texture 1 \"BackBuffer\"") != std::string::npos, "dump writes BackBuffer");
+        Check(dump.find("resource 0 \"HDRSceneColor\" first=0 last=0 imported\n") != std::string::npos,
             "dump HDR imported-only");
-        Check(dump.find("texture 1 \"BackBuffer\" imported exported") != std::string::npos,
+        Check(dump.find("resource 1 \"BackBuffer\" first=0 last=0 imported exported") != std::string::npos,
             "dump BackBuffer imported exported");
         Check(dump.find("0 \"PostProcess\" Raster") != std::string::npos, "dump flags Raster");
     }
@@ -226,9 +231,10 @@ int RunRdgTonemapTests()
         ToneExec built;
         BuildToneExec(built, ToneMapOutput::BackBuffer, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture({}) == nullptr, "null handle is null");
-            TextureHandle foreign{built.hdr.index, built.hdr.version, other.GetGraphId()};
+            TextureHandle foreign{built.hdr.index, other.GetGraphId()};
             Check(ctx.GetTexture(foreign) == nullptr, "foreign-graph handle is null");
-            Check(ctx.GetTexture(built.outputImported) == nullptr, "imported v0 during write is null");
+            const PhysicalTexture* written = ctx.GetTexture(built.outputImported);
+            Check(written != nullptr && written->native == &bbNative, "the imported handle resolves during the write");
         });
         GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.hdr, PhysicalTexture{&hdrNative, "HDRSceneColor"});
@@ -238,8 +244,8 @@ int RunRdgTonemapTests()
         Check(HasCategory(executor.GetErrors(), ErrorCategory::NullHandle), "NullHandle on default handle");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::ForeignGraph),
             "ForeignGraph on foreign handle");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::SupersededUse),
-            "SupersededUse on outputImported v0");
+        Check(!HasCategory(executor.GetErrors(), ErrorCategory::UndeclaredAccess),
+            "The imported handle is declared on the write");
     }
 
     {

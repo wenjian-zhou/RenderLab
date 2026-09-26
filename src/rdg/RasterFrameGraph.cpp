@@ -4,12 +4,12 @@ namespace renderlab::rdg
 {
     namespace
     {
-        void ReadGBuffer(PassBuilder& pass, RasterFrameGraph& graph)
+        void UseGBuffer(PassBuilder& pass, RasterFrameGraph& graph, Access access)
         {
-            pass.Read(graph.gbufferA);
-            pass.Read(graph.gbufferB);
-            pass.Read(graph.gbufferC);
-            pass.Read(graph.gbufferDepth);
+            pass.Use(graph.gbufferA, access);
+            pass.Use(graph.gbufferB, access);
+            pass.Use(graph.gbufferC, access);
+            pass.Use(graph.gbufferDepth, access == Access::RenderTarget ? Access::DepthWrite : access);
         }
     }
 
@@ -27,13 +27,11 @@ namespace renderlab::rdg
 
         graph.outputImported =
             builder.ImportTexture({"BackBuffer", width, height, Format::SRGBA8Unorm});
+        builder.SetInitialAccess(graph.outputImported, Access::Present);
 
         PassBuilder gbufferPass = builder.AddPass("GBuffer", PassFlags::Raster);
         graph.gbufferPassIndex = gbufferPass.PassIndex();
-        graph.gbufferA = gbufferPass.Write(graph.gbufferA);
-        graph.gbufferB = gbufferPass.Write(graph.gbufferB);
-        graph.gbufferC = gbufferPass.Write(graph.gbufferC);
-        graph.gbufferDepth = gbufferPass.Write(graph.gbufferDepth);
+        UseGBuffer(gbufferPass, graph, Access::RenderTarget);
 
         const bool withHdr = present != RasterPresent::GBufferDebug;
         graph.hasHdr = withHdr;
@@ -41,10 +39,11 @@ namespace renderlab::rdg
         {
             graph.hdrCreated =
                 builder.CreateTexture({"HDRSceneColor", width, height, Format::RGBA16Float});
+            graph.hdrWritten = graph.hdrCreated;
             PassBuilder lightingPass = builder.AddPass("DeferredLighting", PassFlags::Raster);
             graph.deferredLightingPassIndex = lightingPass.PassIndex();
-            ReadGBuffer(lightingPass, graph);
-            graph.hdrWritten = lightingPass.Write(graph.hdrCreated);
+            UseGBuffer(lightingPass, graph, Access::ShaderResource);
+            lightingPass.Use(graph.hdrCreated, Access::RenderTarget);
         }
 
         const char* presentName = "PostProcess";
@@ -61,14 +60,15 @@ namespace renderlab::rdg
         graph.presentPassIndex = presentPass.PassIndex();
         if (present != RasterPresent::Final)
         {
-            ReadGBuffer(presentPass, graph);
+            UseGBuffer(presentPass, graph, Access::ShaderResource);
         }
         if (withHdr)
         {
-            presentPass.Read(graph.hdrWritten);
+            presentPass.Use(graph.hdrWritten, Access::ShaderResource);
         }
-        graph.outputWritten = presentPass.Write(graph.outputImported);
-        builder.ExportTexture(graph.outputWritten);
+        presentPass.Use(graph.outputImported, Access::RenderTarget);
+        graph.outputWritten = graph.outputImported;
+        builder.ExportTexture(graph.outputWritten, Access::Present);
         return graph;
     }
 }

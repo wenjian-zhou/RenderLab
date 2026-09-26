@@ -67,7 +67,7 @@ namespace
     void CheckReadTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -75,7 +75,7 @@ namespace
     void CheckWriteTransition(
         const PassResourceState* state, Access before, Access after, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Write && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -117,32 +117,40 @@ namespace
         built.gbufferB = built.graph.ImportTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
         built.gbufferC = built.graph.ImportTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
         built.gbufferDepth = built.graph.ImportTexture({"GBufferDepth", 1280, 720, Format::D32Float});
+        built.graph.SetInitialAccess(built.gbufferA, Access::RenderTarget);
+        built.graph.SetInitialAccess(built.gbufferB, Access::RenderTarget);
+        built.graph.SetInitialAccess(built.gbufferC, Access::RenderTarget);
+        built.graph.SetInitialAccess(built.gbufferDepth, Access::DepthWrite);
         built.hdrCreated = built.graph.CreateTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
         const bool exportOutput = output == ToneMapOutput::BackBuffer;
         const char* outputName = exportOutput ? "BackBuffer" : "PostProcessColor";
         built.outputImported = built.graph.ImportTexture({outputName, 1280, 720, Format::SRGBA8Unorm});
+        built.graph.SetInitialAccess(
+            built.outputImported, exportOutput ? Access::Present : Access::RenderTarget);
 
         PassBuilder lightingPass =
             built.graph.AddPass("DeferredLighting", PassFlags::Raster, std::move(lighting));
-        lightingPass.Read(built.gbufferA);
-        lightingPass.Read(built.gbufferB);
-        lightingPass.Read(built.gbufferC);
-        lightingPass.Read(built.gbufferDepth);
-        built.hdrWritten = lightingPass.Write(built.hdrCreated);
+        lightingPass.Use(built.gbufferA, Access::ShaderResource);
+        lightingPass.Use(built.gbufferB, Access::ShaderResource);
+        lightingPass.Use(built.gbufferC, Access::ShaderResource);
+        lightingPass.Use(built.gbufferDepth, Access::ShaderResource);
+        lightingPass.Use(built.hdrCreated, Access::RenderTarget);
+        built.hdrWritten = built.hdrCreated;
 
         PassBuilder debugPass = built.graph.AddPass("LightingDebug", PassFlags::Raster, std::move(debug));
-        debugPass.Read(built.gbufferA);
-        debugPass.Read(built.gbufferB);
-        debugPass.Read(built.gbufferC);
-        debugPass.Read(built.gbufferDepth);
-        debugPass.Read(built.hdrWritten);
+        debugPass.Use(built.gbufferA, Access::ShaderResource);
+        debugPass.Use(built.gbufferB, Access::ShaderResource);
+        debugPass.Use(built.gbufferC, Access::ShaderResource);
+        debugPass.Use(built.gbufferDepth, Access::ShaderResource);
+        debugPass.Use(built.hdrWritten, Access::ShaderResource);
 
         PassBuilder postPass = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(post));
-        postPass.Read(built.hdrWritten);
-        built.outputWritten = postPass.Write(built.outputImported);
+        postPass.Use(built.hdrWritten, Access::ShaderResource);
+        postPass.Use(built.outputImported, Access::RenderTarget);
+        built.outputWritten = built.outputImported;
         if (exportOutput)
         {
-            built.graph.ExportTexture(built.outputWritten);
+            built.graph.ExportTexture(built.outputWritten, Access::Present);
         }
     }
 }
@@ -169,8 +177,7 @@ int RunRdgLightingTests()
         const ResourceRecord& hdr = builder.GetResource(graph.hdrCreated.index);
         Check(hdr.name == "HDRSceneColor" && !hdr.imported && !hdr.exported,
             "HDRSceneColor is Create* not imported");
-        Check(graph.hdrWritten.index == graph.hdrCreated.index, "hdrWritten is the same slot");
-        Check(graph.hdrWritten.version != graph.hdrCreated.version, "Write minted a new HDR version");
+        Check(graph.hdrWritten == graph.hdrCreated, "hdrWritten is the created handle");
 
         const ResourceRecord& gbufferA = builder.GetResource(graph.gbufferA.index);
         Check(gbufferA.name == "GBufferA" && gbufferA.imported && !gbufferA.exported, "GBufferA imported-only");
@@ -188,11 +195,11 @@ int RunRdgLightingTests()
         Check(dump.find("texture") != std::string::npos && dump.find("\"HDRSceneColor\"") != std::string::npos,
             "dump names HDRSceneColor");
         Check(dump.find("\"HDRSceneColor\" imported") == std::string::npos, "HDR is not imported in dump");
-        Check(dump.find("texture") != std::string::npos &&
-                  dump.find("\"BackBuffer\" imported exported") != std::string::npos,
+        Check(dump.find("\"BackBuffer\" first=0 last=2 imported exported") != std::string::npos,
             "dump BackBuffer imported exported");
-        Check(dump.find("\"GBufferA\" imported") != std::string::npos, "dump GBufferA imported");
-        Check(dump.find("\"GBufferDepth\" imported") != std::string::npos, "dump GBufferDepth imported");
+        Check(dump.find("\"GBufferA\" first=0 last=0 imported") != std::string::npos, "dump GBufferA imported");
+        Check(dump.find("\"GBufferDepth\" first=0 last=0 imported") != std::string::npos,
+            "dump GBufferDepth imported");
 
         const PassCullState* debugCull = nullptr;
         for (const PassCullState& state : result.GetPassCullStates())
@@ -326,7 +333,8 @@ int RunRdgLightingTests()
             [&](nvrhi::ICommandList*, PassContext& ctx) {
                 lightingA = ctx.GetTexture(built.gbufferA);
                 lightingHdr = ctx.GetTexture(built.hdrWritten);
-                Check(ctx.GetTexture(built.hdrCreated) == nullptr, "Create* v0 on lighting write is null");
+                const PhysicalTexture* created = ctx.GetTexture(built.hdrCreated);
+                Check(created != nullptr && created == lightingHdr, "The created handle resolves inside the write");
             },
             Noop(),
             [&](nvrhi::ICommandList*, PassContext& ctx) {
@@ -352,8 +360,7 @@ int RunRdgLightingTests()
         Check(postHdr && lightingHdr && postHdr->native == lightingHdr->native,
             "tone map reads same HDR native");
         Check(postOut && postOut->native == &bbNative, "PostProcess resolves written BackBuffer");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::SupersededUse),
-            "SupersededUse on hdrCreated v0");
+        Check(executor.GetErrors().empty(), "Same-identity HDR resolve records no errors");
     }
 
     {

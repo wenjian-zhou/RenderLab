@@ -15,7 +15,6 @@ namespace renderlab::rdg
     struct TextureHandle
     {
         uint32_t index = kNullHandleIndex;
-        uint32_t version = 0;
         uint32_t graphId = 0;
 
         bool IsNull() const { return index == kNullHandleIndex; }
@@ -26,7 +25,6 @@ namespace renderlab::rdg
     struct BufferHandle
     {
         uint32_t index = kNullHandleIndex;
-        uint32_t version = 0;
         uint32_t graphId = 0;
 
         bool IsNull() const { return index == kNullHandleIndex; }

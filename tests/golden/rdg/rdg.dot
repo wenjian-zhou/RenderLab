@@ -3,11 +3,8 @@ digraph RDG {
   p0 [label="0 \"GBuffer\"\nRaster\nlive producer"];
   p1 [label="1 \"DeferredLighting\"\nRaster\nlive producer"];
   p2 [label="2 \"PostProcess\"\nRaster\nlive root-output"];
-  p0 -> p1 [label="RAW \"GBufferA\" v1"];
-  p0 -> p1 [label="RAW \"GBufferB\" v1"];
-  p0 -> p1 [label="RAW \"GBufferC\" v1"];
-  p0 -> p1 [label="RAW \"GBufferDepth\" v1"];
-  p1 -> p2 [label="RAW \"HDRSceneColor\" v1"];
+  p0 -> p1 [label="texture 1 \"GBufferA\"\ntexture 2 \"GBufferB\"\ntexture 3 \"GBufferC\"\ntexture 4 \"GBufferDepth\""];
+  p1 -> p2 [label="texture 5 \"HDRSceneColor\""];
   subgraph cluster_resources {
     label="resources";
     r0 [label="0 \"BackBuffer\"\nimported exported\nfirst=0 last=2"];

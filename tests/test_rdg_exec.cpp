@@ -42,7 +42,7 @@ namespace
             const ResourceRecord& record = builder.GetResource(i);
             if (record.name == name && record.kind == ResourceKind::Texture)
             {
-                return TextureHandle{i, record.currentVersion, builder.GetGraphId()};
+                return TextureHandle{i, builder.GetGraphId()};
             }
         }
         return {};
@@ -58,8 +58,8 @@ int RunRdgExecTests()
         GraphBuilder builder;
         TextureHandle backBuffer = builder.ImportTexture({"BackBuffer", 1280, 720, Format::SRGBA8Unorm});
         PassBuilder pass = builder.AddPass("Present", PassFlags::Raster);
-        backBuffer = pass.Write(backBuffer);
-        builder.ExportTexture(backBuffer);
+        pass.Use(backBuffer, Access::RenderTarget);
+        builder.ExportTexture(backBuffer, Access::Present);
         const CompileResult compiled = GraphCompiler::Compile(builder);
         Check(compiled.IsSuccess(), "Imported back buffer graph compiles");
 
@@ -76,9 +76,9 @@ int RunRdgExecTests()
         TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle created = builder.CreateTexture({"Internal", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        created = pass.Write(created);
-        output = pass.Write(output);
-        builder.ExportTexture(output);
+        pass.Use(created, Access::RenderTarget);
+        pass.Use(output, Access::RenderTarget);
+        builder.ExportTexture(output, Access::RenderTarget);
         const CompileResult compiled = GraphCompiler::Compile(builder);
         Check(compiled.IsSuccess(), "Internal-plus-imported graph compiles");
 
@@ -98,8 +98,8 @@ int RunRdgExecTests()
         GraphBuilder builder;
         TextureHandle imported = builder.ImportTexture({"Dup", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        imported = pass.Write(imported);
-        builder.ExportTexture(imported);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.RegisterImport(imported, PhysicalTexture{&first, "first"});
         executor.RegisterImport(imported, PhysicalTexture{&second, "second"});
@@ -113,8 +113,8 @@ int RunRdgExecTests()
         GraphBuilder builder;
         TextureHandle imported = builder.ImportTexture({"N", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        imported = pass.Write(imported);
-        builder.ExportTexture(imported);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.RegisterImport(TextureHandle{}, PhysicalTexture{nullptr, "null"});
         Check(HasCategory(executor.GetErrors(), ErrorCategory::NullHandle), "Null RegisterImport is NullHandle");
@@ -124,12 +124,12 @@ int RunRdgExecTests()
         GraphBuilder owner;
         TextureHandle imported = owner.ImportTexture({"N", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = owner.AddPass("P", PassFlags::Raster);
-        imported = pass.Write(imported);
-        owner.ExportTexture(imported);
+        pass.Use(imported, Access::RenderTarget);
+        owner.ExportTexture(imported, Access::RenderTarget);
         GraphBuilder other;
         other.ImportTexture({"Other", 8, 8, Format::RGBA8Unorm});
         GraphExecutor executor(owner, GraphCompiler::Compile(owner));
-        TextureHandle foreign{imported.index, imported.version, other.GetGraphId()};
+        TextureHandle foreign{imported.index, other.GetGraphId()};
         int dummy = 3;
         executor.RegisterImport(foreign, PhysicalTexture{&dummy, "foreign"});
         Check(HasCategory(executor.GetErrors(), ErrorCategory::ForeignGraph),
@@ -141,17 +141,17 @@ int RunRdgExecTests()
         TextureHandle texture = builder.ImportTexture({"T", 8, 8, Format::RGBA8Unorm});
         BufferHandle buffer = builder.ImportBuffer({"B", 16, 4});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        texture = pass.Write(texture);
-        buffer = pass.Write(buffer);
-        builder.ExportTexture(texture);
-        builder.ExportBuffer(buffer);
+        pass.Use(texture, Access::RenderTarget);
+        pass.Use(buffer, Access::RenderTarget);
+        builder.ExportTexture(texture, Access::RenderTarget);
+        builder.ExportBuffer(buffer, Access::ShaderResource);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         int dummy = 4;
-        TextureHandle asTexture{buffer.index, buffer.version, builder.GetGraphId()};
+        TextureHandle asTexture{buffer.index, builder.GetGraphId()};
         executor.RegisterImport(asTexture, PhysicalTexture{&dummy, "mismatch"});
         Check(HasCategory(executor.GetErrors(), ErrorCategory::TypeMismatch),
               "TextureHandle targeting a buffer is TypeMismatch");
-        BufferHandle asBuffer{texture.index, texture.version, builder.GetGraphId()};
+        BufferHandle asBuffer{texture.index, builder.GetGraphId()};
         executor.RegisterImport(asBuffer, PhysicalBuffer{&dummy, "mismatch"});
         Check(HasCategory(executor.GetErrors(), ErrorCategory::TypeMismatch),
               "BufferHandle targeting a texture is TypeMismatch");
@@ -161,21 +161,21 @@ int RunRdgExecTests()
         GraphBuilder builder;
         TextureHandle imported = builder.ImportTexture({"N", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        imported = pass.Write(imported);
-        builder.ExportTexture(imported);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         int dummy = 5;
-        TextureHandle oob{99, 0, builder.GetGraphId()};
+        TextureHandle oob{99, builder.GetGraphId()};
         executor.RegisterImport(oob, PhysicalTexture{&dummy, "oob"});
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::StaleVersion),
-              "Out-of-range RegisterImport is StaleVersion");
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::IncompatibleAccess),
+              "Out-of-range RegisterImport is IncompatibleAccess");
     }
 
     {
         GraphBuilder builder;
         TextureHandle imported = builder.ImportTexture({"In", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("Sample", PassFlags::Raster | PassFlags::NeverCull);
-        pass.Read(imported);
+        pass.Use(imported, Access::ShaderResource);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         int dummy = 6;
         executor.RegisterImport(imported, PhysicalTexture{&dummy, "In"});
@@ -189,17 +189,18 @@ int RunRdgExecTests()
         TextureHandle importedV0 = builder.ImportTexture({"BB", 8, 8, Format::RGBA8Unorm});
         const TextureHandle v0 = importedV0;
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        TextureHandle importedV1 = pass.Write(importedV0);
-        builder.ExportTexture(importedV1);
+        pass.Use(importedV0, Access::RenderTarget);
+        TextureHandle importedV1 = importedV0;
+        builder.ExportTexture(importedV1, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         int dummy = 8;
         executor.RegisterImport(v0, PhysicalTexture{&dummy, "BB"});
         Check(executor.GetErrors().empty(), "RegisterImport accepts in-range imported v0 after a write");
         const PhysicalTexture* exported = executor.GetExported(importedV1);
-        Check(exported != nullptr && exported->native == &dummy, "GetExported uses the pinned exported version");
-        Check(executor.GetExported(v0) == nullptr, "GetExported of superseded v0 returns null");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::SupersededUse),
-              "GetExported of superseded v0 is SupersededUse");
+        Check(exported != nullptr && exported->native == &dummy, "GetExported uses the exported handle");
+        const PhysicalTexture* same = executor.GetExported(v0);
+        Check(same != nullptr && same->native == &dummy, "The pre-write handle is the same identity");
+        Check(executor.GetErrors().empty(), "GetExported of the same handle records no error");
     }
 
     {
@@ -211,8 +212,9 @@ int RunRdgExecTests()
         PassBuilder pass = graph.AddPass("Present", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             resolved = ctx.GetTexture(backBuffer);
         });
-        backBuffer = pass.Write(imported);
-        graph.ExportTexture(backBuffer);
+        pass.Use(imported, Access::RenderTarget);
+        backBuffer = imported;
+        graph.ExportTexture(backBuffer, Access::Present);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(imported, PhysicalTexture{&dummy, "BackBuffer"});
         executor.Execute(nullptr);
@@ -230,7 +232,7 @@ int RunRdgExecTests()
             "Sample", PassFlags::Raster | PassFlags::NeverCull, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 resolved = ctx.GetTexture(imported);
             });
-        pass.Read(imported);
+        pass.Use(imported, Access::ShaderResource);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(imported, PhysicalTexture{&dummy, "Input"});
         executor.Execute(nullptr);
@@ -257,17 +259,17 @@ int RunRdgExecTests()
             Check(ctx.GetTexture(a) != nullptr && ctx.GetTexture(a)->native == &nativeA,
                   "Pass A resolves declared A");
             Check(ctx.GetTexture(b) == nullptr, "Pass A must not resolve B");
-            Check(ctx.GetTexture(aV0) == nullptr, "Pass A GetTexture of superseded A v0 fails");
-            TextureHandle future{a.index, a.version + 1, graph.GetGraphId()};
-            Check(ctx.GetTexture(future) == nullptr, "Forged future version of A fails");
+            Check(ctx.GetTexture(aV0) != nullptr && ctx.GetTexture(aV0)->native == &nativeA,
+                  "The same handle resolves after the write");
             Check(ctx.GetTexture({}) == nullptr, "Null GetTexture fails");
-            TextureHandle foreign{a.index, a.version, other.GetGraphId()};
+            TextureHandle foreign{a.index, other.GetGraphId()};
             Check(ctx.GetTexture(foreign) == nullptr, "Foreign-graph GetTexture fails");
-            TextureHandle asTexture{buffer.index, buffer.version, graph.GetGraphId()};
+            TextureHandle asTexture{buffer.index, graph.GetGraphId()};
             Check(ctx.GetTexture(asTexture) == nullptr, "Type-mismatched GetTexture fails");
         });
-        a = pass0.Write(aImported);
-        graph.ExportTexture(a);
+        pass0.Use(aImported, Access::RenderTarget);
+        a = aImported;
+        graph.ExportTexture(a, Access::RenderTarget);
         PassBuilder pass1 = graph.AddPass("PassB", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture(b) != nullptr && ctx.GetTexture(b)->native == &nativeB,
                   "Pass B resolves declared B independently");
@@ -275,10 +277,12 @@ int RunRdgExecTests()
             Check(ctx.GetBuffer(buffer) != nullptr && ctx.GetBuffer(buffer)->native == &bufferNative,
                   "Declared imported buffer resolves during Execute");
         });
-        b = pass1.Write(bImported);
-        buffer = pass1.Write(bufferImported);
-        graph.ExportTexture(b);
-        graph.ExportBuffer(buffer);
+        pass1.Use(bImported, Access::RenderTarget);
+        b = bImported;
+        pass1.Use(bufferImported, Access::RenderTarget);
+        buffer = bufferImported;
+        graph.ExportTexture(b, Access::RenderTarget);
+        graph.ExportBuffer(buffer, Access::ShaderResource);
         const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(compiled.IsSuccess(), "Two-import graph compiles");
 
@@ -289,10 +293,6 @@ int RunRdgExecTests()
         executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UndeclaredAccess),
               "Undeclared lookup of B on Pass A is UndeclaredAccess");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::SupersededUse),
-              "Superseded A v0 lookup is SupersededUse");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::StaleVersion),
-              "Future version lookup is StaleVersion");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::NullHandle), "Null GetTexture is NullHandle");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::ForeignGraph),
               "Foreign-graph GetTexture is ForeignGraph");
@@ -312,13 +312,14 @@ int RunRdgExecTests()
         TextureHandle internal = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         TextureHandle output;
         PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
-        internal = produce.Write(internal);
+        produce.Use(internal, Access::RenderTarget);
         PassBuilder consume = graph.AddPass("Consume", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture(internal) == nullptr, "Declared internal CreateTexture has no physical in S5.1");
         });
-        consume.Read(internal);
-        output = consume.Write(outputImported);
-        graph.ExportTexture(output);
+        consume.Use(internal, Access::ShaderResource);
+        consume.Use(outputImported, Access::RenderTarget);
+        output = outputImported;
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         int dummy = 13;
         executor.RegisterImport(outputImported, PhysicalTexture{&dummy, "Out"});
@@ -334,8 +335,9 @@ int RunRdgExecTests()
         graph.AddPass("Culled", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) { culledCalled = true; });
         TextureHandle output;
         PassBuilder live = graph.AddPass("Live", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
-        output = live.Write(outputImported);
-        graph.ExportTexture(output);
+        live.Use(outputImported, Access::RenderTarget);
+        output = outputImported;
+        graph.ExportTexture(output, Access::RenderTarget);
         const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(compiled.IsSuccess(), "Graph with a culled empty pass compiles");
         Check(compiled.GetPassCullStates()[0].culled, "Empty pass is culled");
@@ -357,8 +359,9 @@ int RunRdgExecTests()
         PassBuilder pass = graph.AddPass("Live", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             called = true;
         });
-        output = pass.Write(outputImported);
-        graph.ExportTexture(output);
+        pass.Use(outputImported, Access::RenderTarget);
+        output = outputImported;
+        graph.ExportTexture(output, Access::RenderTarget);
         graph.CreateTexture({"", 8, 8, Format::RGBA8Unorm});
         const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(!compiled.IsSuccess(), "Builder declaration errors fail compilation");
@@ -393,27 +396,29 @@ int RunRdgExecTests()
         PassBuilder gbufferPass = graph.AddPass("GBuffer", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture(backWritten) == nullptr, "GBuffer must not resolve BackBuffer");
         });
-        gbufferA = gbufferPass.Write(gbufferA);
-        gbufferB = gbufferPass.Write(gbufferB);
-        gbufferC = gbufferPass.Write(gbufferC);
-        gbufferDepth = gbufferPass.Write(gbufferDepth);
+        gbufferPass.Use(gbufferA, Access::RenderTarget);
+        gbufferPass.Use(gbufferB, Access::RenderTarget);
+        gbufferPass.Use(gbufferC, Access::RenderTarget);
+        gbufferPass.Use(gbufferDepth, Access::DepthWrite);
         PassBuilder deferredPass =
             graph.AddPass("DeferredLighting", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 Check(ctx.GetTexture(hdrWritten) == nullptr, "Deferred HDR has no physical in S5.1");
                 Check(ctx.GetTexture(backWritten) == nullptr, "Deferred must not resolve BackBuffer");
             });
-        deferredPass.Read(gbufferA);
-        deferredPass.Read(gbufferB);
-        deferredPass.Read(gbufferC);
-        deferredPass.Read(gbufferDepth);
-        hdrWritten = deferredPass.Write(hdrCreated);
+        deferredPass.Use(gbufferA, Access::ShaderResource);
+        deferredPass.Use(gbufferB, Access::ShaderResource);
+        deferredPass.Use(gbufferC, Access::ShaderResource);
+        deferredPass.Use(gbufferDepth, Access::ShaderResource);
+        deferredPass.Use(hdrCreated, Access::RenderTarget);
+        hdrWritten = hdrCreated;
         PassBuilder postPass = graph.AddPass("PostProcess", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture(backWritten) != nullptr && ctx.GetTexture(backWritten)->native == &native,
                   "Only PostProcess may resolve BackBuffer");
         });
-        postPass.Read(hdrWritten);
-        backWritten = postPass.Write(backImported);
-        graph.ExportTexture(backWritten);
+        postPass.Use(hdrWritten, Access::ShaderResource);
+        postPass.Use(backImported, Access::RenderTarget);
+        backWritten = backImported;
+        graph.ExportTexture(backWritten, Access::Present);
 
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(backImported, PhysicalTexture{&native, "BackBuffer"});

@@ -67,7 +67,7 @@ namespace renderlab::rdg
         nv.isRenderTarget = true;
         nv.isUAV = false;
         nv.useClearValue = true;
-        nv.keepInitialState = true;
+        nv.keepInitialState = false;
 
         if (desc.format == Format::D32Float)
         {
@@ -100,7 +100,7 @@ namespace renderlab::rdg
         nv.debugName = desc.name;
         nv.canHaveRawViews = true;
         nv.initialState = nvrhi::ResourceStates::ShaderResource;
-        nv.keepInitialState = true;
+        nv.keepInitialState = false;
         return nv;
     }
 }

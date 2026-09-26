@@ -76,27 +76,30 @@ namespace renderlab::rdg
 
         const AccessPlan& GetAccessPlan() const { return m_accessPlan; }
 
+        struct IssuedTransition
+        {
+            std::string resourceName;
+            uint32_t passIndex = Error::kNoPass;
+            Access before = Access::Unknown;
+            Access after = Access::Unknown;
+        };
+
+        // Valid until the next Execute(). Empty when Plan() did not succeed.
+        std::span<const IssuedTransition> GetIssuedTransitions() const { return m_issuedTransitions; }
+
         std::span<const Error> GetErrors() const { return m_errors; }
         void AssertNoErrors() const;
 
     private:
         friend class PassContext;
 
-        enum class VersionRule : uint8_t
-        {
-            AnyInRange,
-            Current,
-        };
-
         const ResourceRecord* ValidateHandle(
             ResourceKind kind,
             uint32_t index,
-            uint32_t version,
             uint32_t graphId,
             uint32_t passIndex,
             const std::string& passName,
-            const char* operation,
-            VersionRule versionRule);
+            const char* operation);
         void AddError(
             ErrorCategory category,
             std::string message,
@@ -107,6 +110,13 @@ namespace renderlab::rdg
             uint32_t passIndex,
             nvrhi::ICommandList* graphicsCommandList) const;
         bool RunLivePass(nvrhi::ICommandList* commandList, uint32_t passIndex);
+        void BeginTrackingPlanned(nvrhi::ICommandList* commandList);
+        bool QueueTransition(
+            nvrhi::ICommandList* commandList,
+            uint32_t resourceIndex,
+            uint32_t passIndex,
+            Access after);
+        void* FindNative(uint32_t resourceIndex) const;
 
         struct CpuIdentity
         {
@@ -127,6 +137,8 @@ namespace renderlab::rdg
         bool m_transientReuse = true;
         bool m_planned = false;
         AccessPlan m_accessPlan;
+        std::vector<Access> m_trackedAccess;
+        std::vector<IssuedTransition> m_issuedTransitions;
         AllocationStats m_stats{};
         std::vector<std::unique_ptr<CpuIdentity>> m_cpuTextures;
         std::vector<std::unique_ptr<CpuIdentity>> m_cpuBuffers;

@@ -34,23 +34,6 @@ namespace renderlab::rdg
             return quoted + '"';
         }
 
-        const char* ToString(Access access)
-        {
-            switch (access)
-            {
-            case Access::ShaderResource: return "ShaderResource";
-            case Access::RenderTarget: return "RenderTarget";
-            case Access::DepthWrite: return "DepthWrite";
-            case Access::Present: return "Present";
-            default: return "Unknown";
-            }
-        }
-
-        const char* ToString(AccessMode mode)
-        {
-            return mode == AccessMode::Read ? "read" : "write";
-        }
-
         const char* ToString(ResourceKind kind)
         {
             return kind == ResourceKind::Texture ? "texture" : "buffer";
@@ -89,7 +72,7 @@ namespace renderlab::rdg
             }
             dump += std::format(
                 "    {} {} {} {} before={} required={} after={}\n",
-                ToString(state.mode),
+                ToString(state.required),
                 ToString(state.kind),
                 state.resourceIndex,
                 Quote(state.resourceName),

@@ -11,19 +11,23 @@ namespace renderlab::rdg
         ToneMapGraph graph;
         graph.hdrSceneColor =
             builder.ImportTexture({"HDRSceneColor", width, height, Format::RGBA16Float});
+        builder.SetInitialAccess(graph.hdrSceneColor, Access::RenderTarget);
 
         const bool exportOutput = output == ToneMapOutput::BackBuffer;
         const char* outputName = exportOutput ? "BackBuffer" : "PostProcessColor";
         graph.outputImported =
             builder.ImportTexture({outputName, width, height, Format::SRGBA8Unorm});
+        graph.outputWritten = graph.outputImported;
+        builder.SetInitialAccess(
+            graph.outputImported, exportOutput ? Access::Present : Access::RenderTarget);
 
         PassBuilder postPass = builder.AddPass("PostProcess", PassFlags::Raster);
         graph.postProcessPassIndex = postPass.PassIndex();
-        postPass.Read(graph.hdrSceneColor);
-        graph.outputWritten = postPass.Write(graph.outputImported);
+        postPass.Use(graph.hdrSceneColor, Access::ShaderResource);
+        postPass.Use(graph.outputImported, Access::RenderTarget);
         if (exportOutput)
         {
-            builder.ExportTexture(graph.outputWritten);
+            builder.ExportTexture(graph.outputWritten, Access::Present);
         }
         return graph;
     }

@@ -36,10 +36,9 @@ namespace
         return nullptr;
     }
 
-    bool HasSingleReason(const DependencyEdge* edge, DependencyType type, uint32_t resourceIndex)
+    bool HasSingleResource(const DependencyEdge* edge, uint32_t resourceIndex)
     {
-        return edge != nullptr && edge->reasons.size() == 1 && edge->reasons[0].type == type &&
-            edge->reasons[0].resourceIndex == resourceIndex;
+        return edge != nullptr && edge->resources.size() == 1 && edge->resources[0].resourceIndex == resourceIndex;
     }
 }
 
@@ -55,46 +54,42 @@ int RunRdgCompilerTests()
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
-        resource = producer.Write(resource);
-        consumer.Read(resource);
-        graph.ExportTexture(resource);
+        auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
+        producer.Use(resource, Access::RenderTarget);
+        consumer.Use(resource, Access::ShaderResource);
+        graph.ExportTexture(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetPassOrder()[0] == 1 &&
-            result.GetPassOrder()[1] == 0,
-            "Compiler reorders consumer before producer declaration order");
-        Check(result.GetEdges().size() == 1 && result.GetEdges()[0].fromPass == 1 && result.GetEdges()[0].toPass == 0 &&
-            result.GetEdges()[0].reasons.size() == 1 && result.GetEdges()[0].reasons[0].type == DependencyType::RAW,
-            "RAW edge records producer and reader");
+        Check(result.IsSuccess() && result.GetPassOrder().size() == 2 && result.GetPassOrder()[0] == 0 &&
+            result.GetPassOrder()[1] == 1,
+            "Pass order is AddPass order");
+        Check(HasSingleResource(FindEdge(result.GetEdges(), 0, 1), 0),
+            "Last-producer edge records the writer and the later reader");
+        Check(result.Dump().find("cycle:") == std::string::npos, "Dump has no cycle section");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
         auto writer = graph.AddPass("Writer", PassFlags::Raster);
-        resource = writer.Write(resource);
+        writer.Use(resource, Access::RenderTarget);
         auto first = graph.AddPass("First", PassFlags::Raster);
         auto second = graph.AddPass("Second", PassFlags::Raster);
-        first.Read(resource);
-        second.Read(resource);
+        first.Use(resource, Access::ShaderResource);
+        second.Use(resource, Access::ShaderResource);
         auto overwrite = graph.AddPass("Overwrite", PassFlags::Raster);
-        resource = overwrite.Write(resource);
+        overwrite.Use(resource, Access::RenderTarget);
         graph.AddPass("Independent", PassFlags::Raster);
-        graph.ExportTexture(resource);
+        graph.ExportTexture(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const auto edges = result.GetEdges();
-        Check(result.IsSuccess() && edges.size() == 5, "RAW, WAR, and WAW edges are retained");
-        Check(HasSingleReason(FindEdge(edges, 0, 1), DependencyType::RAW, 0) &&
-            HasSingleReason(FindEdge(edges, 0, 2), DependencyType::RAW, 0),
-            "RAW edges run from producer to each reader");
-        Check(HasSingleReason(FindEdge(edges, 1, 3), DependencyType::WAR, 0) &&
-            HasSingleReason(FindEdge(edges, 2, 3), DependencyType::WAR, 0),
-            "WAR edges run from each previous reader to the overwrite");
-        Check(HasSingleReason(FindEdge(edges, 0, 3), DependencyType::WAW, 0),
-            "WAW edge runs from previous producer to overwrite");
-        Check(result.GetPassOrder().size() == 5 && result.GetPassOrder()[0] == 0 && result.GetPassOrder()[1] == 1 &&
-            result.GetPassOrder()[2] == 2 && result.GetPassOrder()[3] == 3 && result.GetPassOrder()[4] == 4,
-            "All passes participate in a stable min-index topological order");
+        Check(result.IsSuccess() && edges.size() == 2, "Readers link to the last earlier writer only");
+        Check(HasSingleResource(FindEdge(edges, 0, 1), 0) && HasSingleResource(FindEdge(edges, 0, 2), 0),
+            "Each later reader gets an edge from the writer");
+        Check(FindEdge(edges, 0, 3) == nullptr && FindEdge(edges, 1, 3) == nullptr &&
+            FindEdge(edges, 2, 3) == nullptr,
+            "A later write has no edge from the previous writer or its readers");
+        Check(result.GetPassOrder().size() == 5 && result.GetPassOrder()[0] == 0 && result.GetPassOrder()[4] == 4,
+            "Every pass stays in insertion order");
         Check(result.Dump() == GraphCompiler::Compile(graph).Dump(), "Compiler dump is deterministic");
     }
     {
@@ -103,20 +98,18 @@ int RunRdgCompilerTests()
         TextureHandle second = MakeTexture(graph, "Second");
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
         auto consumer = graph.AddPass("Consumer", PassFlags::Raster);
-        first = producer.Write(first);
-        second = producer.Write(second);
-        consumer.Read(first);
-        consumer.Read(second);
-        graph.ExportTexture(first);
-        graph.ExportTexture(second);
+        producer.Use(first, Access::RenderTarget);
+        producer.Use(second, Access::RenderTarget);
+        consumer.Use(first, Access::ShaderResource);
+        consumer.Use(second, Access::ShaderResource);
+        graph.ExportTexture(first, Access::RenderTarget);
+        graph.ExportTexture(second, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(result.IsSuccess() && result.GetEdges().size() == 1 && result.GetEdges()[0].fromPass == 0 &&
-            result.GetEdges()[0].toPass == 1 && result.GetEdges()[0].reasons.size() == 2 &&
-            result.GetEdges()[0].reasons[0].type == DependencyType::RAW &&
-            result.GetEdges()[0].reasons[0].resourceIndex == 0 &&
-            result.GetEdges()[0].reasons[1].type == DependencyType::RAW &&
-            result.GetEdges()[0].reasons[1].resourceIndex == 1,
-            "Multiple reasons on the same pass pair merge into one edge");
+            result.GetEdges()[0].toPass == 1 && result.GetEdges()[0].resources.size() == 2 &&
+            result.GetEdges()[0].resources[0].resourceIndex == 0 &&
+            result.GetEdges()[0].resources[1].resourceIndex == 1,
+            "Resources on one producer/consumer pair merge and sort by index");
     }
     {
         GraphBuilder graph;
@@ -124,31 +117,23 @@ int RunRdgCompilerTests()
         TextureHandle second = MakeTexture(graph, "Second");
         auto passA = graph.AddPass("A", PassFlags::Raster);
         auto passB = graph.AddPass("B", PassFlags::Raster);
-        first = passA.Write(first);
-        second = passB.Write(second);
-        passA.Read(second);
-        passB.Read(first);
+        passA.Use(first, Access::RenderTarget);
+        passB.Use(second, Access::RenderTarget);
+        passA.Use(second, Access::ShaderResource);
+        passB.Use(first, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.HasCycle() && result.GetPassOrder().empty() && result.GetErrors().empty() &&
-            result.GetEdges().size() == 2,
-            "Cycles report a diagnostic without a partial pass order");
-        const std::optional<CycleDiagnostic>& cycle = result.GetCycle();
-        Check(cycle.has_value() && cycle->passes.size() == 3 && cycle->reasons.size() == 2 &&
-            cycle->passes[0].passIndex == 0 && cycle->passes[0].name == "A" &&
-            cycle->passes[1].passIndex == 1 && cycle->passes[1].name == "B" &&
-            cycle->passes[2].passIndex == 0 && cycle->passes[2].name == "A" &&
-            cycle->reasons[0].resourceName == "First" && cycle->reasons[1].resourceName == "Second",
-            "Cycle diagnostic names the involved passes and resources");
-        Check(result.Dump() == GraphCompiler::Compile(graph).Dump() && result.Dump().find("cycle:") != std::string::npos,
-            "Cycle dump is deterministic");
+        Check(!result.IsSuccess() && result.GetPassOrder().empty() && !result.GetErrors().empty() &&
+            result.GetErrors()[0].category == ErrorCategory::ReadBeforeProduce &&
+            result.Dump().find("cycle:") == std::string::npos,
+            "A read of a later write is ReadBeforeProduce and is not a cycle");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Invalid", PassFlags::Raster).Read(resource);
+        graph.AddPass("Invalid", PassFlags::Raster).Use(resource, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
         Check(!result.IsSuccess() && !result.GetErrors().empty() && result.GetPassOrder().empty() &&
-            result.GetEdges().empty() && !result.HasCycle(),
+            result.GetEdges().empty(),
             "Builder declaration errors short-circuit compilation");
     }
     return failures;

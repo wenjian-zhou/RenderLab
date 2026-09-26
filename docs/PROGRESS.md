@@ -14,8 +14,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
   no reuse pair. The execution layer now lives in the same
   `RenderLab::Rdg` target, which links `nvrhi` (not donut);
   `GraphBuilder::AddPass` takes an optional pass lambda (ADR-004).
-  Stage 5 / M2 is satisfied
-  (docs/rdg.md, ADR-003, ADR-004)
+  Resource identity follows ADR-005: one handle per resource,
+  `Use(handle, Access)`, `AddPass` order, last-producer edges, explicit
+  initial and final access, and barriers issued in
+  `GraphExecutor::Execute`. Stage 5 / M2 is satisfied
+  (docs/rdg.md, ADR-003, ADR-004, ADR-005)
 - Last updated: 2026-09-26
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -1836,6 +1839,62 @@ Known limitations: pass lambdas, snapshot fills, and the manual Read/Write
   lists in ExecuteRasterFrame are unchanged; Plan() is still not issued as
   GPU barriers; the executor is still rebuilt every frame; --dump-rdg remains
   the M1-shaped graph; reuse rules and --no-transient-reuse are unchanged.
+Next step: S6.1 - Define DXR capability and scene contracts
+```
+
+### RDG UE resource identity
+
+```text
+Step: RDG UE resource identity (between S5.7 and S6.1)
+State: complete — one handle per resource ({index, graphId}). Passes
+  declare Use(handle, Access). Order is AddPass order. Edges run from the
+  last earlier writer to a later reader. SetInitialAccess and Export*
+  record the boundary access, including Present for the back buffer.
+  GraphExecutor::Execute issues transitions and beginTracking for
+  FormatMap resources (keepInitialState false). Exported resources are
+  returned to their final access. Non-exported plan restores are not
+  issued. Pass Execute still clears and calls setGraphicsState.
+Date: 2026-09-26
+Commit: uncommitted working tree
+Commands:
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
+  out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Release
+  out/build/windows-vs2022/bin/Release/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLab --config Debug
+  powershell -NoProfile -File scripts/golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts/golden-hdr.ps1 -Mode Verify -Configuration Debug
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.6 RDG raster-frame tests" and
+  "RenderLab S5.7 RDG transient reuse tests". The Final-frame transition
+  log is GBuffer RenderTarget/DepthWrite to ShaderResource, HDR
+  RenderTarget to ShaderResource, and back buffer Present to RenderTarget
+  then back to Present. golden.ps1 and golden-hdr.ps1 Verify Debug passed
+  (mae=0, validation errors=0) on NVIDIA GeForce RTX 5060 Laptop GPU.
+  Search under src/ and tests/ found no AccessMode, InferAccess,
+  StaleVersion, SupersededUse, DumpVersions, or RDG handle .version
+  (HdrDump.h header.version remains the .rlhdr file header). src/rdg
+  includes no donut/.
+Automated tests: 0 failures in both configurations, including the new
+  transition log and the existing S5.6 / S5.7 checks.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug.
+  No D3D12 ctest.
+Artifacts:
+  src/rdg/Handle.h, Pass.h, GraphBuilder.h / GraphBuilder.cpp
+  src/rdg/GraphCompiler.h / GraphCompiler.cpp
+  src/rdg/AccessMap.h / AccessMap.cpp, AccessPlan.h / AccessPlan.cpp
+  src/rdg/GraphExecutor.h / GraphExecutor.cpp, FormatMap.cpp
+  src/rdg/M1ShapedGraph.cpp, RasterFrameGraph.cpp, ToneMapGraph.cpp,
+  LightingPresentGraph.cpp
+  src/app/RenderingLabApp.cpp
+  tests/test_rdg_*.cpp, tests/golden/rdg/rdg.txt, tests/golden/rdg/rdg.dot
+  docs/adr/ADR-005-rdg-ue-resource-identity.md
+  docs/rdg.md, README.md, IMPLEMENTATION_PLAN.md, docs/PROGRESS.md
+Known limitations: the executor is still rebuilt every frame; --dump-rdg
+  remains the M1-shaped graph; a GBuffer-debug frame has no HDR; a later
+  command list that samples Create* textures must beginTracking from the
+  access those textures still have (ShaderResource after a Final frame);
+  non-exported plan restores are not issued; PIX agreement is local-only.
 Next step: S6.1 - Define DXR capability and scene contracts
 ```
 

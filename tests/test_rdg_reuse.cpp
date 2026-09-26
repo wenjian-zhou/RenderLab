@@ -95,16 +95,20 @@ namespace
         PassBuilder writeFirst = graph.AddPass("WriteFirst", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             first.physical = ctx.GetTexture(first.handle);
         });
-        first.handle = writeFirst.Write(createdA);
-        order.handle = writeFirst.Write(createdOrder);
+        writeFirst.Use(createdA, Access::RenderTarget);
+        first.handle = createdA;
+        writeFirst.Use(createdOrder, Access::RenderTarget);
+        order.handle = createdOrder;
 
         PassBuilder writeSecond = graph.AddPass("WriteSecond", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             second.physical = ctx.GetTexture(second.handle);
         });
-        writeSecond.Read(order.handle);
-        second.handle = writeSecond.Write(createdB);
-        TextureHandle back = writeSecond.Write(backImported);
-        graph.ExportTexture(back);
+        writeSecond.Use(order.handle, Access::ShaderResource);
+        writeSecond.Use(createdB, Access::RenderTarget);
+        second.handle = createdB;
+        writeSecond.Use(backImported, Access::RenderTarget);
+        TextureHandle back = backImported;
+        graph.ExportTexture(back, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
@@ -151,9 +155,12 @@ namespace
             left.physical = ctx.GetTexture(left.handle);
             right.physical = ctx.GetTexture(right.handle);
         });
-        left.handle = pass.Write(createdA);
-        right.handle = pass.Write(createdB);
-        graph.ExportTexture(pass.Write(backImported));
+        pass.Use(createdA, Access::RenderTarget);
+        left.handle = createdA;
+        pass.Use(createdB, Access::RenderTarget);
+        right.handle = createdB;
+        pass.Use(backImported, Access::RenderTarget);
+        graph.ExportTexture(backImported, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
@@ -181,13 +188,16 @@ namespace
         PassBuilder first = graph.AddPass("End", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             ends.physical = ctx.GetTexture(ends.handle);
         });
-        ends.handle = first.Write(createdA);
+        first.Use(createdA, Access::RenderTarget);
+        ends.handle = createdA;
         PassBuilder second = graph.AddPass("Start", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             starts.physical = ctx.GetTexture(starts.handle);
         });
-        second.Read(ends.handle);
-        starts.handle = second.Write(createdB);
-        graph.ExportTexture(second.Write(backImported));
+        second.Use(ends.handle, Access::ShaderResource);
+        second.Use(createdB, Access::RenderTarget);
+        starts.handle = createdB;
+        second.Use(backImported, Access::RenderTarget);
+        graph.ExportTexture(backImported, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
@@ -217,16 +227,21 @@ namespace
         PassBuilder first = graph.AddPass("WriteColor", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             color.physical = ctx.GetTexture(color.handle);
         });
-        color.handle = first.Write(createdA);
-        order.handle = first.Write(createdOrder);
+        first.Use(createdA, Access::RenderTarget);
+        color.handle = createdA;
+        first.Use(createdOrder, Access::RenderTarget);
+        order.handle = createdOrder;
         PassBuilder second = graph.AddPass("WriteOthers", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             wide.physical = ctx.GetTexture(wide.handle);
             tall.physical = ctx.GetTexture(tall.handle);
         });
-        second.Read(order.handle);
-        wide.handle = second.Write(createdFormat);
-        tall.handle = second.Write(createdSize);
-        graph.ExportTexture(second.Write(backImported));
+        second.Use(order.handle, Access::ShaderResource);
+        second.Use(createdFormat, Access::RenderTarget);
+        wide.handle = createdFormat;
+        second.Use(createdSize, Access::RenderTarget);
+        tall.handle = createdSize;
+        second.Use(backImported, Access::RenderTarget);
+        graph.ExportTexture(backImported, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
@@ -260,17 +275,23 @@ namespace
             bufA.physical = ctx.GetBuffer(bufA.handle);
             tex.physical = ctx.GetTexture(tex.handle);
         });
-        bufA.handle = first.Write(createdA);
-        tex.handle = first.Write(createdTex);
-        order.handle = first.Write(createdOrder);
+        first.Use(createdA, Access::RenderTarget);
+        bufA.handle = createdA;
+        first.Use(createdTex, Access::RenderTarget);
+        tex.handle = createdTex;
+        first.Use(createdOrder, Access::RenderTarget);
+        order.handle = createdOrder;
         PassBuilder second = graph.AddPass("WriteB", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             bufB.physical = ctx.GetBuffer(bufB.handle);
             stride.physical = ctx.GetBuffer(stride.handle);
         });
-        second.Read(order.handle);
-        bufB.handle = second.Write(createdB);
-        stride.handle = second.Write(createdStride);
-        graph.ExportTexture(second.Write(backImported));
+        second.Use(order.handle, Access::ShaderResource);
+        second.Use(createdB, Access::RenderTarget);
+        bufB.handle = createdB;
+        second.Use(createdStride, Access::RenderTarget);
+        stride.handle = createdStride;
+        second.Use(backImported, Access::RenderTarget);
+        graph.ExportTexture(backImported, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
@@ -308,16 +329,20 @@ namespace
         PassBuilder first = graph.AddPass("WriteEarly", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             early.physical = ctx.GetTexture(early.handle);
         });
-        early.handle = first.Write(createdEarly);
-        order.handle = first.Write(createdOrder);
+        first.Use(createdEarly, Access::RenderTarget);
+        early.handle = createdEarly;
+        first.Use(createdOrder, Access::RenderTarget);
+        order.handle = createdOrder;
         PassBuilder second = graph.AddPass("WriteLater", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             internal.physical = ctx.GetTexture(internal.handle);
             exported.physical = ctx.GetTexture(exported.handle);
         });
-        second.Read(order.handle);
-        internal.handle = second.Write(createdInternal);
-        exported.handle = second.Write(createdExported);
-        graph.ExportTexture(exported.handle);
+        second.Use(order.handle, Access::ShaderResource);
+        second.Use(createdInternal, Access::RenderTarget);
+        internal.handle = createdInternal;
+        second.Use(createdExported, Access::RenderTarget);
+        exported.handle = createdExported;
+        graph.ExportTexture(exported.handle, Access::RenderTarget);
         (void)ghostImported;
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
@@ -352,6 +377,9 @@ namespace
         TextureUse middle;
         BufferUse token;
 
+        PassBuilder earlyPass = graph.AddPass("Early", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            span.physical = ctx.GetTexture(span.handle);
+        });
         PassBuilder middlePass = graph.AddPass(
             "Middle", PassFlags::Raster | PassFlags::NeverCull, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 middle.physical = ctx.GetTexture(middle.handle);
@@ -359,36 +387,37 @@ namespace
         PassBuilder latePass = graph.AddPass("Late", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             span.physical = ctx.GetTexture(span.handle);
         });
-        PassBuilder earlyPass = graph.AddPass("Early", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
-            span.physical = ctx.GetTexture(span.handle);
-        });
-        span.handle = earlyPass.Write(createdSpan);
-        token.handle = earlyPass.Write(createdToken);
-        middlePass.Read(token.handle);
-        middle.handle = middlePass.Write(createdMiddle);
-        latePass.Read(span.handle);
-        graph.ExportTexture(latePass.Write(backImported));
+        earlyPass.Use(createdSpan, Access::RenderTarget);
+        span.handle = createdSpan;
+        earlyPass.Use(createdToken, Access::RenderTarget);
+        token.handle = createdToken;
+        middlePass.Use(token.handle, Access::ShaderResource);
+        middlePass.Use(createdMiddle, Access::RenderTarget);
+        middle.handle = createdMiddle;
+        latePass.Use(span.handle, Access::ShaderResource);
+        latePass.Use(backImported, Access::RenderTarget);
+        graph.ExportTexture(backImported, Access::Present);
 
         const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
-        Check(compiled.IsSuccess(), "Reversed pass-index graph compiles");
+        Check(compiled.IsSuccess(), "Overlapping producer graph compiles");
         const uint32_t earlyIndex = earlyPass.PassIndex();
         const uint32_t middleIndex = middlePass.PassIndex();
         const uint32_t lateIndex = latePass.PassIndex();
         Check(compiled.GetLivePassOrder().size() == 3 && compiled.GetLivePassOrder()[0] == earlyIndex &&
                   compiled.GetLivePassOrder()[1] == middleIndex && compiled.GetLivePassOrder()[2] == lateIndex,
-              "Higher pass index runs first");
+              "Live order follows AddPass order");
 
-        bool spanReversed = false;
+        bool spanCoversMiddle = false;
         for (const ResourceLifetime& lifetime : compiled.GetResourceLifetimes())
         {
             if (lifetime.resourceIndex == span.handle.index)
             {
-                spanReversed = lifetime.firstPass == earlyIndex && lifetime.lastPass == lateIndex &&
-                    lifetime.firstPass > lifetime.lastPass;
+                spanCoversMiddle = lifetime.firstPass == earlyIndex && lifetime.lastPass == lateIndex &&
+                    lifetime.firstPass < lifetime.lastPass;
             }
         }
-        Check(spanReversed, "Span lifetime stores a later pass index as firstPass");
+        Check(spanCoversMiddle, "Span lifetime covers the early write through the later read");
 
         GraphExecutor executor(graph, compiled);
         executor.Allocate();
@@ -396,9 +425,9 @@ namespace
         const AllocationStats stats = executor.GetAllocationStats();
         Check(span.physical != nullptr && middle.physical != nullptr &&
                   span.physical->native != middle.physical->native,
-              "A resource live in the middle of a reversed interval does not alias");
+              "A resource live across a middle use does not alias that use");
         Check(!HasIndexPair(stats, span.handle.index, middle.handle.index),
-              "Reversed pass indices still count as overlap");
+              "Overlapping live slots do not form a reuse pair");
     }
 
     void CheckLowestOwnerAndChain()
@@ -417,15 +446,20 @@ namespace
             a.physical = ctx.GetTexture(a.handle);
             b.physical = ctx.GetTexture(b.handle);
         });
-        a.handle = both.Write(createdA);
-        b.handle = both.Write(createdB);
-        order.handle = both.Write(createdOrder);
+        both.Use(createdA, Access::RenderTarget);
+        a.handle = createdA;
+        both.Use(createdB, Access::RenderTarget);
+        b.handle = createdB;
+        both.Use(createdOrder, Access::RenderTarget);
+        order.handle = createdOrder;
         PassBuilder later = overlap.AddPass("Later", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             c.physical = ctx.GetTexture(c.handle);
         });
-        later.Read(order.handle);
-        c.handle = later.Write(createdC);
-        overlap.ExportTexture(later.Write(backImported));
+        later.Use(order.handle, Access::ShaderResource);
+        later.Use(createdC, Access::RenderTarget);
+        c.handle = createdC;
+        later.Use(backImported, Access::RenderTarget);
+        overlap.ExportTexture(backImported, Access::Present);
 
         const CompileResult overlapCompiled = GraphCompiler::Compile(overlap);
         PrintCompileErrors(overlapCompiled);
@@ -458,20 +492,26 @@ namespace
         PassBuilder pass0 = chain.AddPass("Chain0", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             chainA.physical = ctx.GetTexture(chainA.handle);
         });
-        chainA.handle = pass0.Write(chainACreated);
-        token0.handle = pass0.Write(token0Created);
+        pass0.Use(chainACreated, Access::RenderTarget);
+        chainA.handle = chainACreated;
+        pass0.Use(token0Created, Access::RenderTarget);
+        token0.handle = token0Created;
         PassBuilder pass1 = chain.AddPass("Chain1", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             chainB.physical = ctx.GetTexture(chainB.handle);
         });
-        pass1.Read(token0.handle);
-        chainB.handle = pass1.Write(chainBCreated);
-        token1.handle = pass1.Write(token1Created);
+        pass1.Use(token0.handle, Access::ShaderResource);
+        pass1.Use(chainBCreated, Access::RenderTarget);
+        chainB.handle = chainBCreated;
+        pass1.Use(token1Created, Access::RenderTarget);
+        token1.handle = token1Created;
         PassBuilder pass2 = chain.AddPass("Chain2", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
             chainC.physical = ctx.GetTexture(chainC.handle);
         });
-        pass2.Read(token1.handle);
-        chainC.handle = pass2.Write(chainCCreated);
-        chain.ExportTexture(pass2.Write(chainBack));
+        pass2.Use(token1.handle, Access::ShaderResource);
+        pass2.Use(chainCCreated, Access::RenderTarget);
+        chainC.handle = chainCCreated;
+        pass2.Use(chainBack, Access::RenderTarget);
+        chain.ExportTexture(chainBack, Access::Present);
 
         const CompileResult chainCompiled = GraphCompiler::Compile(chain);
         PrintCompileErrors(chainCompiled);
@@ -504,14 +544,18 @@ namespace
             PassBuilder writeFirst = graph.AddPass("WriteFirst", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 first.physical = ctx.GetTexture(first.handle);
             });
-            first.handle = writeFirst.Write(createdA);
-            order.handle = writeFirst.Write(createdOrder);
+            writeFirst.Use(createdA, Access::RenderTarget);
+            first.handle = createdA;
+            writeFirst.Use(createdOrder, Access::RenderTarget);
+            order.handle = createdOrder;
             PassBuilder writeSecond = graph.AddPass("WriteSecond", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
                 second.physical = ctx.GetTexture(second.handle);
             });
-            writeSecond.Read(order.handle);
-            second.handle = writeSecond.Write(createdB);
-            graph.ExportTexture(writeSecond.Write(backImported));
+            writeSecond.Use(order.handle, Access::ShaderResource);
+            writeSecond.Use(createdB, Access::RenderTarget);
+            second.handle = createdB;
+            writeSecond.Use(backImported, Access::RenderTarget);
+            graph.ExportTexture(backImported, Access::Present);
         };
 
         GraphBuilder enabledGraph;

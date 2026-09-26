@@ -11,7 +11,7 @@ namespace renderlab::rdg
     enum class PassFlags : uint32_t
     {
         None = 0,
-        Raster = 1u << 0, // dumps print it; S5.3 infers access from Read/Write, not this flag
+        Raster = 1u << 0, // dumps print it; access comes from Use, not this flag
         // Side-effect flag: the pass and its producers must survive culling
         // (S4.4). Mirrors UE ERDGPassFlags::NeverCull (ue-rdg-survey §4).
         NeverCull = 1u << 1,
@@ -32,14 +32,7 @@ namespace renderlab::rdg
         return a = a | b;
     }
 
-    enum class AccessMode : uint8_t
-    {
-        Read,
-        Write,
-    };
-
-    // Raster access subset (S5.3). Exec infers these from Read/Write + format.
-    // Present is a graph-boundary state only; UAV is deferred.
+    // Raster access subset. Present is a graph-boundary state only.
     enum class Access : uint32_t
     {
         Unknown = 0,
@@ -68,13 +61,50 @@ namespace renderlab::rdg
         Access::ShaderResource | Access::RenderTarget | Access::DepthWrite | Access::Present;
     constexpr Access kWritableMask = Access::RenderTarget | Access::DepthWrite;
     constexpr Access kReadableMask = Access::ShaderResource;
+    constexpr Access kPassUseBits = Access::ShaderResource | Access::RenderTarget | Access::DepthWrite;
+
+    constexpr bool IsSingleAccessBit(Access access)
+    {
+        const uint32_t bits = static_cast<uint32_t>(access);
+        return bits != 0 && (bits & (bits - 1u)) == 0;
+    }
+
+    constexpr bool IsPassUseAccess(Access access)
+    {
+        const uint32_t bits = static_cast<uint32_t>(access);
+        const uint32_t allowed = static_cast<uint32_t>(kPassUseBits);
+        return IsSingleAccessBit(access) && (bits & ~allowed) == 0;
+    }
+
+    constexpr bool IsBoundaryAccess(Access access)
+    {
+        const uint32_t bits = static_cast<uint32_t>(access);
+        const uint32_t allowed = static_cast<uint32_t>(kKnownAccessBits);
+        return IsSingleAccessBit(access) && (bits & ~allowed) == 0;
+    }
+
+    constexpr bool IsWritableAccess(Access access)
+    {
+        return (access & kWritableMask) != Access::Unknown;
+    }
+
+    constexpr const char* ToString(Access access)
+    {
+        switch (access)
+        {
+        case Access::ShaderResource: return "ShaderResource";
+        case Access::RenderTarget: return "RenderTarget";
+        case Access::DepthWrite: return "DepthWrite";
+        case Access::Present: return "Present";
+        default: return "Unknown";
+        }
+    }
 
     struct ResourceAccess
     {
         ResourceKind kind = ResourceKind::Texture;
         uint32_t index = 0;
-        uint32_t version = 0;
-        AccessMode mode = AccessMode::Read;
+        Access access = Access::Unknown;
     };
 
     struct PassRecord

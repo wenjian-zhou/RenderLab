@@ -36,19 +36,6 @@ namespace
         return nullptr;
     }
 
-    const VersionLifetime* FindVersion(
-        std::span<const VersionLifetime> lives, uint32_t resourceIndex, uint32_t version)
-    {
-        for (const VersionLifetime& lifetime : lives)
-        {
-            if (lifetime.resourceIndex == resourceIndex && lifetime.version == version)
-            {
-                return &lifetime;
-            }
-        }
-        return nullptr;
-    }
-
     uint32_t LiveSlot(const CompileResult& result, uint32_t passIndex)
     {
         const auto live = result.GetLivePassOrder();
@@ -82,26 +69,22 @@ int RunRdgLifetimeTests()
     {
         GraphBuilder graph;
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(result.IsSuccess() && result.GetResourceLifetimes().empty() && result.GetVersionLifetimes().empty() &&
+        Check(result.IsSuccess() && result.GetResourceLifetimes().empty() &&
             result.Dump().find("lifetime:") != std::string::npos,
             "Empty graph has no lifetimes");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        auto consumer = graph.AddPass("Consumer", PassFlags::NeverCull);
         auto producer = graph.AddPass("Producer", PassFlags::Raster);
-        resource = producer.Write(resource);
-        consumer.Read(resource);
+        auto consumer = graph.AddPass("Consumer", PassFlags::NeverCull);
+        producer.Use(resource, Access::RenderTarget);
+        consumer.Use(resource, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        const VersionLifetime* version = FindVersion(result.GetVersionLifetimes(), 0, 1);
         const ResourceLifetime* lifetime = FindResource(result.GetResourceLifetimes(), 0);
-        Check(result.IsSuccess() && version != nullptr && version->firstPass == 1 && version->lastPass == 0,
-            "Version first/last are producer then consumer pass indices");
-        Check(lifetime != nullptr && lifetime->firstPass == 1 && lifetime->lastPass == 0 && !lifetime->exported,
-            "Resource interval uses pass indices even when first is numerically greater than last");
-        Check(FindVersion(result.GetVersionLifetimes(), 0, 0) == nullptr,
-            "Unproduced internal v0 is not emitted");
+        Check(result.IsSuccess() && lifetime != nullptr && lifetime->firstPass == 0 && lifetime->lastPass == 1 &&
+            !lifetime->exported,
+            "Resource interval runs from the producer pass to the later consumer");
     }
     {
         GraphBuilder graph;
@@ -109,9 +92,9 @@ int RunRdgLifetimeTests()
         TextureHandle b = MakeTexture(graph, "B");
         auto first = graph.AddPass("First", PassFlags::NeverCull);
         auto second = graph.AddPass("Second", PassFlags::NeverCull);
-        a = first.Write(a);
-        second.Read(a);
-        b = second.Write(b);
+        first.Use(a, Access::RenderTarget);
+        second.Use(a, Access::ShaderResource);
+        second.Use(b, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* lifetimeA = FindResource(result.GetResourceLifetimes(), 0);
         const ResourceLifetime* lifetimeB = FindResource(result.GetResourceLifetimes(), 1);
@@ -125,8 +108,8 @@ int RunRdgLifetimeTests()
         GraphBuilder graph;
         TextureHandle a = MakeTexture(graph, "A");
         TextureHandle b = MakeTexture(graph, "B");
-        graph.AddPass("First", PassFlags::NeverCull).Write(a);
-        graph.AddPass("Second", PassFlags::NeverCull).Write(b);
+        graph.AddPass("First", PassFlags::NeverCull).Use(a, Access::RenderTarget);
+        graph.AddPass("Second", PassFlags::NeverCull).Use(b, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* lifetimeA = FindResource(result.GetResourceLifetimes(), 0);
         const ResourceLifetime* lifetimeB = FindResource(result.GetResourceLifetimes(), 1);
@@ -140,14 +123,12 @@ int RunRdgLifetimeTests()
         GraphBuilder graph;
         TextureHandle other = MakeTexture(graph, "Other");
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
-        graph.AddPass("Writer", PassFlags::NeverCull).Write(other);
-        graph.AddPass("Reader", PassFlags::NeverCull).Read(imported);
+        graph.AddPass("Writer", PassFlags::NeverCull).Use(other, Access::RenderTarget);
+        graph.AddPass("Reader", PassFlags::NeverCull).Use(imported, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 1);
-        const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 1, 0);
         Check(result.IsSuccess() && importedLife != nullptr && importedLife->imported &&
-            importedLife->firstPass == 0 && importedLife->lastPass == 1 &&
-            importedV0 != nullptr && importedV0->firstPass == 1 && importedV0->lastPass == 1,
+            importedLife->firstPass == 0 && importedLife->lastPass == 1,
             "Imported resource is live from graph entry through last live access");
     }
     {
@@ -155,39 +136,35 @@ int RunRdgLifetimeTests()
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         TextureHandle a = MakeTexture(graph, "A");
         TextureHandle b = MakeTexture(graph, "B");
-        graph.AddPass("First", PassFlags::NeverCull).Write(a);
-        graph.AddPass("Second", PassFlags::NeverCull).Write(b);
+        graph.AddPass("First", PassFlags::NeverCull).Use(a, Access::RenderTarget);
+        graph.AddPass("Second", PassFlags::NeverCull).Use(b, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
-        const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 0, 0);
         Check(result.IsSuccess() && importedLife != nullptr && importedLife->imported &&
-            importedLife->firstPass == 0 && importedLife->lastPass == 0 &&
-            importedV0 != nullptr && importedV0->firstPass == 0 && importedV0->lastPass == 0,
+            importedLife->firstPass == 0 && importedLife->lastPass == 0,
             "Unused imported is live at graph entry and is not extended to the last live pass");
     }
     {
         GraphBuilder graph;
         TextureHandle output = MakeTexture(graph, "Output");
         TextureHandle other = MakeTexture(graph, "Other");
-        output = graph.AddPass("Writer", PassFlags::Raster).Write(output);
-        graph.ExportTexture(output);
-        graph.AddPass("Later", PassFlags::NeverCull).Write(other);
+        graph.AddPass("Writer", PassFlags::Raster).Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
+        graph.AddPass("Later", PassFlags::NeverCull).Use(other, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* outputLife = FindResource(result.GetResourceLifetimes(), 0);
-        const VersionLifetime* outputV1 = FindVersion(result.GetVersionLifetimes(), 0, 1);
         const ResourceLifetime* otherLife = FindResource(result.GetResourceLifetimes(), 1);
         Check(result.IsSuccess() && outputLife != nullptr && outputLife->exported &&
             outputLife->firstPass == 0 && outputLife->lastPass == 1 &&
-            outputV1 != nullptr && outputV1->firstPass == 0 && outputV1->lastPass == 0 &&
             otherLife != nullptr && OverlapsOnLiveSchedule(result, *outputLife, *otherLife),
             "Exported last use extends through the last live pass");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Unused", PassFlags::Raster).Write(resource);
+        graph.AddPass("Unused", PassFlags::Raster).Use(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() && result.GetVersionLifetimes().empty() &&
+        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() &&
             !result.GetPassCullStates().empty() && result.GetErrors().size() == 1 &&
             result.GetErrors()[0].category == ErrorCategory::ZeroUseAllocation &&
             result.Dump().find("lifetime: skipped") != std::string::npos,
@@ -197,11 +174,11 @@ int RunRdgLifetimeTests()
         GraphBuilder graph;
         TextureHandle output = MakeTexture(graph, "Output");
         TextureHandle unused = MakeTexture(graph, "Unused");
-        output = graph.AddPass("Live", PassFlags::Raster).Write(output);
-        graph.ExportTexture(output);
-        graph.AddPass("Dead", PassFlags::Raster).Write(unused);
+        graph.AddPass("Live", PassFlags::Raster).Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
+        graph.AddPass("Dead", PassFlags::Raster).Use(unused, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() && result.GetVersionLifetimes().empty() &&
+        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() &&
             result.GetPassCullStates().size() == 2 && result.GetLivePassOrder().size() == 1 &&
             result.GetErrors().size() == 1 && result.GetErrors()[0].category == ErrorCategory::ZeroUseAllocation &&
             result.GetErrors()[0].resourceName == "Unused",
@@ -222,11 +199,8 @@ int RunRdgLifetimeTests()
         graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
-        const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 0, 0);
         Check(result.IsSuccess() && importedLife != nullptr && importedLife->imported &&
             importedLife->firstPass == Error::kNoPass && importedLife->lastPass == Error::kNoPass &&
-            importedV0 != nullptr && importedV0->firstPass == Error::kNoPass &&
-            importedV0->lastPass == Error::kNoPass &&
             result.Dump().find("first=none") != std::string::npos,
             "Imported with an empty live schedule uses none for both ends");
     }
@@ -235,9 +209,9 @@ int RunRdgLifetimeTests()
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
         TextureHandle a = MakeTexture(graph, "A");
         TextureHandle b = MakeTexture(graph, "B");
-        graph.ExportTexture(imported);
-        graph.AddPass("First", PassFlags::NeverCull).Write(a);
-        graph.AddPass("Second", PassFlags::NeverCull).Write(b);
+        graph.ExportTexture(imported, Access::RenderTarget);
+        graph.AddPass("First", PassFlags::NeverCull).Use(a, Access::RenderTarget);
+        graph.AddPass("Second", PassFlags::NeverCull).Use(b, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
         Check(result.IsSuccess() && importedLife != nullptr && importedLife->imported && importedLife->exported &&
@@ -247,44 +221,37 @@ int RunRdgLifetimeTests()
     {
         GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
-        graph.AddPass("Writer", PassFlags::Raster).Write(imported);
+        graph.AddPass("Writer", PassFlags::Raster).Use(imported, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph);
-        const VersionLifetime* importedV0 = FindVersion(result.GetVersionLifetimes(), 0, 0);
-        const VersionLifetime* importedV1 = FindVersion(result.GetVersionLifetimes(), 0, 1);
         const ResourceLifetime* importedLife = FindResource(result.GetResourceLifetimes(), 0);
-        Check(result.IsSuccess() && importedV0 != nullptr && importedV0->firstPass == 0 && importedV0->lastPass == 0 &&
-            importedV1 != nullptr && importedV1->firstPass == 0 && importedV1->lastPass == 0 &&
-            importedLife != nullptr && importedLife->imported && importedLife->firstPass == 0 &&
-            importedLife->lastPass == 0,
-            "Overwritten imported v0 is pinned at graph entry");
+        Check(result.IsSuccess() && importedLife != nullptr && importedLife->imported &&
+            importedLife->firstPass == 0 && importedLife->lastPass == 0,
+            "An imported write is one resource interval pinned at that live pass");
     }
     {
         GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture(TextureDesc{"Imported", 8, 8, Format::RGBA8Unorm});
-        graph.AddPass("Reader", PassFlags::NeverCull).Read(imported);
+        graph.AddPass("Reader", PassFlags::NeverCull).Use(imported, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        const VersionLifetime* version = FindVersion(result.GetVersionLifetimes(), 0, 0);
         const ResourceLifetime* lifetime = FindResource(result.GetResourceLifetimes(), 0);
-        Check(result.IsSuccess() && version != nullptr && version->firstPass == 0 && version->lastPass == 0 &&
-            lifetime != nullptr && lifetime->imported && lifetime->firstPass == 0 && lifetime->lastPass == 0,
-            "Read-only imported v0 still gets first/last from the live read");
+        Check(result.IsSuccess() && lifetime != nullptr && lifetime->imported && lifetime->firstPass == 0 &&
+            lifetime->lastPass == 0,
+            "Read-only imported still gets first/last from the live read");
     }
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Unused", PassFlags::Raster).Write(resource);
+        graph.AddPass("Unused", PassFlags::Raster).Use(resource, Access::RenderTarget);
         const CompileResult result = GraphCompiler::Compile(graph, CompileOptions{.disableCulling = true});
         const ResourceLifetime* lifetime = FindResource(result.GetResourceLifetimes(), 0);
-        const VersionLifetime* version = FindVersion(result.GetVersionLifetimes(), 0, 1);
-        Check(result.IsSuccess() && lifetime != nullptr && lifetime->firstPass == 0 && lifetime->lastPass == 0 &&
-            version != nullptr && version->firstPass == 0 && version->lastPass == 0,
+        Check(result.IsSuccess() && lifetime != nullptr && lifetime->firstPass == 0 && lifetime->lastPass == 0,
             "Disabled culling treats an unused writer as a live use");
     }
     {
         GraphBuilder graph;
         TextureHandle output = MakeTexture(graph, "Output");
-        output = graph.AddPass("Writer", PassFlags::Raster).Write(output);
-        graph.ExportTexture(output);
+        graph.AddPass("Writer", PassFlags::Raster).Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
         const CompileResult first = GraphCompiler::Compile(graph);
         Check(first.Dump() == GraphCompiler::Compile(graph).Dump() &&
             first.Dump().find("lifetime:") != std::string::npos &&
@@ -294,9 +261,9 @@ int RunRdgLifetimeTests()
     {
         GraphBuilder graph;
         TextureHandle resource = MakeTexture(graph);
-        graph.AddPass("Invalid", PassFlags::Raster).Read(resource);
+        graph.AddPass("Invalid", PassFlags::Raster).Use(resource, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() && result.GetVersionLifetimes().empty() &&
+        Check(!result.IsSuccess() && result.GetResourceLifetimes().empty() &&
             result.Dump().find("lifetime: skipped") != std::string::npos,
             "Builder errors skip lifetime results");
     }
@@ -306,14 +273,15 @@ int RunRdgLifetimeTests()
         TextureHandle second = MakeTexture(graph, "Second");
         auto passA = graph.AddPass("A", PassFlags::Raster);
         auto passB = graph.AddPass("B", PassFlags::Raster);
-        first = passA.Write(first);
-        second = passB.Write(second);
-        passA.Read(second);
-        passB.Read(first);
+        passA.Use(first, Access::RenderTarget);
+        passB.Use(second, Access::RenderTarget);
+        passA.Use(second, Access::ShaderResource);
+        passB.Use(first, Access::ShaderResource);
         const CompileResult result = GraphCompiler::Compile(graph);
-        Check(!result.IsSuccess() && result.HasCycle() && result.GetResourceLifetimes().empty() &&
-            result.GetVersionLifetimes().empty() && result.Dump().find("lifetime: skipped") != std::string::npos,
-            "Cycles skip lifetime results");
+        Check(!result.IsSuccess() && result.GetErrors()[0].category == ErrorCategory::ReadBeforeProduce &&
+            result.GetResourceLifetimes().empty() && result.Dump().find("lifetime: skipped") != std::string::npos &&
+            result.Dump().find("cycle:") == std::string::npos,
+            "A backward read skips lifetime results");
     }
     return failures;
 }

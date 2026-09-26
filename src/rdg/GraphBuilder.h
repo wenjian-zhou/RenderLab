@@ -25,14 +25,12 @@ namespace renderlab::rdg
     {
         NullHandle,
         ForeignGraph,
-        StaleVersion,
         TypeMismatch,
         InvalidName,
         InvalidDescriptor,
         InvalidPassFlags,
         ReadBeforeProduce,
         DuplicateWrite,
-        SupersededUse,
         IncompatibleAccess,
         ZeroUseAllocation,
         UndeclaredAccess,
@@ -57,38 +55,31 @@ namespace renderlab::rdg
         std::string resourceName;
     };
 
-    struct ResourceVersionRecord
-    {
-        uint32_t producerPass = Error::kNoPass;
-        std::vector<uint32_t> readerPasses;
-        bool produced = false;
-    };
-
     struct ResourceRecord
     {
         std::string name;
         ResourceKind kind = ResourceKind::Texture;
         std::variant<TextureDesc, BufferDesc> desc;
         bool imported = false; // UE bExternal
-        bool exported = false; // UE bExtracted; imported || exported is a cull root (S4.4)
-        uint32_t currentVersion = 0;
-        std::vector<ResourceVersionRecord> versions;
+        bool exported = false; // UE bExtracted; imported || exported is a cull root when written
+        bool hasInitialAccess = false;
+        Access initialAccess = Access::Unknown;
+        bool hasFinalAccess = false;
+        Access finalAccess = Access::Unknown;
     };
 
     class GraphBuilder;
 
     // Declaration scope for one pass, returned by GraphBuilder::AddPass. A
-    // default PassBuilder is invalid; read/write on it are no-ops.
+    // default PassBuilder is invalid; Use on it is a no-op.
     class PassBuilder
     {
     public:
         bool IsValid() const { return m_builder != nullptr; }
         uint32_t PassIndex() const { return m_passIndex; }
 
-        void Read(TextureHandle handle);
-        void Read(BufferHandle handle);
-        TextureHandle Write(TextureHandle handle);
-        BufferHandle Write(BufferHandle handle);
+        void Use(TextureHandle handle, Access access);
+        void Use(BufferHandle handle, Access access);
 
     private:
         friend class GraphBuilder;
@@ -125,8 +116,10 @@ namespace renderlab::rdg
 
         const PassLambda* FindLambda(uint32_t passIndex) const;
 
-        void ExportTexture(TextureHandle handle);
-        void ExportBuffer(BufferHandle handle);
+        void SetInitialAccess(TextureHandle handle, Access access);
+        void SetInitialAccess(BufferHandle handle, Access access);
+        void ExportTexture(TextureHandle handle, Access finalAccess);
+        void ExportBuffer(BufferHandle handle, Access finalAccess);
 
         std::span<const Error> GetErrors() const { return m_errors; }
         void AssertNoErrors() const;
@@ -135,7 +128,6 @@ namespace renderlab::rdg
         const PassRecord& GetPass(uint32_t passIndex) const;
         size_t GetResourceCount() const { return m_resources.size(); }
         const ResourceRecord& GetResource(uint32_t resourceIndex) const;
-        std::string DumpVersions() const;
 
     private:
         friend class PassBuilder;
@@ -145,22 +137,28 @@ namespace renderlab::rdg
         bool ValidateTextureDesc(const TextureDesc& desc);
         bool ValidateBufferDesc(const BufferDesc& desc);
 
-        bool DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode);
-        bool DeclareAccess(uint32_t passIndex, BufferHandle handle, AccessMode mode);
-        TextureHandle DeclareWrite(uint32_t passIndex, TextureHandle handle);
-        BufferHandle DeclareWrite(uint32_t passIndex, BufferHandle handle);
-        bool DeclareAccessInternal(
+        bool DeclareUse(uint32_t passIndex, TextureHandle handle, Access access);
+        bool DeclareUse(uint32_t passIndex, BufferHandle handle, Access access);
+        bool DeclareUseInternal(
             uint32_t passIndex,
             ResourceKind kind,
             uint32_t index,
-            uint32_t version,
             uint32_t graphId,
-            AccessMode mode);
-        void ExportResource(ResourceKind kind, uint32_t index, uint32_t version, uint32_t graphId);
+            Access access);
+        void SetInitialAccessInternal(
+            ResourceKind kind,
+            uint32_t index,
+            uint32_t graphId,
+            Access access);
+        void ExportResource(
+            ResourceKind kind,
+            uint32_t index,
+            uint32_t graphId,
+            Access finalAccess);
+        bool HasWritableUse(uint32_t index) const;
         const ResourceRecord* ResolveHandle(
             ResourceKind kind,
             uint32_t index,
-            uint32_t version,
             uint32_t graphId,
             uint32_t passIndex,
             const std::string& passName,

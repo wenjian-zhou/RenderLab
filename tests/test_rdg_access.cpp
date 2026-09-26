@@ -31,7 +31,7 @@ namespace
     void CheckFormatMapAgreement(Format format, const char* message)
     {
         const TextureDesc desc{"t", 8, 8, format};
-        const Access initial = InferAccess(AccessMode::Write, ResourceKind::Texture, format);
+        const Access initial = format == Format::D32Float ? Access::DepthWrite : Access::RenderTarget;
         Check(ToNvStates(initial) == MakeTextureDesc(desc).initialState, message);
     }
 
@@ -85,7 +85,7 @@ namespace
 
     void CheckWriteSame(const PassResourceState* state, Access access, const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Write && state->before == access &&
+        Check(state != nullptr && state->before == access &&
                   state->required == access && state->after == access,
             message);
     }
@@ -96,7 +96,7 @@ namespace
         Access after,
         const char* message)
     {
-        Check(state != nullptr && state->mode == AccessMode::Read && state->before == before &&
+        Check(state != nullptr && state->before == before &&
                   state->required == after && state->after == after,
             message);
     }
@@ -135,15 +135,6 @@ int RunRdgAccessTests()
     Check(IsSingleKnownAccess(Access::Present), "Present is single known");
     Check(!IsSingleKnownAccess(Access::ShaderResource | Access::RenderTarget), "SR|RT rejected");
     Check(ToNvStates(Access::Unknown) == nvrhi::ResourceStates::Unknown, "Unknown maps to Unknown");
-    Check(InferAccess(AccessMode::Read, ResourceKind::Texture, Format::RGBA16Float) == Access::ShaderResource,
-        "read is SR");
-    Check(InferAccess(AccessMode::Write, ResourceKind::Texture, Format::D32Float) == Access::DepthWrite,
-        "depth write");
-    Check(InferAccess(AccessMode::Write, ResourceKind::Texture, Format::SRGBA8Unorm) == Access::RenderTarget,
-        "color write");
-    Check(InferAccess(AccessMode::Write, ResourceKind::Buffer, Format::Unknown) == Access::Unknown,
-        "buffer write unmapped");
-
     CheckFormatMapAgreement(Format::SRGBA8Unorm, "SRGBA8Unorm initial matches FormatMap");
     CheckFormatMapAgreement(Format::RGBA8Unorm, "RGBA8Unorm initial matches FormatMap");
     CheckFormatMapAgreement(Format::RGBA16Float, "RGBA16Float initial matches FormatMap");
@@ -219,7 +210,7 @@ int RunRdgAccessTests()
             Access::ShaderResource,
             "PostProcess reads HDR RT to SR");
         const PassResourceState* postBackBuffer = FindPassState(plan, "PostProcess", "BackBuffer");
-        Check(postBackBuffer != nullptr && postBackBuffer->mode == AccessMode::Write &&
+        Check(postBackBuffer != nullptr &&
                   postBackBuffer->before == Access::Present &&
                   postBackBuffer->required == Access::RenderTarget &&
                   postBackBuffer->after == Access::RenderTarget,
@@ -268,13 +259,13 @@ int RunRdgAccessTests()
         TextureHandle color = builder.CreateTexture({"Color", 8, 8, Format::RGBA8Unorm});
         TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
         PassBuilder writer = builder.AddPass("W", PassFlags::Raster);
-        color = writer.Write(color);
+        writer.Use(color, Access::RenderTarget);
         PassBuilder firstRead = builder.AddPass("R1", PassFlags::Raster | PassFlags::NeverCull);
-        firstRead.Read(color);
+        firstRead.Use(color, Access::ShaderResource);
         PassBuilder secondRead = builder.AddPass("R2", PassFlags::Raster);
-        secondRead.Read(color);
-        out = secondRead.Write(out);
-        builder.ExportTexture(out);
+        secondRead.Use(color, Access::ShaderResource);
+        secondRead.Use(out, Access::RenderTarget);
+        builder.ExportTexture(out, Access::RenderTarget);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.Plan();
         const AccessPlan& plan = executor.GetAccessPlan();
@@ -295,13 +286,13 @@ int RunRdgAccessTests()
         TextureHandle color = builder.CreateTexture({"Color", 8, 8, Format::RGBA8Unorm});
         TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
         PassBuilder producer = builder.AddPass("Producer", PassFlags::Raster);
-        color = producer.Write(color);
+        producer.Use(color, Access::RenderTarget);
         PassBuilder extra = builder.AddPass("Extra", PassFlags::Raster);
-        extra.Read(color);
+        extra.Use(color, Access::ShaderResource);
         PassBuilder consumer = builder.AddPass("Consumer", PassFlags::Raster);
-        consumer.Read(color);
-        out = consumer.Write(out);
-        builder.ExportTexture(out);
+        consumer.Use(color, Access::ShaderResource);
+        consumer.Use(out, Access::RenderTarget);
+        builder.ExportTexture(out, Access::RenderTarget);
         const CompileResult compiled = GraphCompiler::Compile(builder);
         Check(compiled.IsSuccess(), "Culled-extra graph compiles");
         bool extraCulled = false;
@@ -323,18 +314,18 @@ int RunRdgAccessTests()
 
     {
         GraphBuilder builder;
-        BufferHandle buffer = builder.CreateBuffer({"Scratch", 4, 8});
+        BufferHandle buffer = builder.ImportBuffer({"Scratch", 4, 8});
         TextureHandle out = builder.CreateTexture({"Out", 8, 8, Format::RGBA8Unorm});
         PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        buffer = pass.Write(buffer);
-        out = pass.Write(out);
-        builder.ExportTexture(out);
+        pass.Use(buffer, Access::ShaderResource);
+        pass.Use(out, Access::RenderTarget);
+        builder.ExportTexture(out, Access::RenderTarget);
         const CompileResult compiled = GraphCompiler::Compile(builder);
-        Check(compiled.IsSuccess(), "Buffer-write graph compiles");
+        Check(compiled.IsSuccess(), "Import without initial access still compiles");
         GraphExecutor executor(builder, compiled);
         executor.Plan();
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnknownAccess),
-            "Buffer write is UnknownAccess");
+            "Import without SetInitialAccess is UnknownAccess");
         Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Failed Plan leaves dump empty");
         bool namedBuffer = false;
         for (const Error& error : executor.GetErrors())
@@ -353,10 +344,10 @@ int RunRdgAccessTests()
         TextureHandle second = builder.CreateTexture({"Second", 8, 8, Format::RGBA8Unorm});
         PassBuilder passA = builder.AddPass("A", PassFlags::Raster);
         PassBuilder passB = builder.AddPass("B", PassFlags::Raster);
-        first = passA.Write(first);
-        second = passB.Write(second);
-        passA.Read(second);
-        passB.Read(first);
+        passA.Use(first, Access::RenderTarget);
+        passB.Use(second, Access::RenderTarget);
+        passA.Use(second, Access::ShaderResource);
+        passB.Use(first, Access::ShaderResource);
         GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         executor.Plan();
         Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
@@ -384,8 +375,9 @@ int RunRdgAccessTests()
         PassBuilder pass = graph.AddPass("P", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
             ran = true;
         });
-        output = pass.Write(imported);
-        graph.ExportTexture(output);
+        pass.Use(imported, Access::RenderTarget);
+        output = imported;
+        graph.ExportTexture(output, Access::RenderTarget);
         GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(ran && executor.GetErrors().empty(), "Execute without Plan still runs");

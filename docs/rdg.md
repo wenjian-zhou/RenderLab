@@ -1,8 +1,17 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.7; Stage 5 / M2 is satisfied)
+Status: **active design note — Stage 5** (implemented through S5.7; Stage 5 / M2 is satisfied). The current resource identity and barrier model is [ADR-005](adr/ADR-005-rdg-ue-resource-identity.md).
 
-Step: S5.7
+Step: S5.7, then ADR-005
+
+One texture or buffer has one handle (`index`, `graphId`). Passes declare
+`Use(handle, Access)`. Order is `AddPass` order. Edges run from the last
+earlier writer to a later reader. Initial and final access are explicit.
+`GraphExecutor::Execute` issues the barriers. Collected errors, public
+`Compile()`, cull reasons, text/DOT dumps, S5.7 reuse, and pass `Execute`
+owning `setGraphicsState` are unchanged. The sections below that describe
+versioned handles, `Read` / `Write`, RAW/WAR/WAW edges, and topological
+order are the Stage 4–S5.7 record; ADR-005 replaces that identity model.
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -23,8 +32,9 @@ How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
-[`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md) and
-[`adr/ADR-004-rdg-single-module.md`](adr/ADR-004-rdg-single-module.md); this file does
+[`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md),
+[`adr/ADR-004-rdg-single-module.md`](adr/ADR-004-rdg-single-module.md), and
+[`adr/ADR-005-rdg-ue-resource-identity.md`](adr/ADR-005-rdg-ue-resource-identity.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
 the S4.2–S4.6 code — version history, the declaration flow, the per-method
