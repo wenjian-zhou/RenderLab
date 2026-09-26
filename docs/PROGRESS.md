@@ -1728,7 +1728,7 @@ Next step: S5.7 - Add conservative transient reuse and statistics
 Step: S5.7
 State: Complete
 Date: 2026-09-26
-Commit: uncommitted working tree
+Commit: 861c78b
 Design: PlanTransientReuse, called from GraphExecutor::Allocate, aliases
   exact-compatible Create* resources whose closed live-slot intervals do
   not overlap. The key is texture format+width+height or buffer
