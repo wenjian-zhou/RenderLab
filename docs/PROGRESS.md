@@ -1671,7 +1671,7 @@ Next step: S5.6 - Migrate GBuffer and remove the manual scheduler
 Step: S5.6
 State: Complete
 Date: 2026-09-26
-Commit: uncommitted working tree
+Commit: 2ab4160
 Design: BuildRasterFrameGraph declares Final, LightingDebug, and
   GBufferDebug. GBuffer debug omits HDR and DeferredLighting (no
   ZeroUseAllocation). ExecGraph::AddPass stores the lambda by pass index.
