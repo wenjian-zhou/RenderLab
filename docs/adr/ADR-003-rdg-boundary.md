@@ -272,3 +272,19 @@ issue `setTextureState`. FormatMap is not flipped. GBuffer creation/raster
 and LightingDebug / GBufferDebug present stay manual. After lighting, the
 app `copyTexture`s RDG HDR into the persistent `HDRSceneColorTarget` mirror
 for capture. `--dump-rdg` stays the M1-shaped representative.
+
+## S5.6 Extension (2026-09-26)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`, and `GraphBuilder::AddPass` still has no
+lambda. `ExecGraph::AddPass` in `RenderLabRdgExec` stores the pass lambda
+by index. `GraphExecutor::Execute(ICommandList*)` is the only public run
+entry; it walks the live order and skips culled passes. `Compile()` stays
+a public CPU step. Scheduling facts stay on `PassFlags` and accesses, so a
+later DXR or async-compute pass does not read the `std::function`.
+`SelectCommandList` is the queue seam and currently returns the graphics
+list. Production frames declare the S5.6 raster graph (GBuffer/depth/HDR
+Create*+Allocate, one present pass). GBuffer debug omits HDR and
+DeferredLighting. The app does not mirror those textures and does not copy
+HDR. `--manual-tonemap` is gone. `--dump-rdg` stays the M1-shaped
+representative. A GBuffer-debug frame does not produce HDRSceneColor.

@@ -34,6 +34,12 @@ namespace renderlab::rdg::exec
         m_registry.Reset(builder.GetResourceCount());
     }
 
+    GraphExecutor::GraphExecutor(const ExecGraph& graph, const CompileResult& result)
+        : GraphExecutor(graph.Builder(), result)
+    {
+        m_graph = &graph;
+    }
+
     GraphExecutor::~GraphExecutor() = default;
 
     void GraphExecutor::SetDevice(nvrhi::IDevice* device)
@@ -429,34 +435,62 @@ namespace renderlab::rdg::exec
         return physical;
     }
 
-    void GraphExecutor::ExecutePass(uint32_t passIndex, const std::function<void(PassContext&)>& callback)
+    nvrhi::ICommandList* GraphExecutor::SelectCommandList(
+        uint32_t passIndex,
+        nvrhi::ICommandList* graphicsCommandList) const
     {
-        if (!m_compileSuccess || passIndex >= m_builder->GetPassCount())
-        {
-            AddError(
-                ErrorCategory::InvalidPass,
-                std::format("ExecutePass({}) is not a live compiled pass", passIndex),
-                passIndex >= m_builder->GetPassCount() ? Error::kNoPass : passIndex,
-                passIndex < m_builder->GetPassCount() ? m_builder->GetPass(passIndex).name : "",
-                "");
-            return;
-        }
+        // Raster passes use the graphics list. A later PassFlags value can
+        // choose a different list here without changing Execute()'s loop.
+        (void)passIndex;
+        return graphicsCommandList;
+    }
 
-        if (passIndex >= m_cullStates.size() || m_cullStates[passIndex].culled)
+    bool GraphExecutor::RunLivePass(nvrhi::ICommandList* commandList, uint32_t passIndex)
+    {
+        const std::string& passName = m_builder->GetPass(passIndex).name;
+        const PassLambda* lambda = m_graph != nullptr ? m_graph->FindLambda(passIndex) : nullptr;
+        if (lambda == nullptr)
         {
-            const std::string& passName = m_builder->GetPass(passIndex).name;
             AddError(
                 ErrorCategory::InvalidPass,
-                std::format("ExecutePass({}) pass '{}' is culled or has no cull state", passIndex, passName),
+                std::format("Execute() pass '{}' has no lambda", passName),
                 passIndex,
                 passName,
                 "");
-            return;
+            return false;
         }
 
         m_context.Activate(*this, passIndex, m_builder->GetPass(passIndex).accesses);
-        callback(m_context);
+        (*lambda)(commandList, m_context);
         m_context.Deactivate();
+        return true;
+    }
+
+    void GraphExecutor::Execute(nvrhi::ICommandList* graphicsCommandList)
+    {
+        if (!m_compileSuccess)
+        {
+            AddError(
+                ErrorCategory::InvalidPass,
+                "Execute() on a failed compile",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+
+        for (const uint32_t passIndex : m_livePassOrder)
+        {
+            if (passIndex >= m_cullStates.size() || m_cullStates[passIndex].culled)
+            {
+                continue;
+            }
+            nvrhi::ICommandList* commandList = SelectCommandList(passIndex, graphicsCommandList);
+            if (!RunLivePass(commandList, passIndex))
+            {
+                return;
+            }
+        }
     }
 
     void GraphExecutor::AssertNoErrors() const

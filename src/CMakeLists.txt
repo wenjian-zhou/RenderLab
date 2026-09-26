@@ -54,6 +54,8 @@ set(RENDERLAB_RDG_SOURCES
     rdg/M1ShapedGraph.cpp
     rdg/ToneMapGraph.h
     rdg/ToneMapGraph.cpp
+    rdg/RasterFrameGraph.h
+    rdg/RasterFrameGraph.cpp
     rdg/LightingPresentGraph.h
     rdg/LightingPresentGraph.cpp
 )
@@ -94,6 +96,8 @@ set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/PassContext.cpp
     rdg/exec/GraphExecutor.h
     rdg/exec/GraphExecutor.cpp
+    rdg/exec/ExecGraph.h
+    rdg/exec/ExecGraph.cpp
     rdg/exec/FormatMap.h
     rdg/exec/FormatMap.cpp
     rdg/exec/AccessMap.h

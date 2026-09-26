@@ -4,13 +4,12 @@
 #include "renderer/DeferredLightingPass.h"
 #include "renderer/GBufferDebugPass.h"
 #include "renderer/GBufferPass.h"
-#include "renderer/GBufferTargets.h"
-#include "renderer/HDRSceneColorTarget.h"
 #include "renderer/LightingDebugPass.h"
 #include "renderer/LightingContract.h"
 #include "renderer/PostProcessPass.h"
 #include "renderer/RendererData.h"
-#include "rdg/ToneMapGraph.h"
+#include "rdg/exec/ExecGraph.h"
+#include "rdg/exec/GraphExecutor.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
@@ -81,13 +80,27 @@ namespace renderlab
         uint32_t dumpCount = 0;
     };
 
+    // Non-owning textures from the frame that just executed. Valid until the
+    // next RenderScene or BackBufferResizing drops the executor.
+    struct RasterFrameSnapshot
+    {
+        nvrhi::ITexture* gbufferA = nullptr;
+        nvrhi::ITexture* gbufferB = nullptr;
+        nvrhi::ITexture* gbufferC = nullptr;
+        nvrhi::ITexture* gbufferDepth = nullptr;
+        nvrhi::ITexture* hdrSceneColor = nullptr;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        bool valid = false;
+        bool hasHdr = false;
+    };
+
     struct AppLaunchOptions
     {
         ResolvedScene scene;
         CameraPreset camera;
         bool lockCamera = false;
         bool verifyLights = false;
-        bool manualTonemap = false;
         PresentSource presentSource = kDefaultPresentSource;
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
         LightingDebugMode lightingView = LightingDebugMode::Lit;
@@ -107,8 +120,7 @@ namespace renderlab
             donut::app::DeviceManager* deviceManager,
             const DeviceCapabilities& capabilities,
             const SceneHudState& sceneHud,
-            const GBufferTargets& gbuffer,
-            const HDRSceneColorTarget& hdrSceneColor,
+            const RasterFrameSnapshot& frameSnapshot,
             const GBufferPassHud& gbufferPassHud,
             const DeferredLightingPassHud& deferredLightingHud,
             const PostProcessPassHud& postProcessHud,
@@ -123,8 +135,7 @@ namespace renderlab
     private:
         DeviceCapabilities m_capabilities;
         const SceneHudState& m_sceneHud;
-        const GBufferTargets& m_gbuffer;
-        const HDRSceneColorTarget& m_hdrSceneColor;
+        const RasterFrameSnapshot& m_frameSnapshot;
         const GBufferPassHud& m_gbufferPassHud;
         const DeferredLightingPassHud& m_deferredLightingHud;
         const PostProcessPassHud& m_postProcessHud;
@@ -148,8 +159,7 @@ namespace renderlab
         bool Init();
         const DeviceCapabilities& GetCapabilities() const;
         const SceneHudState& GetSceneHud() const;
-        const GBufferTargets& GetGBufferTargets() const;
-        const HDRSceneColorTarget& GetHDRSceneColorTarget() const;
+        const RasterFrameSnapshot& GetFrameSnapshot() const;
         const GBufferPassHud& GetGBufferPassHud() const;
         const DeferredLightingPassHud& GetDeferredLightingPassHud() const;
         const PostProcessPassHud& GetPostProcessPassHud() const;
@@ -188,15 +198,19 @@ namespace renderlab
         void RebuildDrawList();
         void UpdateFrameViewConstants();
         void UpdateDebugHud();
-        void ExecuteToneMap(
-            nvrhi::ICommandList* commandList,
-            nvrhi::ITexture* hdr,
-            nvrhi::ITexture* output,
-            rdg::ToneMapOutput outputKind);
-        void ExecuteLightingPresent(
-            nvrhi::ICommandList* commandList,
-            nvrhi::ITexture* output,
-            rdg::ToneMapOutput outputKind);
+        void ReleaseFrameGraph();
+        void ExecuteRasterFrame(nvrhi::ITexture* backBuffer);
+        void LogRasterFrameErrors() const;
+
+        struct RasterFrameHandles
+        {
+            rdg::TextureHandle gbufferA;
+            rdg::TextureHandle gbufferB;
+            rdg::TextureHandle gbufferC;
+            rdg::TextureHandle gbufferDepth;
+            rdg::TextureHandle hdrWritten;
+            rdg::TextureHandle outputWritten;
+        };
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;
@@ -210,8 +224,6 @@ namespace renderlab
         FrameConstants m_frameConstants = {};
         ViewConstants m_viewConstants = {};
         LightingConstants m_lightingConstants = {};
-        GBufferTargets m_gbuffer;
-        HDRSceneColorTarget m_hdrSceneColor;
         GBufferPass m_gbufferPass;
         DeferredLightingPass m_deferredLightingPass;
         GBufferDebugPass m_gbufferDebugPass;
@@ -225,5 +237,11 @@ namespace renderlab
         bool m_hdrDumpSucceeded = false;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
+        std::unique_ptr<rdg::exec::ExecGraph> m_frameGraph;
+        std::unique_ptr<rdg::exec::GraphExecutor> m_frameExecutor;
+        RasterFrameHandles m_frameHandles;
+        RasterFrameSnapshot m_frameSnapshot;
+        bool m_stopRasterFrame = false;
+        bool m_framePresented = false;
     };
 }

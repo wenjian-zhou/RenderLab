@@ -1,11 +1,11 @@
 #include "rdg/GraphCompiler.h"
-#include "rdg/M1ShapedGraph.h"
 #include "rdg/exec/FormatMap.h"
 #include "rdg/exec/GraphExecutor.h"
 
 #include <cstdio>
 #include <span>
 #include <string>
+#include <utility>
 
 using namespace renderlab::rdg;
 using namespace renderlab::rdg::exec;
@@ -37,17 +37,51 @@ namespace
         return false;
     }
 
-    TextureHandle FindTexture(const GraphBuilder& builder, const char* name)
+    struct M1ExecGraph
     {
-        for (uint32_t i = 0; i < builder.GetResourceCount(); ++i)
-        {
-            const ResourceRecord& record = builder.GetResource(i);
-            if (record.name == name && record.kind == ResourceKind::Texture)
-            {
-                return TextureHandle{i, record.currentVersion, builder.GetGraphId()};
-            }
-        }
-        return {};
+        ExecGraph graph;
+        TextureHandle gbufferA;
+        TextureHandle gbufferB;
+        TextureHandle gbufferC;
+        TextureHandle gbufferDepth;
+        TextureHandle hdr;
+        TextureHandle backBuffer;
+        TextureHandle backImported;
+    };
+
+    void BuildM1Exec(
+        M1ExecGraph& built, PassLambda gbufferPass, PassLambda deferredPass, PassLambda postPass)
+    {
+        TextureHandle gbufferA = built.graph.CreateTexture({"GBufferA", 1280, 720, Format::SRGBA8Unorm});
+        TextureHandle gbufferB = built.graph.CreateTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
+        TextureHandle gbufferC = built.graph.CreateTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
+        TextureHandle gbufferDepth = built.graph.CreateTexture({"GBufferDepth", 1280, 720, Format::D32Float});
+        TextureHandle hdr = built.graph.CreateTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
+        built.backImported = built.graph.ImportTexture({"BackBuffer", 1280, 720, Format::SRGBA8Unorm});
+
+        PassBuilder gbuffer = built.graph.AddPass("GBuffer", PassFlags::Raster, std::move(gbufferPass));
+        built.gbufferA = gbuffer.Write(gbufferA);
+        built.gbufferB = gbuffer.Write(gbufferB);
+        built.gbufferC = gbuffer.Write(gbufferC);
+        built.gbufferDepth = gbuffer.Write(gbufferDepth);
+
+        PassBuilder deferred =
+            built.graph.AddPass("DeferredLighting", PassFlags::Raster, std::move(deferredPass));
+        deferred.Read(built.gbufferA);
+        deferred.Read(built.gbufferB);
+        deferred.Read(built.gbufferC);
+        deferred.Read(built.gbufferDepth);
+        built.hdr = deferred.Write(hdr);
+
+        PassBuilder post = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(postPass));
+        post.Read(built.hdr);
+        built.backBuffer = post.Write(built.backImported);
+        built.graph.ExportTexture(built.backBuffer);
+    }
+
+    PassLambda Noop()
+    {
+        return [](nvrhi::ICommandList*, PassContext&) {};
     }
 
     void RunFormatMapTests()
@@ -130,72 +164,87 @@ int RunRdgAllocTests()
     RunFormatMapTests();
 
     {
-        GraphBuilder builder;
-        TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
-        TextureHandle internal = builder.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
-        PassBuilder produce = builder.AddPass("Produce", PassFlags::Raster);
-        internal = produce.Write(internal);
-        PassBuilder consume = builder.AddPass("Consume", PassFlags::Raster);
+        ExecGraph graph;
+        TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        TextureHandle internalCreated = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
+        TextureHandle internal;
+        TextureHandle output;
+        const PhysicalTexture* resolved = nullptr;
+        PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            resolved = ctx.GetTexture(internal);
+        });
+        internal = produce.Write(internalCreated);
+        PassBuilder consume = graph.AddPass("Consume", PassFlags::Raster, Noop());
         consume.Read(internal);
-        output = consume.Write(output);
-        builder.ExportTexture(output);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        output = consume.Write(outputImported);
+        graph.ExportTexture(output);
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
         const AllocationStats before = executor.GetAllocationStats();
         Check(before.textureCount == 0 && before.bufferCount == 0 && before.estimatedBytes == 0,
               "Stats are zero before Allocate");
         executor.Allocate();
-        const PhysicalTexture* resolved = nullptr;
-        executor.ExecutePass(0, [&](PassContext& ctx) { resolved = ctx.GetTexture(internal); });
+        executor.Execute(nullptr);
         Check(resolved != nullptr && resolved->native != nullptr, "Allocated internal texture resolves");
         Check(resolved != nullptr && resolved->debugName == "Temp", "Allocated texture keeps debug name");
         Check(executor.GetErrors().empty(), "Successful Allocate records no errors");
     }
 
     {
-        GraphBuilder builder;
-        TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
-        BufferHandle internal = builder.CreateBuffer({"Scratch", 16, 4});
-        PassBuilder produce = builder.AddPass("Produce", PassFlags::Raster);
-        internal = produce.Write(internal);
-        PassBuilder consume = builder.AddPass("Consume", PassFlags::Raster);
-        consume.Read(internal);
-        output = consume.Write(output);
-        builder.ExportTexture(output);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.Allocate();
+        ExecGraph graph;
+        TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        BufferHandle internalCreated = graph.CreateBuffer({"Scratch", 16, 4});
+        BufferHandle internal;
+        TextureHandle output;
         const PhysicalBuffer* resolved = nullptr;
-        executor.ExecutePass(0, [&](PassContext& ctx) { resolved = ctx.GetBuffer(internal); });
+        PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            resolved = ctx.GetBuffer(internal);
+        });
+        internal = produce.Write(internalCreated);
+        PassBuilder consume = graph.AddPass("Consume", PassFlags::Raster, Noop());
+        consume.Read(internal);
+        output = consume.Write(outputImported);
+        graph.ExportTexture(output);
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        executor.Allocate();
+        executor.Execute(nullptr);
         Check(resolved != nullptr && resolved->native != nullptr, "Allocated internal buffer resolves");
         Check(resolved != nullptr && resolved->debugName == "Scratch", "Allocated buffer keeps debug name");
         Check(executor.GetErrors().empty(), "Successful buffer Allocate records no errors");
     }
 
     {
-        GraphBuilder builder;
-        TextureHandle backBuffer = builder.ImportTexture({"BackBuffer", 8, 8, Format::SRGBA8Unorm});
-        TextureHandle internal = builder.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
-        PassBuilder produce = builder.AddPass("Produce", PassFlags::Raster);
-        internal = produce.Write(internal);
-        PassBuilder present = builder.AddPass("Present", PassFlags::Raster);
-        present.Read(internal);
-        backBuffer = present.Write(backBuffer);
-        builder.ExportTexture(backBuffer);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.Allocate();
-        executor.ExecutePass(1, [&](PassContext& ctx) {
-            Check(ctx.GetTexture(backBuffer) == nullptr, "Allocate does not fill imported BackBuffer");
+        int phase = 0;
+        const PhysicalTexture* imported = nullptr;
+        const PhysicalTexture* allocated = nullptr;
+        ExecGraph graph;
+        TextureHandle backImported = graph.ImportTexture({"BackBuffer", 8, 8, Format::SRGBA8Unorm});
+        TextureHandle internalCreated = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
+        TextureHandle internal;
+        TextureHandle backBuffer;
+        PassBuilder produce = graph.AddPass("Produce", PassFlags::Raster, Noop());
+        internal = produce.Write(internalCreated);
+        PassBuilder present = graph.AddPass("Present", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            if (phase == 0)
+            {
+                Check(ctx.GetTexture(backBuffer) == nullptr, "Allocate does not fill imported BackBuffer");
+                return;
+            }
+            imported = ctx.GetTexture(backBuffer);
+            allocated = ctx.GetTexture(internal);
         });
+        present.Read(internal);
+        backBuffer = present.Write(backImported);
+        graph.ExportTexture(backBuffer);
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        executor.Allocate();
+        executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
               "Imported BackBuffer after Allocate is UnregisteredImport");
 
         int dummy = 21;
-        executor.RegisterImport(backBuffer, PhysicalTexture{&dummy, "BackBuffer"});
-        const PhysicalTexture* imported = nullptr;
-        const PhysicalTexture* allocated = nullptr;
-        executor.ExecutePass(1, [&](PassContext& ctx) {
-            imported = ctx.GetTexture(backBuffer);
-            allocated = ctx.GetTexture(internal);
-        });
+        executor.RegisterImport(backImported, PhysicalTexture{&dummy, "BackBuffer"});
+        phase = 1;
+        executor.Execute(nullptr);
         Check(imported != nullptr && imported->native == &dummy,
               "RegisterImport still binds BackBuffer after Allocate");
         Check(allocated != nullptr && allocated->native != nullptr && allocated->native != &dummy,
@@ -242,36 +291,38 @@ int RunRdgAllocTests()
     }
 
     {
-        GraphBuilder builder;
-        BuildM1ShapedGraph(builder);
-        const CompileResult compiled = GraphCompiler::Compile(builder);
-        Check(compiled.IsSuccess(), "M1-shaped graph compiles for Allocate");
-        GraphExecutor executor(builder, compiled);
-        executor.Allocate();
         int dummy = 22;
-        const TextureHandle backBuffer = FindTexture(builder, "BackBuffer");
-        executor.RegisterImport(backBuffer, PhysicalTexture{&dummy, "BackBuffer"});
-        const AllocationStats stats = executor.GetAllocationStats();
-        Check(stats.textureCount == 5, "M1 Allocate mints 5 internal textures");
-        Check(stats.bufferCount == 0, "M1 Allocate mints 0 buffers");
-        Check(stats.estimatedBytes == 25804800ull, "M1 Allocate estimated bytes are 1280x720 internals");
-
-        const TextureHandle gbufferA = FindTexture(builder, "GBufferA");
-        const TextureHandle gbufferB = FindTexture(builder, "GBufferB");
-        const TextureHandle gbufferC = FindTexture(builder, "GBufferC");
-        const TextureHandle gbufferDepth = FindTexture(builder, "GBufferDepth");
-        const TextureHandle hdr = FindTexture(builder, "HDRSceneColor");
-
         const PhysicalTexture* a = nullptr;
         const PhysicalTexture* b = nullptr;
         const PhysicalTexture* c = nullptr;
         const PhysicalTexture* depth = nullptr;
-        executor.ExecutePass(0, [&](PassContext& ctx) {
-            a = ctx.GetTexture(gbufferA);
-            b = ctx.GetTexture(gbufferB);
-            c = ctx.GetTexture(gbufferC);
-            depth = ctx.GetTexture(gbufferDepth);
-        });
+        const PhysicalTexture* hdrPhysical = nullptr;
+        const PhysicalTexture* presentBack = nullptr;
+        const PhysicalTexture* presentHdr = nullptr;
+        M1ExecGraph built;
+        BuildM1Exec(
+            built,
+            [&](nvrhi::ICommandList*, PassContext& ctx) {
+                a = ctx.GetTexture(built.gbufferA);
+                b = ctx.GetTexture(built.gbufferB);
+                c = ctx.GetTexture(built.gbufferC);
+                depth = ctx.GetTexture(built.gbufferDepth);
+            },
+            [&](nvrhi::ICommandList*, PassContext& ctx) { hdrPhysical = ctx.GetTexture(built.hdr); },
+            [&](nvrhi::ICommandList*, PassContext& ctx) {
+                presentBack = ctx.GetTexture(built.backBuffer);
+                presentHdr = ctx.GetTexture(built.hdr);
+            });
+        const CompileResult compiled = GraphCompiler::Compile(built.graph.Builder());
+        Check(compiled.IsSuccess(), "M1-shaped graph compiles for Allocate");
+        GraphExecutor executor(built.graph, compiled);
+        executor.Allocate();
+        executor.RegisterImport(built.backImported, PhysicalTexture{&dummy, "BackBuffer"});
+        const AllocationStats stats = executor.GetAllocationStats();
+        Check(stats.textureCount == 5, "M1 Allocate mints 5 internal textures");
+        Check(stats.bufferCount == 0, "M1 Allocate mints 0 buffers");
+        Check(stats.estimatedBytes == 25804800ull, "M1 Allocate estimated bytes are 1280x720 internals");
+        executor.Execute(nullptr);
         Check(a != nullptr && a->native != nullptr && a->debugName == "GBufferA", "GBufferA resolves after Allocate");
         Check(b != nullptr && b->native != nullptr && b->debugName == "GBufferB", "GBufferB resolves after Allocate");
         Check(c != nullptr && c->native != nullptr && c->debugName == "GBufferC", "GBufferC resolves after Allocate");
@@ -281,21 +332,11 @@ int RunRdgAllocTests()
                   a->native != b->native && a->native != c->native && a->native != depth->native &&
                   b->native != c->native && b->native != depth->native && c->native != depth->native,
               "M1 GBuffer natives are distinct");
-
-        const PhysicalTexture* hdrPhysical = nullptr;
-        executor.ExecutePass(1, [&](PassContext& ctx) { hdrPhysical = ctx.GetTexture(hdr); });
         Check(hdrPhysical != nullptr && hdrPhysical->native != nullptr && hdrPhysical->debugName == "HDRSceneColor",
               "HDRSceneColor resolves in Deferred after Allocate");
-
-        const PhysicalTexture* presentBack = nullptr;
-        const PhysicalTexture* presentHdr = nullptr;
-        executor.ExecutePass(2, [&](PassContext& ctx) {
-            presentBack = ctx.GetTexture(backBuffer);
-            presentHdr = ctx.GetTexture(hdr);
-        });
         Check(presentBack != nullptr && presentBack->native == &dummy,
               "PostProcess BackBuffer is the registered dummy");
-        Check(presentHdr != nullptr && presentHdr->native == hdrPhysical->native,
+        Check(presentHdr != nullptr && hdrPhysical != nullptr && presentHdr->native == hdrPhysical->native,
               "PostProcess HDR is the allocated identity");
     }
 
@@ -303,24 +344,27 @@ int RunRdgAllocTests()
         void* natives[3][5] = {};
         for (int iteration = 0; iteration < 3; ++iteration)
         {
-            GraphBuilder builder;
-            BuildM1ShapedGraph(builder);
-            GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+            M1ExecGraph built;
+            BuildM1Exec(
+                built,
+                [&](nvrhi::ICommandList*, PassContext& ctx) {
+                    const PhysicalTexture* textureA = ctx.GetTexture(built.gbufferA);
+                    const PhysicalTexture* textureB = ctx.GetTexture(built.gbufferB);
+                    const PhysicalTexture* textureC = ctx.GetTexture(built.gbufferC);
+                    const PhysicalTexture* textureDepth = ctx.GetTexture(built.gbufferDepth);
+                    natives[iteration][0] = textureA ? textureA->native : nullptr;
+                    natives[iteration][1] = textureB ? textureB->native : nullptr;
+                    natives[iteration][2] = textureC ? textureC->native : nullptr;
+                    natives[iteration][3] = textureDepth ? textureDepth->native : nullptr;
+                },
+                [&](nvrhi::ICommandList*, PassContext& ctx) {
+                    const PhysicalTexture* hdr = ctx.GetTexture(built.hdr);
+                    natives[iteration][4] = hdr ? hdr->native : nullptr;
+                },
+                Noop());
+            GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
             executor.Allocate();
-            const TextureHandle gbufferA = FindTexture(builder, "GBufferA");
-            const TextureHandle gbufferB = FindTexture(builder, "GBufferB");
-            const TextureHandle gbufferC = FindTexture(builder, "GBufferC");
-            const TextureHandle gbufferDepth = FindTexture(builder, "GBufferDepth");
-            const TextureHandle hdr = FindTexture(builder, "HDRSceneColor");
-            executor.ExecutePass(0, [&](PassContext& ctx) {
-                natives[iteration][0] = ctx.GetTexture(gbufferA) ? ctx.GetTexture(gbufferA)->native : nullptr;
-                natives[iteration][1] = ctx.GetTexture(gbufferB) ? ctx.GetTexture(gbufferB)->native : nullptr;
-                natives[iteration][2] = ctx.GetTexture(gbufferC) ? ctx.GetTexture(gbufferC)->native : nullptr;
-                natives[iteration][3] = ctx.GetTexture(gbufferDepth) ? ctx.GetTexture(gbufferDepth)->native : nullptr;
-            });
-            executor.ExecutePass(1, [&](PassContext& ctx) {
-                natives[iteration][4] = ctx.GetTexture(hdr) ? ctx.GetTexture(hdr)->native : nullptr;
-            });
+            executor.Execute(nullptr);
             Check(natives[iteration][0] && natives[iteration][1] && natives[iteration][2] && natives[iteration][3] &&
                       natives[iteration][4],
                   "Repeated graph Allocate mints M1 internals");

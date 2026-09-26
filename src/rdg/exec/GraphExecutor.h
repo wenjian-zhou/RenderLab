@@ -2,12 +2,12 @@
 
 #include "../GraphCompiler.h"
 #include "AccessPlan.h"
+#include "ExecGraph.h"
 #include "PassContext.h"
 #include "PhysicalRegistry.h"
 #include "PhysicalResource.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -15,6 +15,7 @@
 
 namespace nvrhi
 {
+    class ICommandList;
     class IDevice;
 }
 
@@ -28,14 +29,16 @@ namespace renderlab::rdg::exec
     };
 
     // Binds logical imported handles to opaque physical tokens, allocates
-    // internal Create* identities, plans access states, and runs synthetic
-    // pass callbacks. The builder must outlive the executor. Compile result
-    // is read in the constructor (success flag, cull states, and live pass
-    // order are copied); it does not need to outlive Plan or ExecutePass.
+    // internal Create* identities, plans access states, and runs the pass
+    // lambdas stored on an ExecGraph. The builder (and ExecGraph, when used)
+    // must outlive the executor. Compile result is read in the constructor
+    // (success flag, cull states, and live pass order are copied); it does
+    // not need to outlive Plan or Execute.
     class GraphExecutor
     {
     public:
         GraphExecutor(const GraphBuilder& builder, const CompileResult& result);
+        GraphExecutor(const ExecGraph& graph, const CompileResult& result);
         ~GraphExecutor();
 
         GraphExecutor(const GraphExecutor&) = delete;
@@ -52,7 +55,11 @@ namespace renderlab::rdg::exec
         const PhysicalTexture* GetExported(TextureHandle handle);
         const PhysicalBuffer* GetExported(BufferHandle handle);
 
-        void ExecutePass(uint32_t passIndex, const std::function<void(PassContext&)>& callback);
+        // Walks the compiled live order and invokes each pass lambda.
+        // graphicsCommandList is the list used for raster passes. Selection
+        // of the list for a pass lives in SelectCommandList so a later flag
+        // can choose another queue without changing this loop.
+        void Execute(nvrhi::ICommandList* graphicsCommandList);
 
         const AccessPlan& GetAccessPlan() const { return m_accessPlan; }
 
@@ -83,6 +90,10 @@ namespace renderlab::rdg::exec
             uint32_t passIndex,
             std::string passName,
             std::string resourceName);
+        nvrhi::ICommandList* SelectCommandList(
+            uint32_t passIndex,
+            nvrhi::ICommandList* graphicsCommandList) const;
+        bool RunLivePass(nvrhi::ICommandList* commandList, uint32_t passIndex);
 
         struct CpuIdentity
         {
@@ -91,6 +102,7 @@ namespace renderlab::rdg::exec
         struct GpuStorage;
 
         const GraphBuilder* m_builder = nullptr;
+        const ExecGraph* m_graph = nullptr;
         bool m_compileSuccess = false;
         std::vector<PassCullState> m_cullStates;
         std::vector<uint32_t> m_livePassOrder;

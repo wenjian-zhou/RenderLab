@@ -378,15 +378,18 @@ int RunRdgAccessTests()
     }
 
     {
-        GraphBuilder builder;
-        TextureHandle output = builder.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
-        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
-        output = pass.Write(output);
-        builder.ExportTexture(output);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        ExecGraph graph;
+        TextureHandle imported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
+        TextureHandle output;
         bool ran = false;
-        executor.ExecutePass(0, [&](PassContext&) { ran = true; });
-        Check(ran && executor.GetErrors().empty(), "ExecutePass without Plan still runs");
+        PassBuilder pass = graph.AddPass("P", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) {
+            ran = true;
+        });
+        output = pass.Write(imported);
+        graph.ExportTexture(output);
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        executor.Execute(nullptr);
+        Check(ran && executor.GetErrors().empty(), "Execute without Plan still runs");
     }
 
     return g_failures;

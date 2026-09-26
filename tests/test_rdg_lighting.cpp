@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <span>
 #include <string>
+#include <utility>
 
 using namespace renderlab::rdg;
 using namespace renderlab::rdg::exec;
@@ -90,6 +91,60 @@ namespace
             }
         }
         return false;
+    }
+
+    struct LightingExec
+    {
+        ExecGraph graph;
+        TextureHandle gbufferA;
+        TextureHandle gbufferB;
+        TextureHandle gbufferC;
+        TextureHandle gbufferDepth;
+        TextureHandle hdrCreated;
+        TextureHandle hdrWritten;
+        TextureHandle outputImported;
+        TextureHandle outputWritten;
+    };
+
+    PassLambda Noop()
+    {
+        return [](nvrhi::ICommandList*, PassContext&) {};
+    }
+
+    void BuildLightingExec(
+        LightingExec& built, ToneMapOutput output, PassLambda lighting, PassLambda debug, PassLambda post)
+    {
+        built.gbufferA = built.graph.ImportTexture({"GBufferA", 1280, 720, Format::SRGBA8Unorm});
+        built.gbufferB = built.graph.ImportTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
+        built.gbufferC = built.graph.ImportTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
+        built.gbufferDepth = built.graph.ImportTexture({"GBufferDepth", 1280, 720, Format::D32Float});
+        built.hdrCreated = built.graph.CreateTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
+        const bool exportOutput = output == ToneMapOutput::BackBuffer;
+        const char* outputName = exportOutput ? "BackBuffer" : "PostProcessColor";
+        built.outputImported = built.graph.ImportTexture({outputName, 1280, 720, Format::SRGBA8Unorm});
+
+        PassBuilder lightingPass =
+            built.graph.AddPass("DeferredLighting", PassFlags::Raster, std::move(lighting));
+        lightingPass.Read(built.gbufferA);
+        lightingPass.Read(built.gbufferB);
+        lightingPass.Read(built.gbufferC);
+        lightingPass.Read(built.gbufferDepth);
+        built.hdrWritten = lightingPass.Write(built.hdrCreated);
+
+        PassBuilder debugPass = built.graph.AddPass("LightingDebug", PassFlags::Raster, std::move(debug));
+        debugPass.Read(built.gbufferA);
+        debugPass.Read(built.gbufferB);
+        debugPass.Read(built.gbufferC);
+        debugPass.Read(built.gbufferDepth);
+        debugPass.Read(built.hdrWritten);
+
+        PassBuilder postPass = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(post));
+        postPass.Read(built.hdrWritten);
+        built.outputWritten = postPass.Write(built.outputImported);
+        if (exportOutput)
+        {
+            built.graph.ExportTexture(built.outputWritten);
+        }
     }
 }
 
@@ -256,42 +311,45 @@ int RunRdgLightingTests()
     }
 
     {
-        GraphBuilder builder;
-        const LightingPresentGraph graph =
-            BuildLightingPresentGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
         int aNative = 1;
         int bNative = 2;
         int cNative = 3;
         int depthNative = 4;
         int bbNative = 5;
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.RegisterImport(graph.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
-        executor.RegisterImport(graph.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
-        executor.RegisterImport(graph.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
-        executor.RegisterImport(graph.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
-        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        const PhysicalTexture* lightingHdr = nullptr;
+        const PhysicalTexture* lightingA = nullptr;
+        const PhysicalTexture* postHdr = nullptr;
+        const PhysicalTexture* postOut = nullptr;
+        LightingExec built;
+        BuildLightingExec(
+            built,
+            ToneMapOutput::BackBuffer,
+            [&](nvrhi::ICommandList*, PassContext& ctx) {
+                lightingA = ctx.GetTexture(built.gbufferA);
+                lightingHdr = ctx.GetTexture(built.hdrWritten);
+                Check(ctx.GetTexture(built.hdrCreated) == nullptr, "Create* v0 on lighting write is null");
+            },
+            Noop(),
+            [&](nvrhi::ICommandList*, PassContext& ctx) {
+                postHdr = ctx.GetTexture(built.hdrWritten);
+                postOut = ctx.GetTexture(built.outputWritten);
+            });
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.RegisterImport(built.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
+        executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
+        executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
+        executor.RegisterImport(built.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
+        executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
         executor.Allocate();
         Check(executor.GetErrors().empty(), "Allocate without SetDevice succeeds");
         Check(executor.GetAllocationStats().textureCount == 1, "Allocate one HDR texture");
         Check(executor.GetAllocationStats().bufferCount == 0, "Allocate no buffers");
         Check(executor.GetAllocationStats().estimatedBytes == 1280ull * 720ull * 8ull, "HDR 8 bpp");
         executor.Plan();
-        const PhysicalTexture* lightingHdr = nullptr;
-        const PhysicalTexture* lightingA = nullptr;
-        executor.ExecutePass(graph.deferredLightingPassIndex, [&](PassContext& ctx) {
-            lightingA = ctx.GetTexture(graph.gbufferA);
-            lightingHdr = ctx.GetTexture(graph.hdrWritten);
-            Check(ctx.GetTexture(graph.hdrCreated) == nullptr, "Create* v0 on lighting write is null");
-        });
+        executor.Execute(nullptr);
         Check(lightingA && lightingA->native == &aNative, "lighting resolves GBufferA");
         Check(lightingHdr && lightingHdr->native != nullptr && lightingHdr->debugName == "HDRSceneColor",
             "lighting resolves Allocate HDR");
-        const PhysicalTexture* postHdr = nullptr;
-        const PhysicalTexture* postOut = nullptr;
-        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
-            postHdr = ctx.GetTexture(graph.hdrWritten);
-            postOut = ctx.GetTexture(graph.outputWritten);
-        });
         Check(postHdr && lightingHdr && postHdr->native == lightingHdr->native,
             "tone map reads same HDR native");
         Check(postOut && postOut->native == &bbNative, "PostProcess resolves written BackBuffer");
@@ -311,59 +369,69 @@ int RunRdgLightingTests()
     }
 
     {
-        GraphBuilder builder;
-        const LightingPresentGraph graph =
-            BuildLightingPresentGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
         int bNative = 7;
         int cNative = 8;
         int depthNative = 9;
         int bbNative = 10;
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.RegisterImport(graph.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
-        executor.RegisterImport(graph.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
-        executor.RegisterImport(graph.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
-        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        LightingExec built;
+        BuildLightingExec(
+            built,
+            ToneMapOutput::BackBuffer,
+            [&](nvrhi::ICommandList*, PassContext& ctx) {
+                Check(ctx.GetTexture(built.gbufferA) == nullptr, "unregistered GBufferA is null");
+            },
+            Noop(),
+            Noop());
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
+        executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
+        executor.RegisterImport(built.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
+        executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
         executor.Allocate();
-        executor.ExecutePass(graph.deferredLightingPassIndex, [&](PassContext& ctx) {
-            Check(ctx.GetTexture(graph.gbufferA) == nullptr, "unregistered GBufferA is null");
-        });
+        executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
             "UnregisteredImport on GBufferA");
     }
 
     {
-        GraphBuilder builder;
-        const LightingPresentGraph graph =
-            BuildLightingPresentGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
         bool debugCalled = false;
-        executor.ExecutePass(graph.lightingDebugPassIndex, [&](PassContext&) { debugCalled = true; });
-        Check(!debugCalled, "ExecutePass does not invoke culled LightingDebug");
-        Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
-            "ExecutePass of culled LightingDebug is InvalidPass");
+        LightingExec built;
+        BuildLightingExec(
+            built,
+            ToneMapOutput::BackBuffer,
+            Noop(),
+            [&](nvrhi::ICommandList*, PassContext&) { debugCalled = true; },
+            Noop());
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.Execute(nullptr);
+        Check(!debugCalled, "Execute does not invoke culled LightingDebug");
+        Check(!HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
+            "Culled LightingDebug is skipped instead of InvalidPass");
     }
 
     {
-        GraphBuilder builder;
-        const LightingPresentGraph graph =
-            BuildLightingPresentGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
         int aNative = 11;
         int bNative = 12;
         int cNative = 13;
         int depthNative = 14;
         int bbNative = 15;
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.RegisterImport(graph.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
-        executor.RegisterImport(graph.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
-        executor.RegisterImport(graph.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
-        executor.RegisterImport(graph.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
-        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
-        executor.Allocate();
         const PhysicalTexture* lightingHdr = nullptr;
-        executor.ExecutePass(graph.deferredLightingPassIndex, [&](PassContext& ctx) {
-            lightingHdr = ctx.GetTexture(graph.hdrWritten);
-        });
-        Check(lightingHdr && lightingHdr->native != nullptr, "ExecutePass without Plan still resolves HDR");
+        LightingExec built;
+        BuildLightingExec(
+            built,
+            ToneMapOutput::BackBuffer,
+            [&](nvrhi::ICommandList*, PassContext& ctx) { lightingHdr = ctx.GetTexture(built.hdrWritten); },
+            Noop(),
+            Noop());
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.RegisterImport(built.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
+        executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
+        executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
+        executor.RegisterImport(built.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
+        executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        executor.Allocate();
+        executor.Execute(nullptr);
+        Check(lightingHdr && lightingHdr->native != nullptr, "Execute without Plan still resolves HDR");
         Check(executor.GetAccessPlan().Dump() == "access-plan: empty\n", "Plan-optional leaves dump empty");
     }
 

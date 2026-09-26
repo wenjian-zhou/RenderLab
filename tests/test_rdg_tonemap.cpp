@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <span>
 #include <string>
+#include <utility>
 
 using namespace renderlab::rdg;
 using namespace renderlab::rdg::exec;
@@ -91,6 +92,29 @@ namespace
         }
         return false;
     }
+
+    struct ToneExec
+    {
+        ExecGraph graph;
+        TextureHandle hdr;
+        TextureHandle outputImported;
+        TextureHandle outputWritten;
+    };
+
+    void BuildToneExec(ToneExec& built, ToneMapOutput output, PassLambda post)
+    {
+        built.hdr = built.graph.ImportTexture({"HDRSceneColor", 1280, 720, Format::RGBA16Float});
+        const bool exportOutput = output == ToneMapOutput::BackBuffer;
+        const char* outputName = exportOutput ? "BackBuffer" : "PostProcessColor";
+        built.outputImported = built.graph.ImportTexture({outputName, 1280, 720, Format::SRGBA8Unorm});
+        PassBuilder postPass = built.graph.AddPass("PostProcess", PassFlags::Raster, std::move(post));
+        postPass.Read(built.hdr);
+        built.outputWritten = postPass.Write(built.outputImported);
+        if (exportOutput)
+        {
+            built.graph.ExportTexture(built.outputWritten);
+        }
+    }
 }
 
 int RunRdgTonemapTests()
@@ -164,58 +188,54 @@ int RunRdgTonemapTests()
     }
 
     {
-        GraphBuilder builder;
-        const ToneMapGraph graph =
-            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
         int hdrNative = 1;
         int bbNative = 2;
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.RegisterImport(graph.hdrSceneColor, PhysicalTexture{&hdrNative, "HDRSceneColor"});
-        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
-        executor.Plan();
-        Check(!executor.GetAccessPlan().passes.empty(), "Plan consumed before ExecutePass");
         const PhysicalTexture* gotHdr = nullptr;
         const PhysicalTexture* gotOut = nullptr;
-        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
-            gotHdr = ctx.GetTexture(graph.hdrSceneColor);
-            gotOut = ctx.GetTexture(graph.outputWritten);
+        ToneExec built;
+        BuildToneExec(built, ToneMapOutput::BackBuffer, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            gotHdr = ctx.GetTexture(built.hdr);
+            gotOut = ctx.GetTexture(built.outputWritten);
         });
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.RegisterImport(built.hdr, PhysicalTexture{&hdrNative, "HDRSceneColor"});
+        executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        executor.Plan();
+        Check(!executor.GetAccessPlan().passes.empty(), "Plan consumed before Execute");
+        executor.Execute(nullptr);
         Check(gotHdr && gotHdr->native == &hdrNative, "PostProcess resolves HDR");
         Check(gotOut && gotOut->native == &bbNative, "PostProcess resolves written BackBuffer");
         Check(executor.GetErrors().empty(), "registered resolve has no errors");
     }
 
     {
-        GraphBuilder builder;
-        const ToneMapGraph graph =
-            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.Plan();
-        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
-            Check(ctx.GetTexture(graph.hdrSceneColor) == nullptr, "unregistered HDR is null");
+        ToneExec built;
+        BuildToneExec(built, ToneMapOutput::BackBuffer, [&](nvrhi::ICommandList*, PassContext& ctx) {
+            Check(ctx.GetTexture(built.hdr) == nullptr, "unregistered HDR is null");
         });
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.Plan();
+        executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
             "UnregisteredImport on HDR");
     }
 
     {
-        GraphBuilder builder;
         GraphBuilder other;
-        const ToneMapGraph graph =
-            BuildToneMapGraph(builder, 1280, 720, ToneMapOutput::BackBuffer);
         int hdrNative = 3;
         int bbNative = 4;
-        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
-        executor.RegisterImport(graph.hdrSceneColor, PhysicalTexture{&hdrNative, "HDRSceneColor"});
-        executor.RegisterImport(graph.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
-        executor.Plan();
-        executor.ExecutePass(graph.postProcessPassIndex, [&](PassContext& ctx) {
+        ToneExec built;
+        BuildToneExec(built, ToneMapOutput::BackBuffer, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture({}) == nullptr, "null handle is null");
-            TextureHandle foreign{
-                graph.hdrSceneColor.index, graph.hdrSceneColor.version, other.GetGraphId()};
+            TextureHandle foreign{built.hdr.index, built.hdr.version, other.GetGraphId()};
             Check(ctx.GetTexture(foreign) == nullptr, "foreign-graph handle is null");
-            Check(ctx.GetTexture(graph.outputImported) == nullptr, "imported v0 during write is null");
+            Check(ctx.GetTexture(built.outputImported) == nullptr, "imported v0 during write is null");
         });
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        executor.RegisterImport(built.hdr, PhysicalTexture{&hdrNative, "HDRSceneColor"});
+        executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
+        executor.Plan();
+        executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::NullHandle), "NullHandle on default handle");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::ForeignGraph),
             "ForeignGraph on foreign handle");

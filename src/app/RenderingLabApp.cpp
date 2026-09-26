@@ -4,13 +4,11 @@
 #include "renderer/GBufferDebugPass.h"
 #include "renderer/GBufferPass.h"
 #include "renderer/GBufferTargets.h"
-#include "renderer/HDRSceneColorTarget.h"
 #include "renderer/HdrDump.h"
 #include "renderer/LightingDebugPass.h"
 #include "renderer/RendererData.h"
 #include "rdg/GraphCompiler.h"
-#include "rdg/LightingPresentGraph.h"
-#include "rdg/ToneMapGraph.h"
+#include "rdg/RasterFrameGraph.h"
 #include "rdg/exec/GraphExecutor.h"
 
 #include <donut/app/DeviceManager.h>
@@ -40,6 +38,30 @@ namespace renderlab
     namespace
     {
         const nvrhi::Color kClearColor(0.08f, 0.09f, 0.12f, 1.0f);
+
+        nvrhi::ITexture* NativeTexture(const rdg::exec::PhysicalTexture* physical)
+        {
+            return physical != nullptr ? static_cast<nvrhi::ITexture*>(physical->native) : nullptr;
+        }
+
+        bool SnapshotHasGBuffer(const RasterFrameSnapshot& snapshot)
+        {
+            return snapshot.valid && snapshot.gbufferA && snapshot.gbufferB && snapshot.gbufferC &&
+                   snapshot.gbufferDepth;
+        }
+
+        rdg::RasterPresent RasterPresentFor(PresentSource source)
+        {
+            if (source == PresentSource::LightingDebug)
+            {
+                return rdg::RasterPresent::LightingDebug;
+            }
+            if (source == PresentSource::GBufferDebug)
+            {
+                return rdg::RasterPresent::GBufferDebug;
+            }
+            return rdg::RasterPresent::Final;
+        }
 
         const char* GraphicsApiName(nvrhi::GraphicsAPI api)
         {
@@ -170,8 +192,7 @@ namespace renderlab
         app::DeviceManager* deviceManager,
         const DeviceCapabilities& capabilities,
         const SceneHudState& sceneHud,
-        const GBufferTargets& gbuffer,
-        const HDRSceneColorTarget& hdrSceneColor,
+        const RasterFrameSnapshot& frameSnapshot,
         const GBufferPassHud& gbufferPassHud,
         const DeferredLightingPassHud& deferredLightingHud,
         const PostProcessPassHud& postProcessHud,
@@ -181,8 +202,7 @@ namespace renderlab
         : ImGui_Renderer(deviceManager)
         , m_capabilities(capabilities)
         , m_sceneHud(sceneHud)
-        , m_gbuffer(gbuffer)
-        , m_hdrSceneColor(hdrSceneColor)
+        , m_frameSnapshot(frameSnapshot)
         , m_gbufferPassHud(gbufferPassHud)
         , m_deferredLightingHud(deferredLightingHud)
         , m_postProcessHud(postProcessHud)
@@ -220,30 +240,38 @@ namespace renderlab
         ImGui::Text("Shader model: %s", m_capabilities.shaderModel.c_str());
         ImGui::Separator();
 
-        const GBufferTargetsHud gbufferHud = m_gbuffer.GetHud();
         ImGui::TextUnformatted("GBuffer");
-        if (!gbufferHud.valid)
+        if (!m_frameSnapshot.valid)
         {
             ImGui::TextUnformatted("  not created");
         }
         else
         {
-            ImGui::Text("  %u x %u, samples=%u, mips=1", gbufferHud.width, gbufferHud.height, gbufferHud.sampleCount);
-            for (const GBufferTargetHud& target : gbufferHud.targets)
+            ImGui::Text(
+                "  %u x %u, samples=%u, mips=1",
+                m_frameSnapshot.width,
+                m_frameSnapshot.height,
+                kGBufferSampleCount);
+            for (uint32_t index = 0; index < static_cast<uint32_t>(GBufferTarget::Count); ++index)
             {
+                const GBufferTarget target = static_cast<GBufferTarget>(index);
+                const GBufferFormatDesc& format = kGBufferFormats[index];
                 ImGui::Text(
                     "  %s  %s  %u B/px  %llu bytes",
-                    target.debugName,
-                    target.formatName,
-                    target.bytesPerPixel,
-                    static_cast<unsigned long long>(target.approximateBytes));
+                    format.debugName,
+                    nvrhi::getFormatInfo(format.format).name,
+                    GBufferBytesPerPixel(target),
+                    static_cast<unsigned long long>(
+                        EstimateGBufferTargetBytes(target, m_frameSnapshot.width, m_frameSnapshot.height)));
             }
             ImGui::Text(
-                "  total ~%llu bytes  creates=%u releases=%u",
-                static_cast<unsigned long long>(gbufferHud.approximateBytes),
-                gbufferHud.createCount,
-                gbufferHud.releaseCount);
-            ImGui::Text("  opaque draws=%u skippedBuffers=%u", m_gbufferPassHud.drawCount, m_gbufferPassHud.skippedMissingBufferCount);
+                "  total ~%llu bytes",
+                static_cast<unsigned long long>(
+                    EstimateGBufferTotalBytes(m_frameSnapshot.width, m_frameSnapshot.height)));
+            ImGui::Text(
+                "  opaque draws=%u skippedBuffers=%u",
+                m_gbufferPassHud.drawCount,
+                m_gbufferPassHud.skippedMissingBufferCount);
             if (m_gbufferPassHud.timestampValid)
             {
                 ImGui::Text("  GPU time=%.3f ms", m_gbufferPassHud.gpuTimeMilliseconds);
@@ -254,24 +282,22 @@ namespace renderlab
             }
         }
 
-        const HDRSceneColorTargetHud hdrHud = m_hdrSceneColor.GetHud();
         ImGui::Separator();
         ImGui::TextUnformatted("HDRSceneColor");
-        if (!hdrHud.valid)
+        if (!m_frameSnapshot.hasHdr)
         {
-            ImGui::TextUnformatted("  not created");
+            ImGui::TextUnformatted("  not produced by this present source");
         }
         else
         {
             ImGui::Text(
-                "  %u x %u  %s  %u B/px  ~%llu bytes  creates=%u releases=%u",
-                hdrHud.width,
-                hdrHud.height,
-                hdrHud.formatName,
-                hdrHud.bytesPerPixel,
-                static_cast<unsigned long long>(hdrHud.approximateBytes),
-                hdrHud.createCount,
-                hdrHud.releaseCount);
+                "  %u x %u  %s  %u B/px  ~%llu bytes",
+                m_frameSnapshot.width,
+                m_frameSnapshot.height,
+                nvrhi::getFormatInfo(kHDRSceneColorFormat).name,
+                kHDRSceneColorBytesPerPixel,
+                static_cast<unsigned long long>(
+                    EstimateHDRSceneColorBytes(m_frameSnapshot.width, m_frameSnapshot.height)));
             if (m_deferredLightingHud.timestampValid)
             {
                 ImGui::Text("  DeferredLighting GPU time=%.3f ms", m_deferredLightingHud.gpuTimeMilliseconds);
@@ -560,14 +586,9 @@ namespace renderlab
         return m_sceneHud;
     }
 
-    const GBufferTargets& RenderingLabApp::GetGBufferTargets() const
+    const RasterFrameSnapshot& RenderingLabApp::GetFrameSnapshot() const
     {
-        return m_gbuffer;
-    }
-
-    const HDRSceneColorTarget& RenderingLabApp::GetHDRSceneColorTarget() const
-    {
-        return m_hdrSceneColor;
+        return m_frameSnapshot;
     }
 
     const GBufferPassHud& RenderingLabApp::GetGBufferPassHud() const
@@ -628,9 +649,9 @@ namespace renderlab
         {
             return failDump("--dump-gbuffer-views requires a directory path.");
         }
-        if (!m_gbuffer.IsValid() || !m_CommonPasses)
+        if (!SnapshotHasGBuffer(m_frameSnapshot) || !m_CommonPasses)
         {
-            return failDump("Cannot dump GBuffer views before the targets exist.");
+            return failDump("Cannot dump GBuffer views before the raster frame snapshot exists.");
         }
 
         const std::filesystem::path outputDir(directory);
@@ -651,7 +672,7 @@ namespace renderlab
         device->waitForIdle();
 
         nvrhi::ITexture* dumpTarget =
-            m_gbufferDebugPass.GetOrCreateDumpTarget(m_gbuffer.GetWidth(), m_gbuffer.GetHeight());
+            m_gbufferDebugPass.GetOrCreateDumpTarget(m_frameSnapshot.width, m_frameSnapshot.height);
         if (!dumpTarget)
         {
             return failDump("Failed to create GBufferDebugColor for view dumps.");
@@ -671,8 +692,13 @@ namespace renderlab
             const std::filesystem::path filePath = outputDir / info.dumpFileName;
 
             commandList->open();
-            const GBufferDebugPassInputs debugInputs =
-                MakeGBufferDebugPassInputs(m_gbuffer, m_viewConstants, mode);
+            GBufferDebugPassInputs debugInputs;
+            debugInputs.gbufferA = m_frameSnapshot.gbufferA;
+            debugInputs.gbufferB = m_frameSnapshot.gbufferB;
+            debugInputs.gbufferC = m_frameSnapshot.gbufferC;
+            debugInputs.gbufferDepth = m_frameSnapshot.gbufferDepth;
+            debugInputs.viewConstants = &m_viewConstants;
+            debugInputs.mode = mode;
             GBufferDebugPassOutputs debugOutputs;
             debugOutputs.debugColor = dumpTarget;
             m_gbufferDebugPass.Execute(commandList, debugInputs, debugOutputs);
@@ -718,9 +744,14 @@ namespace renderlab
         {
             return failDump("--dump-lighting-views requires a directory path.");
         }
-        if (!m_gbuffer.IsValid() || !m_hdrSceneColor.IsValid() || !m_CommonPasses)
+        if (!m_frameSnapshot.hasHdr || m_frameSnapshot.hdrSceneColor == nullptr)
         {
-            return failDump("Cannot dump lighting views before GBuffer and HDRSceneColor exist.");
+            return failDump(
+                "Cannot dump lighting views: the current present source did not produce HDRSceneColor.");
+        }
+        if (!SnapshotHasGBuffer(m_frameSnapshot) || !m_CommonPasses)
+        {
+            return failDump("Cannot dump lighting views before the raster frame snapshot exists.");
         }
 
         const std::filesystem::path outputDir(directory);
@@ -741,7 +772,7 @@ namespace renderlab
         device->waitForIdle();
 
         nvrhi::ITexture* dumpTarget =
-            m_lightingDebugPass.GetOrCreateDumpTarget(m_gbuffer.GetWidth(), m_gbuffer.GetHeight());
+            m_lightingDebugPass.GetOrCreateDumpTarget(m_frameSnapshot.width, m_frameSnapshot.height);
         if (!dumpTarget)
         {
             return failDump("Failed to create LightingDebugColor for view dumps.");
@@ -761,12 +792,15 @@ namespace renderlab
             const std::filesystem::path filePath = outputDir / info.dumpFileName;
 
             commandList->open();
-            const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
-                m_gbuffer,
-                m_hdrSceneColor.GetTexture(),
-                m_viewConstants,
-                m_lightingConstants,
-                mode);
+            LightingDebugPassInputs debugInputs;
+            debugInputs.gbufferA = m_frameSnapshot.gbufferA;
+            debugInputs.gbufferB = m_frameSnapshot.gbufferB;
+            debugInputs.gbufferC = m_frameSnapshot.gbufferC;
+            debugInputs.gbufferDepth = m_frameSnapshot.gbufferDepth;
+            debugInputs.hdrSceneColor = m_frameSnapshot.hdrSceneColor;
+            debugInputs.viewConstants = &m_viewConstants;
+            debugInputs.lightingConstants = &m_lightingConstants;
+            debugInputs.mode = mode;
             LightingDebugPassOutputs debugOutputs;
             debugOutputs.debugColor = dumpTarget;
             m_lightingDebugPass.Execute(commandList, debugInputs, debugOutputs);
@@ -822,9 +856,10 @@ namespace renderlab
         {
             return failDump("--output-hdr requires a directory path.");
         }
-        if (!m_hdrSceneColor.IsValid())
+        if (!m_frameSnapshot.hasHdr || m_frameSnapshot.hdrSceneColor == nullptr)
         {
-            return failDump("Cannot dump HDRSceneColor before the target exists.");
+            return failDump(
+                "Cannot dump HDRSceneColor: the current present source did not produce HDR.");
         }
 
         const std::filesystem::path outputDir(directory);
@@ -850,7 +885,7 @@ namespace renderlab
         m_deferredLightingPass.ResolvePendingTimerQueries();
         m_postProcessPass.ResolvePendingTimerQueries();
 
-        nvrhi::ITexture* hdr = m_hdrSceneColor.GetTexture();
+        nvrhi::ITexture* hdr = m_frameSnapshot.hdrSceneColor;
         const nvrhi::TextureDesc desc = hdr->getDesc();
         nvrhi::StagingTextureHandle staging = device->createStagingTexture(desc, nvrhi::CpuAccessMode::Read);
         if (!staging)
@@ -916,10 +951,10 @@ namespace renderlab
 
         log::info("Wrote HDRSceneColor -> %s", rlhdrPath.generic_string().c_str());
 
-        if (!m_gbuffer.IsValid() || !m_CommonPasses)
+        if (!SnapshotHasGBuffer(m_frameSnapshot) || !m_CommonPasses)
         {
             RemoveFileIfExists(rlhdrPath);
-            return failDump("Cannot write lighting-lit.png before GBuffer and CommonPasses exist.");
+            return failDump("Cannot write lighting-lit.png before the GBuffer snapshot and CommonPasses exist.");
         }
 
         nvrhi::ITexture* dumpTarget = m_lightingDebugPass.GetOrCreateDumpTarget(width, height);
@@ -930,12 +965,15 @@ namespace renderlab
         }
 
         commandList->open();
-        const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
-            m_gbuffer,
-            m_hdrSceneColor.GetTexture(),
-            m_viewConstants,
-            m_lightingConstants,
-            LightingDebugMode::Lit);
+        LightingDebugPassInputs debugInputs;
+        debugInputs.gbufferA = m_frameSnapshot.gbufferA;
+        debugInputs.gbufferB = m_frameSnapshot.gbufferB;
+        debugInputs.gbufferC = m_frameSnapshot.gbufferC;
+        debugInputs.gbufferDepth = m_frameSnapshot.gbufferDepth;
+        debugInputs.hdrSceneColor = hdr;
+        debugInputs.viewConstants = &m_viewConstants;
+        debugInputs.lightingConstants = &m_lightingConstants;
+        debugInputs.mode = LightingDebugMode::Lit;
         LightingDebugPassOutputs debugOutputs;
         debugOutputs.debugColor = dumpTarget;
         m_lightingDebugPass.Execute(commandList, debugInputs, debugOutputs);
@@ -972,11 +1010,10 @@ namespace renderlab
         }
 
         commandList->open();
-        ExecuteToneMap(
-            commandList,
-            m_hdrSceneColor.GetTexture(),
-            finalDumpTarget,
-            rdg::ToneMapOutput::DumpTarget);
+        const PostProcessPassInputs postInputs = MakePostProcessPassInputs(hdr, m_tonemapConstants);
+        PostProcessPassOutputs postOutputs;
+        postOutputs.finalColor = finalDumpTarget;
+        m_postProcessPass.Execute(commandList, postInputs, postOutputs);
         commandList->close();
         device->executeCommandList(commandList);
 
@@ -1079,8 +1116,8 @@ namespace renderlab
             return false;
         }
 
-        const uint32_t width = m_gbuffer.IsValid() ? m_gbuffer.GetWidth() : m_backBufferWidth;
-        const uint32_t height = m_gbuffer.IsValid() ? m_gbuffer.GetHeight() : m_backBufferHeight;
+        const uint32_t width = m_frameSnapshot.valid ? m_frameSnapshot.width : m_backBufferWidth;
+        const uint32_t height = m_frameSnapshot.valid ? m_frameSnapshot.height : m_backBufferHeight;
 
         output << "{\n";
         output << "  \"schema\": \"renderlab-capture-metadata/v1\",\n";
@@ -1190,8 +1227,8 @@ namespace renderlab
             return false;
         }
 
-        const uint32_t width = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetWidth() : m_backBufferWidth;
-        const uint32_t height = m_hdrSceneColor.IsValid() ? m_hdrSceneColor.GetHeight() : m_backBufferHeight;
+        const uint32_t width = m_frameSnapshot.hasHdr ? m_frameSnapshot.width : m_backBufferWidth;
+        const uint32_t height = m_frameSnapshot.hasHdr ? m_frameSnapshot.height : m_backBufferHeight;
         const uint64_t pixelCount = static_cast<uint64_t>(width) * height;
         const GBufferPassHud& gbufferHud = m_gbufferPass.GetHud();
         const DeferredLightingPassHud& lightingHud = m_deferredLightingPass.GetHud();
@@ -1295,13 +1332,6 @@ namespace renderlab
             }
             {
                 markers::GpuMarker renderGpuMarker(m_commandList, markers::kRender);
-                GBufferPassInputs gbufferInputs;
-                gbufferInputs.sceneDraws = &m_drawList;
-                gbufferInputs.frameConstants = &m_frameConstants;
-                gbufferInputs.viewConstants = &m_viewConstants;
-                const GBufferPassOutputs gbufferOutputs = MakeGBufferPassOutputs(m_gbuffer);
-                m_gbufferPass.Execute(m_commandList, gbufferInputs, gbufferOutputs);
-
                 m_lightingConstants = m_options.verifyLights ? MakeVerifyLightsLightingConstants()
                                                              : MakeDefaultLightingConstants();
                 if (m_lightingConstants.pointLightCount > kMaxPointLights)
@@ -1318,80 +1348,15 @@ namespace renderlab
                     m_lightingConstants.pointLightCount =
                         ClampPointLightCount(m_lightingConstants.pointLightCount);
                 }
-                const bool rdgLightingPresent =
-                    m_presentSource == PresentSource::Final && !m_options.manualTonemap;
-                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid() && !rdgLightingPresent)
-                {
-                    const DeferredLightingPassInputs lightingInputs = MakeDeferredLightingPassInputs(
-                        m_gbuffer, m_viewConstants, m_lightingConstants);
-                    const DeferredLightingPassOutputs lightingOutputs =
-                        MakeDeferredLightingPassOutputs(m_hdrSceneColor);
-                    m_deferredLightingPass.Execute(m_commandList, lightingInputs, lightingOutputs);
-                }
 
-                nvrhi::ITexture* debugColor = nullptr;
+                UpdateDebugHud();
+                nvrhi::ITexture* backBuffer = nullptr;
                 if (framebuffer && !framebuffer->getDesc().colorAttachments.empty())
                 {
-                    debugColor = framebuffer->getDesc().colorAttachments[0].texture;
+                    backBuffer = framebuffer->getDesc().colorAttachments[0].texture;
                 }
-
-                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid() && debugColor)
-                {
-                    UpdateDebugHud();
-                    if (m_presentSource == PresentSource::Final)
-                    {
-                        if (rdgLightingPresent)
-                        {
-                            ExecuteLightingPresent(
-                                m_commandList, debugColor, rdg::ToneMapOutput::BackBuffer);
-                        }
-                        else
-                        {
-                            ExecuteToneMap(
-                                m_commandList,
-                                m_hdrSceneColor.GetTexture(),
-                                debugColor,
-                                rdg::ToneMapOutput::BackBuffer);
-                        }
-                    }
-                    else if (m_presentSource == PresentSource::LightingDebug)
-                    {
-                        const LightingDebugPassInputs debugInputs = MakeLightingDebugPassInputs(
-                            m_gbuffer,
-                            m_hdrSceneColor.GetTexture(),
-                            m_viewConstants,
-                            m_lightingConstants,
-                            m_lightingDebugHud.mode);
-                        LightingDebugPassOutputs debugOutputs;
-                        debugOutputs.debugColor = debugColor;
-                        m_lightingDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
-                    }
-                    else
-                    {
-                        const GBufferDebugPassInputs debugInputs = MakeGBufferDebugPassInputs(
-                            m_gbuffer, m_viewConstants, m_gbufferDebugHud.mode);
-                        GBufferDebugPassOutputs debugOutputs;
-                        debugOutputs.debugColor = debugColor;
-                        m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
-                    }
-                }
-                else if (m_gbuffer.IsValid() && debugColor)
-                {
-                    UpdateDebugHud();
-                    if (m_presentSource == PresentSource::GBufferDebug)
-                    {
-                        const GBufferDebugPassInputs debugInputs = MakeGBufferDebugPassInputs(
-                            m_gbuffer, m_viewConstants, m_gbufferDebugHud.mode);
-                        GBufferDebugPassOutputs debugOutputs;
-                        debugOutputs.debugColor = debugColor;
-                        m_gbufferDebugPass.Execute(m_commandList, debugInputs, debugOutputs);
-                    }
-                    else
-                    {
-                        nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
-                    }
-                }
-                else
+                ExecuteRasterFrame(backBuffer);
+                if (!m_framePresented && framebuffer)
                 {
                     nvrhi::utils::ClearColorAttachment(m_commandList, framebuffer, 0, kClearColor);
                 }
@@ -1428,8 +1393,7 @@ namespace renderlab
         m_gbufferDebugPass.ReleaseSizeDependentResources();
         m_deferredLightingPass.ReleaseSizeDependentResources();
         m_gbufferPass.ReleaseSizeDependentResources();
-        m_hdrSceneColor.Release();
-        m_gbuffer.Release();
+        ReleaseFrameGraph();
     }
 
     void RenderingLabApp::BackBufferResized(
@@ -1444,7 +1408,7 @@ namespace renderlab
         if (width == 0 || height == 0)
         {
             log::info(
-                "Back buffer minimized or zero-sized (%u x %u); GBuffer and HDRSceneColor not recreated.",
+                "Back buffer minimized or zero-sized (%u x %u); raster frame not allocated.",
                 width,
                 height);
             return;
@@ -1453,21 +1417,9 @@ namespace renderlab
         if (sampleCount != kGBufferSampleCount)
         {
             log::warning(
-                "Swap-chain sample count is %u; GBuffer and HDRSceneColor stay at sample count %u (no MSAA).",
+                "Swap-chain sample count is %u; the raster frame stays at sample count %u (no MSAA).",
                 sampleCount,
                 kGBufferSampleCount);
-        }
-
-        if (!m_gbuffer.Create(GetDevice(), width, height))
-        {
-            log::error("Failed to create GBuffer targets at %u x %u.", width, height);
-            return;
-        }
-
-        if (!m_hdrSceneColor.Create(GetDevice(), width, height))
-        {
-            log::error("Failed to create HDRSceneColor at %u x %u.", width, height);
-            return;
         }
 
         log::info("Back buffer resized to %u x %u", width, height);
@@ -1677,165 +1629,268 @@ namespace renderlab
         m_lightingDebugHud.decodeConvention = lightingInfo.decodeConvention;
     }
 
-    void RenderingLabApp::ExecuteLightingPresent(
-        nvrhi::ICommandList* commandList,
-        nvrhi::ITexture* output,
-        rdg::ToneMapOutput outputKind)
+    void RenderingLabApp::ReleaseFrameGraph()
     {
-        if (!commandList || !output || !m_gbuffer.IsValid())
+        m_frameExecutor.reset();
+        m_frameGraph.reset();
+        m_frameHandles = {};
+        m_frameSnapshot = {};
+        m_stopRasterFrame = false;
+        m_framePresented = false;
+    }
+
+    void RenderingLabApp::LogRasterFrameErrors() const
+    {
+        if (!m_frameExecutor)
         {
             return;
         }
-
-        const uint32_t width = m_gbuffer.GetWidth();
-        const uint32_t height = m_gbuffer.GetHeight();
-        rdg::GraphBuilder builder;
-        const rdg::LightingPresentGraph graph =
-            rdg::BuildLightingPresentGraph(builder, width, height, outputKind);
-        rdg::exec::GraphExecutor executor(builder, rdg::GraphCompiler::Compile(builder));
-        const char* outputName =
-            outputKind == rdg::ToneMapOutput::BackBuffer ? "BackBuffer" : "PostProcessColor";
-        executor.RegisterImport(
-            graph.gbufferA, {m_gbuffer.GetTexture(GBufferTarget::A), "GBufferA"});
-        executor.RegisterImport(
-            graph.gbufferB, {m_gbuffer.GetTexture(GBufferTarget::B), "GBufferB"});
-        executor.RegisterImport(
-            graph.gbufferC, {m_gbuffer.GetTexture(GBufferTarget::C), "GBufferC"});
-        executor.RegisterImport(
-            graph.gbufferDepth, {m_gbuffer.GetTexture(GBufferTarget::Depth), "GBufferDepth"});
-        executor.RegisterImport(graph.outputImported, {output, outputName});
-        executor.SetDevice(GetDevice());
-        executor.Allocate();
-        executor.Plan();
-
-        const auto logErrors = [&executor]() {
-            for (const rdg::Error& error : executor.GetErrors())
-            {
-                log::error("RDG lighting-present: %s", error.message.c_str());
-            }
-        };
-        if (!executor.GetErrors().empty())
+        for (const rdg::Error& error : m_frameExecutor->GetErrors())
         {
-            logErrors();
-            return;
-        }
-
-        nvrhi::ITexture* rdgHdr = nullptr;
-        executor.ExecutePass(graph.deferredLightingPassIndex, [&](rdg::exec::PassContext& ctx) {
-            const rdg::exec::PhysicalTexture* a = ctx.GetTexture(graph.gbufferA);
-            const rdg::exec::PhysicalTexture* b = ctx.GetTexture(graph.gbufferB);
-            const rdg::exec::PhysicalTexture* c = ctx.GetTexture(graph.gbufferC);
-            const rdg::exec::PhysicalTexture* depth = ctx.GetTexture(graph.gbufferDepth);
-            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrWritten);
-            if (!a || !b || !c || !depth || !hdrPhys)
-            {
-                return;
-            }
-            rdgHdr = static_cast<nvrhi::ITexture*>(hdrPhys->native);
-            DeferredLightingPassInputs lightingInputs;
-            lightingInputs.gbufferA = static_cast<nvrhi::ITexture*>(a->native);
-            lightingInputs.gbufferB = static_cast<nvrhi::ITexture*>(b->native);
-            lightingInputs.gbufferC = static_cast<nvrhi::ITexture*>(c->native);
-            lightingInputs.gbufferDepth = static_cast<nvrhi::ITexture*>(depth->native);
-            lightingInputs.viewConstants = &m_viewConstants;
-            lightingInputs.lightingConstants = &m_lightingConstants;
-            DeferredLightingPassOutputs lightingOutputs;
-            lightingOutputs.hdrSceneColor = rdgHdr;
-            m_deferredLightingPass.Execute(commandList, lightingInputs, lightingOutputs);
-        });
-        if (!executor.GetErrors().empty())
-        {
-            logErrors();
-            return;
-        }
-
-        if (rdgHdr && m_hdrSceneColor.GetTexture())
-        {
-            commandList->copyTexture(
-                m_hdrSceneColor.GetTexture(), nvrhi::TextureSlice(), rdgHdr, nvrhi::TextureSlice());
-        }
-
-        executor.ExecutePass(graph.postProcessPassIndex, [&](rdg::exec::PassContext& ctx) {
-            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrWritten);
-            const rdg::exec::PhysicalTexture* outPhys = ctx.GetTexture(graph.outputWritten);
-            if (!hdrPhys || !outPhys)
-            {
-                return;
-            }
-            const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
-                static_cast<nvrhi::ITexture*>(hdrPhys->native), m_tonemapConstants);
-            PostProcessPassOutputs postOutputs;
-            postOutputs.finalColor = static_cast<nvrhi::ITexture*>(outPhys->native);
-            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
-        });
-        if (!executor.GetErrors().empty())
-        {
-            logErrors();
+            log::error("RDG raster frame: %s", error.message.c_str());
         }
     }
 
-    void RenderingLabApp::ExecuteToneMap(
-        nvrhi::ICommandList* commandList,
-        nvrhi::ITexture* hdr,
-        nvrhi::ITexture* output,
-        rdg::ToneMapOutput outputKind)
+    void RenderingLabApp::ExecuteRasterFrame(nvrhi::ITexture* backBuffer)
     {
-        if (!commandList || !hdr || !output)
+        ReleaseFrameGraph();
+
+        const uint32_t width = m_backBufferWidth;
+        const uint32_t height = m_backBufferHeight;
+        if (width == 0 || height == 0 || backBuffer == nullptr)
         {
             return;
         }
 
-        if (m_options.manualTonemap)
+        const rdg::RasterPresent present = RasterPresentFor(m_presentSource);
+        const bool withHdr = present != rdg::RasterPresent::GBufferDebug;
+
+        auto graph = std::make_unique<rdg::exec::ExecGraph>();
+        rdg::exec::ExecGraph& built = *graph;
+
+        rdg::TextureHandle gbufferA =
+            built.CreateTexture({"GBufferA", width, height, rdg::Format::SRGBA8Unorm});
+        rdg::TextureHandle gbufferB =
+            built.CreateTexture({"GBufferB", width, height, rdg::Format::RGBA16Float});
+        rdg::TextureHandle gbufferC =
+            built.CreateTexture({"GBufferC", width, height, rdg::Format::RGBA8Unorm});
+        rdg::TextureHandle gbufferDepth =
+            built.CreateTexture({"GBufferDepth", width, height, rdg::Format::D32Float});
+        rdg::TextureHandle outputImported =
+            built.ImportTexture({"BackBuffer", width, height, rdg::Format::SRGBA8Unorm});
+
+        rdg::PassBuilder gbufferPass = built.AddPass(
+            "GBuffer",
+            rdg::PassFlags::Raster,
+            [this](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+                if (m_stopRasterFrame)
+                {
+                    return;
+                }
+                nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
+                nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
+                nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
+                nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
+                if (!a || !b || !c || !depth)
+                {
+                    m_stopRasterFrame = true;
+                    return;
+                }
+                GBufferPassInputs inputs;
+                inputs.sceneDraws = &m_drawList;
+                inputs.frameConstants = &m_frameConstants;
+                inputs.viewConstants = &m_viewConstants;
+                GBufferPassOutputs outputs;
+                outputs.gbufferA = a;
+                outputs.gbufferB = b;
+                outputs.gbufferC = c;
+                outputs.gbufferDepth = depth;
+                m_gbufferPass.Execute(commandList, inputs, outputs);
+                m_frameSnapshot.gbufferA = a;
+                m_frameSnapshot.gbufferB = b;
+                m_frameSnapshot.gbufferC = c;
+                m_frameSnapshot.gbufferDepth = depth;
+                m_frameSnapshot.width = m_backBufferWidth;
+                m_frameSnapshot.height = m_backBufferHeight;
+                m_frameSnapshot.valid = true;
+            });
+        gbufferA = gbufferPass.Write(gbufferA);
+        gbufferB = gbufferPass.Write(gbufferB);
+        gbufferC = gbufferPass.Write(gbufferC);
+        gbufferDepth = gbufferPass.Write(gbufferDepth);
+
+        rdg::TextureHandle hdrWritten;
+        if (withHdr)
         {
-            const PostProcessPassInputs postInputs =
-                MakePostProcessPassInputs(hdr, m_tonemapConstants);
-            PostProcessPassOutputs postOutputs;
-            postOutputs.finalColor = output;
-            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+            rdg::TextureHandle hdrCreated =
+                built.CreateTexture({"HDRSceneColor", width, height, rdg::Format::RGBA16Float});
+            rdg::PassBuilder lightingPass = built.AddPass(
+                "DeferredLighting",
+                rdg::PassFlags::Raster,
+                [this](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+                    if (m_stopRasterFrame)
+                    {
+                        return;
+                    }
+                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
+                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
+                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
+                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
+                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
+                    if (!a || !b || !c || !depth || !hdr)
+                    {
+                        m_stopRasterFrame = true;
+                        return;
+                    }
+                    DeferredLightingPassInputs inputs;
+                    inputs.gbufferA = a;
+                    inputs.gbufferB = b;
+                    inputs.gbufferC = c;
+                    inputs.gbufferDepth = depth;
+                    inputs.viewConstants = &m_viewConstants;
+                    inputs.lightingConstants = &m_lightingConstants;
+                    DeferredLightingPassOutputs outputs;
+                    outputs.hdrSceneColor = hdr;
+                    m_deferredLightingPass.Execute(commandList, inputs, outputs);
+                    m_frameSnapshot.hdrSceneColor = hdr;
+                    m_frameSnapshot.hasHdr = true;
+                });
+            lightingPass.Read(gbufferA);
+            lightingPass.Read(gbufferB);
+            lightingPass.Read(gbufferC);
+            lightingPass.Read(gbufferDepth);
+            hdrWritten = lightingPass.Write(hdrCreated);
+        }
+
+        const char* presentName = "PostProcess";
+        if (present == rdg::RasterPresent::LightingDebug)
+        {
+            presentName = "LightingDebug";
+        }
+        else if (present == rdg::RasterPresent::GBufferDebug)
+        {
+            presentName = "GBufferDebug";
+        }
+
+        rdg::PassBuilder presentPass = built.AddPass(
+            presentName,
+            rdg::PassFlags::Raster,
+            [this, present](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+                if (m_stopRasterFrame)
+                {
+                    return;
+                }
+                nvrhi::ITexture* output = NativeTexture(ctx.GetTexture(m_frameHandles.outputWritten));
+                if (!output)
+                {
+                    m_stopRasterFrame = true;
+                    return;
+                }
+                if (present == rdg::RasterPresent::Final)
+                {
+                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
+                    if (!hdr)
+                    {
+                        m_stopRasterFrame = true;
+                        return;
+                    }
+                    const PostProcessPassInputs inputs = MakePostProcessPassInputs(hdr, m_tonemapConstants);
+                    PostProcessPassOutputs outputs;
+                    outputs.finalColor = output;
+                    m_postProcessPass.Execute(commandList, inputs, outputs);
+                }
+                else if (present == rdg::RasterPresent::LightingDebug)
+                {
+                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
+                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
+                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
+                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
+                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
+                    if (!a || !b || !c || !depth || !hdr)
+                    {
+                        m_stopRasterFrame = true;
+                        return;
+                    }
+                    LightingDebugPassInputs inputs;
+                    inputs.gbufferA = a;
+                    inputs.gbufferB = b;
+                    inputs.gbufferC = c;
+                    inputs.gbufferDepth = depth;
+                    inputs.hdrSceneColor = hdr;
+                    inputs.viewConstants = &m_viewConstants;
+                    inputs.lightingConstants = &m_lightingConstants;
+                    inputs.mode = m_lightingDebugHud.mode;
+                    LightingDebugPassOutputs outputs;
+                    outputs.debugColor = output;
+                    m_lightingDebugPass.Execute(commandList, inputs, outputs);
+                }
+                else
+                {
+                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
+                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
+                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
+                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
+                    if (!a || !b || !c || !depth)
+                    {
+                        m_stopRasterFrame = true;
+                        return;
+                    }
+                    GBufferDebugPassInputs inputs;
+                    inputs.gbufferA = a;
+                    inputs.gbufferB = b;
+                    inputs.gbufferC = c;
+                    inputs.gbufferDepth = depth;
+                    inputs.viewConstants = &m_viewConstants;
+                    inputs.mode = m_gbufferDebugHud.mode;
+                    GBufferDebugPassOutputs outputs;
+                    outputs.debugColor = output;
+                    m_gbufferDebugPass.Execute(commandList, inputs, outputs);
+                }
+                m_framePresented = true;
+            });
+        if (present != rdg::RasterPresent::Final)
+        {
+            presentPass.Read(gbufferA);
+            presentPass.Read(gbufferB);
+            presentPass.Read(gbufferC);
+            presentPass.Read(gbufferDepth);
+        }
+        if (withHdr)
+        {
+            presentPass.Read(hdrWritten);
+        }
+        rdg::TextureHandle outputWritten = presentPass.Write(outputImported);
+        built.ExportTexture(outputWritten);
+
+        m_frameHandles.gbufferA = gbufferA;
+        m_frameHandles.gbufferB = gbufferB;
+        m_frameHandles.gbufferC = gbufferC;
+        m_frameHandles.gbufferDepth = gbufferDepth;
+        m_frameHandles.hdrWritten = hdrWritten;
+        m_frameHandles.outputWritten = outputWritten;
+
+        const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(built.Builder());
+        auto executor = std::make_unique<rdg::exec::GraphExecutor>(built, compiled);
+        executor->SetDevice(GetDevice());
+        executor->RegisterImport(outputImported, rdg::exec::PhysicalTexture{backBuffer, "BackBuffer"});
+        executor->Allocate();
+        executor->Plan();
+
+        m_frameGraph = std::move(graph);
+        m_frameExecutor = std::move(executor);
+        if (!compiled.IsSuccess() || !m_frameExecutor->GetErrors().empty())
+        {
+            LogRasterFrameErrors();
             return;
         }
 
-        const nvrhi::TextureDesc& hdrDesc = hdr->getDesc();
-        rdg::GraphBuilder builder;
-        const rdg::ToneMapGraph graph =
-            rdg::BuildToneMapGraph(builder, hdrDesc.width, hdrDesc.height, outputKind);
-        rdg::exec::GraphExecutor executor(builder, rdg::GraphCompiler::Compile(builder));
-        const char* outputName =
-            outputKind == rdg::ToneMapOutput::BackBuffer ? "BackBuffer" : "PostProcessColor";
-        executor.RegisterImport(graph.hdrSceneColor, {hdr, "HDRSceneColor"});
-        executor.RegisterImport(graph.outputImported, {output, outputName});
-        executor.Plan();
-
-        const auto logErrors = [&executor]() {
-            for (const rdg::Error& error : executor.GetErrors())
-            {
-                log::error("RDG tone map: %s", error.message.c_str());
-            }
-        };
-        if (!executor.GetErrors().empty())
+        m_frameExecutor->Execute(m_commandList);
+        if (!m_frameExecutor->GetErrors().empty())
         {
-            logErrors();
-            return;
-        }
-
-        executor.ExecutePass(graph.postProcessPassIndex, [&](rdg::exec::PassContext& ctx) {
-            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrSceneColor);
-            const rdg::exec::PhysicalTexture* outPhys = ctx.GetTexture(graph.outputWritten);
-            if (!hdrPhys || !outPhys)
-            {
-                return;
-            }
-            const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
-                static_cast<nvrhi::ITexture*>(hdrPhys->native), m_tonemapConstants);
-            PostProcessPassOutputs postOutputs;
-            postOutputs.finalColor = static_cast<nvrhi::ITexture*>(outPhys->native);
-            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
-        });
-        if (!executor.GetErrors().empty())
-        {
-            logErrors();
+            LogRasterFrameErrors();
         }
     }
+
 
     void RenderingLabApp::UpdateSceneHud()
     {

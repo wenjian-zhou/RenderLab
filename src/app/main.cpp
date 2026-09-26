@@ -46,7 +46,6 @@ namespace
         std::optional<std::string> dumpLightingViews;
         std::optional<std::string> dumpRdg;
         bool verifyLights = false;
-        bool manualTonemap = false;
     };
 
     struct ValidationLog
@@ -69,7 +68,8 @@ namespace
             "  --lock-camera       Disable free-camera motion and keep the S0.4 preset\n"
             "  --gbuffer-view <m>  Present a GBuffer debug channel: base-color, world-normal,\n"
             "                      roughness, metallic, ao-flags, linear-depth\n"
-            "                      Mutually exclusive with --lighting-view.\n"
+            "                      Mutually exclusive with --lighting-view. This present source\n"
+            "                      does not produce HDRSceneColor, so --output-hdr fails.\n"
             "  --lighting-view <m> Present a lighting debug channel: world-position, ndotl, lit\n"
             "                      Default present (no view flags): final tone-mapped output\n"
             "                      Mutually exclusive with --gbuffer-view.\n"
@@ -90,13 +90,6 @@ namespace
             "                      Write the M1-shaped compiled graph as rdg.txt and rdg.dot under\n"
             "                      <dir> and exit. CPU-only: does not create a device, touch NVRHI,\n"
             "                      or run the M1 pass list. Other flags are ignored.\n"
-            "  --manual-tonemap    Temporary S5.5 A/B: call DeferredLightingPass::Execute into\n"
-            "                      app HDR plus PostProcessPass::Execute for on-screen Final.\n"
-            "                      --output-hdr final.png still goes through ExecuteToneMap\n"
-            "                      (manual branch when this flag is set). Default is RDG\n"
-            "                      lighting-to-present on Final. Ignored by --dump-rdg.\n"
-            "                      LightingDebug and GBufferDebug stay fully manual including\n"
-            "                      lighting. Removed when S5.6 drops the scheduler.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
@@ -108,7 +101,8 @@ namespace
             "                      lighting-lit.png, final.png (tone-mapped, exposureEV pinned in\n"
             "                      metadata), and hdr-capture-metadata.json. Implies --lock-camera\n"
             "                      and disables the windowed --frames resize/minimize probe.\n"
-            "                      Exclusive with --output.\n"
+            "                      Exclusive with --output. Fails when the present source is\n"
+            "                      GBuffer debug, which does not produce HDRSceneColor.\n"
             "  --dx12, --d3d12     Select the D3D12 backend (default and only supported API)\n"
             "\n"
             "RenderLab is D3D12-only. Donut DeviceManager owns the window, device, queues,\n"
@@ -169,12 +163,6 @@ namespace
             if (EqualsOption(argument, "--verify-lights"))
             {
                 options.verifyLights = true;
-                continue;
-            }
-
-            if (EqualsOption(argument, "--manual-tonemap"))
-            {
-                options.manualTonemap = true;
                 continue;
             }
 
@@ -584,7 +572,6 @@ int main(int argc, char** argv)
     launchOptions.gbufferView = gbufferView;
     launchOptions.lightingView = lightingView;
     launchOptions.verifyLights = options.verifyLights;
-    launchOptions.manualTonemap = options.manualTonemap;
     launchOptions.exposureEV = options.exposureEV.value_or(renderlab::kDefaultExposureEV);
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
@@ -626,8 +613,7 @@ int main(int argc, char** argv)
             deviceManager.get(),
             app.GetCapabilities(),
             app.GetSceneHud(),
-            app.GetGBufferTargets(),
-            app.GetHDRSceneColorTarget(),
+            app.GetFrameSnapshot(),
             app.GetGBufferPassHud(),
             app.GetDeferredLightingPassHud(),
             app.GetPostProcessPassHud(),

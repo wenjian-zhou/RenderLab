@@ -32,11 +32,14 @@ device-free). **S5.3 is complete**: `GraphExecutor::Plan()` declares raster
 access states (`rdg::Access` + `AccessMap`; `keepInitialState = true` remains
 the one NVRHI path). **S5.4 is complete**: RDG controls order and resources
 for tone mapping (one-pass imported leaf; `PostProcessPass::Execute`
-unchanged; `--manual-tonemap` A/B). **S5.5 is complete**: RDG owns the
+unchanged). **S5.5 is complete**: RDG owns the
 lighting-to-present chain (`BuildLightingPresentGraph`; Create* HDR through
 `Allocate`; `DeferredLightingPass::Execute` and `PostProcessPass::Execute`
-unchanged; `--manual-tonemap` covers lighting+tonemap). The next step is
-**S5.6 — Migrate GBuffer and remove the manual scheduler**. The S3.1 exposure and output-transfer
+unchanged). **S5.6 is complete**: the raster frame is one graph
+(`BuildRasterFrameGraph`); GBuffer, depth, and HDR are Create*+Allocate;
+one `Execute` runs the live passes; GBuffer debug does not produce HDR.
+The next step is **S5.7 — Add conservative transient reuse and statistics**.
+The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
 [`docs/hdr-regression.md`](docs/hdr-regression.md).
@@ -489,7 +492,8 @@ are first/last live-pass intervals on `CompileResult`. S4.6 is complete:
 compiled-graph dumps, `--dump-rdg`, and the M1-shaped golden. Stage 4 is
 satisfied. S5.1 is complete (`RenderLabRdgExec`). S5.2 is complete
 (FormatMap + Allocate). S5.3 is complete (`Plan()` access-state dump). S5.4
-is complete (tone-map leaf). S5.5 is complete (lighting-to-present). Next is S5.6.
+is complete (tone-map leaf). S5.5 is complete (lighting-to-present). S5.6
+is complete (raster frame graph; no manual scheduler). Next is S5.7.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

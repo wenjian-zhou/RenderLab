@@ -5,13 +5,12 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.6 - Migrate GBuffer and remove the manual scheduler**
-- State: **S5.5 complete** — RDG owns the lighting-to-present chain
-  (`BuildLightingPresentGraph` + first production `Allocate` of HDR);
-  `DeferredLightingPass::Execute` and `PostProcessPass::Execute` are
-  unchanged; `Plan()` stays the audit of `keepInitialState` auto-tracking;
-  `--manual-tonemap` covers lighting+tonemap (docs/rdg.md, ADR-003)
-- Last updated: 2026-09-16
+- Active step: **S5.7 - Add conservative transient reuse and statistics**
+- State: **S5.6 complete** — the raster frame is one RDG graph
+  (`BuildRasterFrameGraph`); GBuffer, depth, and HDR are Create*+Allocate;
+  one `Execute` runs the live passes; GBuffer debug does not produce HDR
+  (docs/rdg.md, ADR-003)
+- Last updated: 2026-09-26
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
@@ -19,7 +18,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
-- Stage 5: **S5.1–S5.5 complete**; next is S5.6
+- Stage 5: **S5.1–S5.6 complete**; next is S5.7
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1664,6 +1663,60 @@ Known limitations: --manual-tonemap is temporary until S5.6 and now covers
   M1-shaped 3-pass graph; PIX agreement is local-only; GraphBuilder still
   has no execute lambda.
 Next step: S5.6 - Migrate GBuffer and remove the manual scheduler
+```
+
+### S5.6 - Migrate GBuffer and remove the manual scheduler
+
+```text
+Step: S5.6
+State: Complete
+Date: 2026-09-26
+Commit: uncommitted working tree
+Design: BuildRasterFrameGraph declares Final, LightingDebug, and
+  GBufferDebug. GBuffer debug omits HDR and DeferredLighting (no
+  ZeroUseAllocation). ExecGraph::AddPass stores the lambda by pass index.
+  GraphExecutor::Execute is the only public run entry and skips culled
+  passes. Logical GraphBuilder::AddPass stays lambda-free. The executor
+  lives through afterPresent; dumps and the HUD read a non-owning snapshot.
+  No app GBuffer/HDR mirror, no HDR copy, no --manual-tonemap.
+Commands:
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
+  out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Release
+  out/build/windows-vs2022/bin/Release/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLab --config Debug
+  powershell -NoProfile -File scripts/golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts/golden-hdr.ps1 -Mode Verify -Configuration Debug
+  RenderLab.exe --frames 20
+  RenderLab.exe --headless --gbuffer-view base-color --output-hdr <dir>
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.6 RDG raster-frame tests". Public ExecutePass is gone.
+  golden.ps1 and golden-hdr.ps1 Verify Debug passed (mae=0, validation
+  errors=0) on NVIDIA GeForce RTX 5060 Laptop GPU. --frames 20 resized
+  1280x720 to 1344x784, minimized, restored, validation errors=0.
+  --gbuffer-view plus --output-hdr failed with "the current present source
+  did not produce HDR" and did not re-run DeferredLighting.
+Automated tests: 0 failures in both configurations. S5.6 checks cover three
+  present sources, GBufferDebug with no HDR resource, AccessPlan rows,
+  device-free Allocate byte counts, lambda order, skipped culled passes,
+  missing lambda as InvalidPass, and UnregisteredImport of BackBuffer.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug and
+  the windowed resize/minimize probe. No D3D12 ctest.
+Artifacts:
+  src/rdg/RasterFrameGraph.h / RasterFrameGraph.cpp
+  src/rdg/exec/ExecGraph.h / ExecGraph.cpp
+  src/rdg/exec/GraphExecutor.h / GraphExecutor.cpp
+  tests/test_rdg_raster.cpp
+  src/app/RenderingLabApp.h / RenderingLabApp.cpp
+  src/app/main.cpp
+  docs/rdg.md, docs/adr/ADR-003-rdg-boundary.md, docs/m1-reference.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: textures are allocated every frame until S5.7, so pass
+  framebuffer caches miss every frame; Plan() is still not issued as GPU
+  barriers; --dump-rdg remains the M1-shaped 3-pass graph; a GBuffer-debug
+  frame has no HDR; GraphBuilder::AddPass still has no lambda (the exec
+  layer stores it); PIX agreement is local-only.
+Next step: S5.7 - Add conservative transient reuse and statistics
 ```
 
 Selected baseline:

@@ -1,8 +1,8 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.5)
+Status: **active design note — Stage 5** (implemented through S5.6)
 
-Step: S5.5
+Step: S5.6
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -13,7 +13,9 @@ S5.2 maps descriptors to NVRHI and allocates internal Create* identities.
 S5.3 plans raster access states from those declarations. S5.4 schedules
 the existing `PostProcessPass` through a one-pass imported leaf. S5.5
 schedules deferred lighting then tone map through `BuildLightingPresentGraph`
-(Create* HDR, first production `Allocate`).
+(Create* HDR, first production `Allocate`). S5.6 gives the whole raster
+frame to one graph (`BuildRasterFrameGraph`): GBuffer, depth, and HDR are
+Create*+Allocate, and one `GraphExecutor::Execute` runs the live passes.
 How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
@@ -46,15 +48,16 @@ the **pure logical CPU model** of the render dependency graph:
   separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
   `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
   (not donut). Access-state planning (`GraphExecutor::Plan()`) lives in this
-  same Exec target. S5.4's `BuildToneMapGraph` and S5.5's
-  `BuildLightingPresentGraph` live in `RenderLabRdg` (NVRHI-free, like
-  `BuildM1ShapedGraph`). S5.7 reuses non-overlapping
+  same Exec target. S5.4's `BuildToneMapGraph`, S5.5's
+  `BuildLightingPresentGraph`, and S5.6's `BuildRasterFrameGraph` live in
+  `RenderLabRdg` (NVRHI-free, like `BuildM1ShapedGraph`). Production frames
+  use `BuildRasterFrameGraph`'s declarations through exec-layer `AddPass`.
+  The older two factories stay for CPU tests. S5.7 reuses non-overlapping
   logical intervals; this file only defines the intervals.
 
 The renderer is untouched by Stage 4. S5.4 began integration against the
-frozen M1 reference ([`m1-reference.md`](m1-reference.md)). S5.5: RDG owns
-the lighting-to-present chain; GBuffer creation/raster and debug present
-stay manual.
+frozen M1 reference ([`m1-reference.md`](m1-reference.md)). S5.6: the
+production raster frame is the graph. GBuffer debug does not produce HDR.
 
 ## 2. Handles
 
@@ -177,10 +180,17 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 - Accepted reads pin the input version; accepted writes pin the new output
   version. Same-resource conflicts follow the S4.2 rules above.
 - Pass and resource names must be non-empty; duplicates are allowed.
-- There is no execute lambda on `AddPass`. S4.3 compiles declarations into a
-  pass order; S4.4 culls passes that cannot affect an exported resource or
-  declared side effect; S5.1's `GraphExecutor::ExecutePass` is a synthetic
-  driver that never records GPU commands.
+- Logical `GraphBuilder::AddPass` has no execute lambda. `PassRecord` stays
+  name, flags, and accesses, so the compiler never inspects a
+  `std::function`. S4.3 compiles declarations into a pass order; S4.4 culls
+  passes that cannot affect an exported resource or declared side effect.
+  `ExecGraph::AddPass` (RenderLabRdgExec) stores a
+  `std::function<void(nvrhi::ICommandList*, PassContext&)>` at that pass
+  index when the pass is added. The command list is a pointer so device-free
+  tests can pass nullptr. `GraphExecutor::Execute` is the only public run
+  entry: it walks the compiled live order, skips culled passes, and calls
+  the stored lambda. A live pass with no lambda is `InvalidPass` and stops
+  later passes. Lookup errors recorded inside a lambda do not stop the walk.
 
 ## 5. Failure taxonomy
 
@@ -217,9 +227,9 @@ Naming both the pass and the resource is part of the contract from day one.
 | `InvalidPassFlags` | pass flags outside the known bit set |
 | `ZeroUseAllocation` | compile-time: a non-imported resource has no live-pass access after culling |
 | `UndeclaredAccess` | `GetTexture` / `GetBuffer` names a resource that exists on the graph but is not in this pass's read/write list |
-| `ExpiredContext` | `Get*` after `ExecutePass` has returned |
+| `ExpiredContext` | `Get*` after that pass's lambda has returned (`Execute` deactivates the context) |
 | `UnregisteredImport` | declared or exported handle has no physical token (imports before `RegisterImport`; internals before `Allocate()`) |
-| `InvalidPass` | `ExecutePass` on a culled, out-of-range, or failed-compile pass, or `Allocate()` / `Plan()` after a failed compile |
+| `InvalidPass` | `Execute()` on a failed compile, or a live pass with no lambda (later passes are not run). A culled pass is skipped and is not `InvalidPass`. Also `Allocate()` / `Plan()` after a failed compile |
 | `AllocationFailed` | `nvrhi::IDevice::createTexture` / `createBuffer` returned null |
 | `UnknownAccess` | `Plan()` cannot map a live access (buffer write; `Access::Unknown` or combined bits) |
 
@@ -292,10 +302,10 @@ and resource, DOT live vs culled, and ZeroUse dumps that keep `cull:` plus
 `ZeroUseAllocation` with `lifetime: skipped`.
 
 `tests/test_rdg_exec.cpp` covers two-phase import bind, `GetExported`,
-declared `GetTexture` / `GetBuffer` during `ExecutePass`, undeclared /
+declared `GetTexture` / `GetBuffer` during `Execute`, undeclared /
 stale / null / foreign / type-mismatch / expired lookup, unbound internals,
-culled and out-of-range `ExecutePass`, imported buffers, and the M1-shaped
-BackBuffer rule (only PostProcess may resolve it). No GPU device.
+skipped culled passes, `Execute` on a failed compile, imported buffers, and
+the M1-shaped BackBuffer rule (only PostProcess may resolve it). No GPU device.
 
 `tests/test_rdg_alloc.cpp` covers `FormatMap` round-trips for every
 `rdg::Format`, `Allocate()` of internal textures and buffers, imported
@@ -309,7 +319,13 @@ destroy of repeated graphs, `GetAllocationStats`, and `SetDevice` after
 initial-state agreement, M1-shaped before/after/restore including imported
 BackBuffer `Present`, repeated read keeping `ShaderResource`, culled-pass
 omission, buffer-write `UnknownAccess`, failed-compile and second `Plan()`,
-and `ExecutePass` without `Plan()`. CI never creates a D3D12 device.
+and `Execute` without `Plan()`. CI never creates a D3D12 device.
+
+`tests/test_rdg_raster.cpp` covers the three `RasterPresent` live orders,
+GBufferDebug with no HDR resource, AccessPlan rows, device-free `Allocate`
+byte counts, lambda order matching `GetLivePassOrder`, skipped culled
+passes, a missing lambda as `InvalidPass`, and `UnregisteredImport` of
+BackBuffer. No GPU device.
 
 ## 8. Version dump
 
@@ -467,7 +483,7 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1–S5.5)
+## 10. Execution layer (S5.1–S5.6)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
 `renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
@@ -482,7 +498,7 @@ GraphExecutor::GetAllocationStats()
 GraphExecutor::GetAccessPlan()
 GraphExecutor::RegisterImport(handle, physical)
 GraphExecutor::GetExported(handle)
-GraphExecutor::ExecutePass(passIndex, callback)
+GraphExecutor::Execute(nvrhi::ICommandList*)
 PassContext::GetTexture / GetBuffer
 ```
 
@@ -511,7 +527,7 @@ PassContext::GetTexture / GetBuffer
   It does not require `Allocate()`, `SetDevice()`, or `RegisterImport()`.
   Culled passes are omitted. A second `Plan()` is `IncompatibleAccess`.
   Failed compile is `InvalidPass`. Unmapped live access is `UnknownAccess`
-  and leaves the plan empty. `ExecutePass` does not require `Plan()`.
+  and leaves the plan empty. `Execute()` does not require `Plan()`.
 - Imported initial/final convention: internals match FormatMap
   `initialState` as `rdg::Access` (color `RenderTarget`, `D32Float`
   `DepthWrite`, buffers `ShaderResource`); imported+exported textures
@@ -539,18 +555,22 @@ PassContext::GetTexture / GetBuffer
   Zero before `Allocate()`. PIX name agreement is a local check, not CI.
 - `GetExported` returns the registered or allocated token for the pinned
   exported version. It does not extract into a new object.
-- `ExecutePass` copies compile success, cull states, and live pass order in
-  the constructor, requires a live pass, activates one executor-owned
-  `PassContext` for the callback, then deactivates it. There is no command
-  list on `PassContext`. The app captures `nvrhi::ICommandList*` in the
-  `ExecutePass` lambda and calls `DeferredLightingPass::Execute` then
-  `PostProcessPass::Execute`.
+- The constructor copies compile success, cull states, and live pass order.
+  `Execute(graphicsCommandList)` walks that live order. `SelectCommandList`
+  currently returns the graphics list for every pass; a later `PassFlags`
+  value can choose another queue there without changing the loop. Each live
+  pass activates one executor-owned `PassContext`, calls the lambda stored
+  by `ExecGraph::AddPass`, then deactivates the context. There is no command
+  list on `PassContext`. Culled passes are not called. `Execute` on a
+  `GraphBuilder` that has no lambda table is `InvalidPass` and runs nothing.
 - `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
   list, including the exact declared version (read version or write output
   version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,
   and unbound lookups return `nullptr` and append an `rdg::Error` in every
   configuration. The callback does not receive the registry, the compile
   result, or renderer tables.
+- S5.4 and S5.5 factories remain for CPU tests. Production frames use the
+  S5.6 graph below and do not call them.
 - S5.4 one-pass leaf: `BuildToneMapGraph` imports `HDRSceneColor`
   (`RGBA16Float`) and either `BackBuffer` (imported+exported Present) or
   `PostProcessColor` (imported-only dump target). One live Raster
@@ -578,3 +598,24 @@ PassContext::GetTexture / GetBuffer
   `ExecuteToneMap`. LightingDebug / GBufferDebug stay fully manual including
   lighting. `--dump-rdg` stays the M1-shaped 3-pass graph; the runtime graph
   dump is asserted in `tests/test_rdg_lighting.cpp`.
+- S5.6 raster frame: `BuildRasterFrameGraph` declares `RasterPresent::Final`
+  (GBuffer, DeferredLighting, PostProcess), `LightingDebug` (GBuffer,
+  DeferredLighting, LightingDebug), and `GBufferDebug` (GBuffer,
+  GBufferDebug). GBuffer and depth are Create*. HDR is Create* only when
+  the present pass reads it. GBufferDebug omits the HDR chain so compile
+  does not report `ZeroUseAllocation`. BackBuffer stays imported and
+  exported; GBuffer and HDR are not exported. The app mirrors those
+  declarations with `ExecGraph::AddPass` lambdas that call the existing
+  pass `Execute` functions, then `Compile`, `SetDevice`, `RegisterImport`
+  of the back buffer, `Allocate`, `Plan`, and one `Execute`. RDG errors are
+  logged and the frame does not fall back to a manual schedule. The
+  executor and graph stay members until the next frame or
+  `BackBufferResizing` (pass framebuffers released first, then the
+  executor, then device idle / GC). Zero-size frames do not `Allocate`.
+  Dumps and the HUD read a non-owning snapshot filled during the lambdas.
+  A GBuffer-debug frame's HDR pointer is null: `--output-hdr` with
+  `--gbuffer-view` fails and does not re-run DeferredLighting. `final.png`
+  calls `PostProcessPass::Execute` directly. Textures are new every frame
+  until S5.7, so pass framebuffer caches miss every frame. `--dump-rdg`
+  stays the M1-shaped 3-pass golden. Shape, access, allocate, and execute
+  order are asserted in `tests/test_rdg_raster.cpp`.

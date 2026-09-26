@@ -56,6 +56,9 @@ then `UI`/`ImGUI`, then `Present` — readable and separate. PIX workflow:
 
 ## 3. Manual pass order
 
+This section is the frozen manual order. Production scheduling is the S5.6
+raster frame graph (`BuildRasterFrameGraph` / `GraphExecutor::Execute`).
+
 All GPU passes are recorded on the app command list in
 `RenderingLabApp::RenderScene` (`src/app/RenderingLabApp.cpp`); markers are the
 constants in `src/app/FrameMarkers.h`.

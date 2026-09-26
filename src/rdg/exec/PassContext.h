@@ -11,9 +11,10 @@ namespace renderlab::rdg::exec
 {
     class GraphExecutor;
 
-    // Per-pass resolve surface. Valid only while GraphExecutor::ExecutePass
-    // is invoking the callback. GetTexture/GetBuffer resolve declared handles
-    // only; they do not expose the registry, compile result, or command lists.
+    // Per-pass resolve surface. Valid only while GraphExecutor::Execute is
+    // invoking that pass's lambda. GetTexture/GetBuffer resolve declared
+    // handles only; they do not expose the registry, compile result, or
+    // command lists.
     class PassContext
     {
     public:
