@@ -6,7 +6,7 @@ Created: 2026-08-18
 
 Source of intent: [`NEW_PLAN.md`](NEW_PLAN.md)
 
-Current progress (2026-09-16): **S0.1 through S5.5 complete**; Stage 0 / M0 is satisfied;
+Current progress (2026-09-26): **S0.1 through S5.7 complete**; Stage 0 / M0 is satisfied;
 Stage 1 is satisfied; Stage 2 gate is satisfied; Stage 3 gate / **M1 is satisfied** —
 the manual raster pipeline is frozen as the RDG migration reference (tag `m1`,
 [`docs/m1-reference.md`](docs/m1-reference.md)). **S4.1 is complete**: the RDG logical
@@ -38,7 +38,12 @@ lighting-to-present chain (`BuildLightingPresentGraph`; Create* HDR through
 unchanged). **S5.6 is complete**: the raster frame is one graph
 (`BuildRasterFrameGraph`); GBuffer, depth, and HDR are Create*+Allocate;
 one `Execute` runs the live passes; GBuffer debug does not produce HDR.
-The next step is **S5.7 — Add conservative transient reuse and statistics**.
+**S5.7 is complete**: within one `Allocate()`, exact-compatible Create*
+resources with non-overlapping live-slot intervals share a physical object;
+imported and exported resources stay ineligible; stats expose reuse pairs,
+saved bytes, and peak logical/physical bytes; `--no-transient-reuse` disables
+aliasing. The production raster graph has no reuse pair. **Stage 5 / M2 is
+satisfied.** The next step is **S6.1 — Define DXR capability and scene contracts**.
 The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is
@@ -493,7 +498,9 @@ compiled-graph dumps, `--dump-rdg`, and the M1-shaped golden. Stage 4 is
 satisfied. S5.1 is complete (`RenderLabRdgExec`). S5.2 is complete
 (FormatMap + Allocate). S5.3 is complete (`Plan()` access-state dump). S5.4
 is complete (tone-map leaf). S5.5 is complete (lighting-to-present). S5.6
-is complete (raster frame graph; no manual scheduler). Next is S5.7.
+is complete (raster frame graph; no manual scheduler). S5.7 is complete
+(within-frame exact-match transient reuse and allocation statistics).
+Stage 5 / M2 is satisfied. Next is S6.1.
 
 ### S4.1 - Define handles, descriptors, and pass declarations
 

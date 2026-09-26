@@ -105,6 +105,7 @@ namespace renderlab
         GBufferDebugMode gbufferView = GBufferDebugMode::BaseColor;
         LightingDebugMode lightingView = LightingDebugMode::Lit;
         float exposureEV = kDefaultExposureEV;
+        bool transientReuse = true;
         std::string dumpGBufferViewsDirectory;
         std::string dumpLightingViewsDirectory;
         std::string goldenOutputDirectory;

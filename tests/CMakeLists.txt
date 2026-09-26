@@ -23,6 +23,7 @@ add_executable(
     test_rdg_tonemap.cpp
     test_rdg_lighting.cpp
     test_rdg_raster.cpp
+    test_rdg_reuse.cpp
     image_compare.cpp
     image_compare.h
     hdr_compare.cpp

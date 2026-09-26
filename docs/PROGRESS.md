@@ -5,10 +5,13 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.7 - Add conservative transient reuse and statistics**
-- State: **S5.6 complete** — the raster frame is one RDG graph
-  (`BuildRasterFrameGraph`); GBuffer, depth, and HDR are Create*+Allocate;
-  one `Execute` runs the live passes; GBuffer debug does not produce HDR
+- Active step: **S6.1 - Define DXR capability and scene contracts**
+- State: **S5.7 complete** — within one `Allocate()`, exact-compatible
+  Create* resources with non-overlapping live-slot intervals share a
+  physical object; imported and exported resources stay ineligible; stats
+  report reuse pairs, saved bytes, and peak logical/physical bytes;
+  `--no-transient-reuse` disables aliasing. The production raster graph has
+  no reuse pair. Stage 5 / M2 is satisfied
   (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-26
 - Current branch: `main`
@@ -18,7 +21,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
-- Stage 5: **S5.1–S5.6 complete**; next is S5.7
+- Stage 5: **S5.1–S5.7 complete**; Stage 5 / **M2 satisfied**; next is S6.1
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1717,6 +1720,69 @@ Known limitations: textures are allocated every frame until S5.7, so pass
   frame has no HDR; GraphBuilder::AddPass still has no lambda (the exec
   layer stores it); PIX agreement is local-only.
 Next step: S5.7 - Add conservative transient reuse and statistics
+```
+
+### S5.7 - Add conservative transient reuse and statistics
+
+```text
+Step: S5.7
+State: Complete
+Date: 2026-09-26
+Commit: uncommitted working tree
+Design: PlanTransientReuse, called from GraphExecutor::Allocate, aliases
+  exact-compatible Create* resources whose closed live-slot intervals do
+  not overlap. The key is texture format+width+height or buffer
+  bytesPerElement+numElements; debug names are ignored. Imported and
+  exported resources are ineligible. Pass indices are mapped through the
+  live order, so a numerically reversed firstPass/lastPass still overlaps
+  the slots between them. SetTransientReuse defaults to true;
+  --no-transient-reuse turns it off. AllocationStats keeps textureCount,
+  bufferCount, and estimatedBytes as physical totals and adds logical
+  counts, peakLogicalBytes, peakPhysicalBytes, savedBytes, and reusePairs.
+  The Final, LightingDebug, GBufferDebug, and M1 graphs have no pair:
+  GBufferB and HDRSceneColor overlap on DeferredLighting. The executor is
+  still rebuilt every frame.
+Commands:
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
+  out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Release
+  out/build/windows-vs2022/bin/Release/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLab --config Debug
+  powershell -NoProfile -File scripts/golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts/golden-hdr.ps1 -Mode Verify -Configuration Debug
+  RenderLab.exe --headless --lock-camera --output results/s57-noreuse --no-transient-reuse
+  RenderLabGoldenCompare.exe --candidate results/s57-noreuse --reference tests/golden/cesium-milk-truck/s04-default/1280x720
+  RenderLab.exe --headless --lock-camera --output-hdr results/s57-noreuse-hdr --no-transient-reuse
+  RenderLabGoldenCompare.exe --mode hdr --candidate results/s57-noreuse-hdr --reference tests/golden-hdr/cesium-milk-truck/s04-default/1280x720
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.7 RDG transient reuse tests". golden.ps1 and golden-hdr.ps1
+  Verify Debug passed with reuse left on (mae=0, validation errors=0) on
+  NVIDIA GeForce RTX 5060 Laptop GPU. The same oracles passed with
+  --no-transient-reuse (mae=0, validation errors=0).
+Automated tests: 0 failures in both configurations. S5.7 checks cover
+  disjoint exact textures and buffers, same-pass and touching-slot
+  rejection, format/size/stride mismatch, texture/buffer separation,
+  imported and exported ineligibility, reversed pass-index overlap, lowest
+  owner index, a three-resource chain, the disable switch versus the
+  non-reuse peak, and empty pairs on the M1 and raster graphs.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug, plus
+  the --no-transient-reuse LDR and HDR captures compared to the same
+  goldens. No D3D12 ctest.
+Artifacts:
+  src/rdg/exec/TransientReuse.h / TransientReuse.cpp
+  src/rdg/exec/GraphExecutor.h / GraphExecutor.cpp
+  tests/test_rdg_reuse.cpp
+  src/app/RenderingLabApp.h / RenderingLabApp.cpp
+  src/app/main.cpp
+  docs/rdg.md, docs/adr/ADR-003-rdg-boundary.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+Known limitations: reuse is within one Allocate() only; the executor is
+  still destroyed every frame, so pass framebuffer caches miss across
+  frames; the production raster graph saves no bytes because GBufferB and
+  HDRSceneColor overlap; Plan() is still not issued as GPU barriers;
+  --dump-rdg remains the M1-shaped 3-pass graph; a GBuffer-debug frame has
+  no HDR; PIX agreement is local-only.
+Next step: S6.1 - Define DXR capability and scene contracts
 ```
 
 Selected baseline:

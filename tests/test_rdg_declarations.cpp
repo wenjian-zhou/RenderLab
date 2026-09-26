@@ -89,7 +89,7 @@ int RunRdgDeclarationTests()
             "Exporting a null handle is NullHandle");
     }
 
-    // Descriptor equality (S5.7 pooling-key preparation)
+    // operator== includes the debug name. S5.7 reuse ignores that name.
     {
         const TextureDesc a{"T", 64, 64, Format::RGBA8Unorm};
         const TextureDesc same{"T", 64, 64, Format::RGBA8Unorm};

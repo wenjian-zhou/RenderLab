@@ -46,6 +46,7 @@ namespace
         std::optional<std::string> dumpLightingViews;
         std::optional<std::string> dumpRdg;
         bool verifyLights = false;
+        bool transientReuse = true;
     };
 
     struct ValidationLog
@@ -90,6 +91,10 @@ namespace
             "                      Write the M1-shaped compiled graph as rdg.txt and rdg.dot under\n"
             "                      <dir> and exit. CPU-only: does not create a device, touch NVRHI,\n"
             "                      or run the M1 pass list. Other flags are ignored.\n"
+            "  --no-transient-reuse\n"
+            "                      Allocate a distinct physical object for every Create* resource.\n"
+            "                      Default reuses exact-compatible resources whose lifetimes do not\n"
+            "                      overlap. Ignored by --dump-rdg.\n"
             "  --headless          CI-safe smoke: hide the window, lock the camera, present a\n"
             "                      fixed frame count (default 8), then exit\n"
             "  --frames <n>        Present n frames, then exit\n"
@@ -270,6 +275,12 @@ namespace
                     return false;
                 }
                 options.dumpLightingViews = argv[++index];
+                continue;
+            }
+
+            if (EqualsOption(argument, "--no-transient-reuse"))
+            {
+                options.transientReuse = false;
                 continue;
             }
 
@@ -573,6 +584,7 @@ int main(int argc, char** argv)
     launchOptions.lightingView = lightingView;
     launchOptions.verifyLights = options.verifyLights;
     launchOptions.exposureEV = options.exposureEV.value_or(renderlab::kDefaultExposureEV);
+    launchOptions.transientReuse = options.transientReuse;
     launchOptions.writeCaptureMetadata = goldenOutput;
     if (options.dumpGBufferViews.has_value())
     {

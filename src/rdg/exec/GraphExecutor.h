@@ -6,6 +6,7 @@
 #include "PassContext.h"
 #include "PhysicalRegistry.h"
 #include "PhysicalResource.h"
+#include "TransientReuse.h"
 
 #include <cstdint>
 #include <memory>
@@ -23,17 +24,28 @@ namespace renderlab::rdg::exec
 {
     struct AllocationStats
     {
+        // Physical objects actually created. Aliased logical resources are
+        // not counted here.
         uint32_t textureCount = 0;
         uint32_t bufferCount = 0;
         uint64_t estimatedBytes = 0;
+        // Every successful Create*, including resources that alias an owner.
+        uint32_t logicalTextureCount = 0;
+        uint32_t logicalBufferCount = 0;
+        uint64_t peakLogicalBytes = 0;
+        // Objects are held until the executor is destroyed, so the frame
+        // high-water mark is the physical byte total.
+        uint64_t peakPhysicalBytes = 0;
+        uint64_t savedBytes = 0;
+        std::vector<ReusePair> reusePairs;
     };
 
     // Binds logical imported handles to opaque physical tokens, allocates
     // internal Create* identities, plans access states, and runs the pass
     // lambdas stored on an ExecGraph. The builder (and ExecGraph, when used)
     // must outlive the executor. Compile result is read in the constructor
-    // (success flag, cull states, and live pass order are copied); it does
-    // not need to outlive Plan or Execute.
+    // (success flag, cull states, live pass order, and resource lifetimes
+    // are copied); it does not need to outlive Plan, Allocate, or Execute.
     class GraphExecutor
     {
     public:
@@ -45,6 +57,9 @@ namespace renderlab::rdg::exec
         GraphExecutor& operator=(const GraphExecutor&) = delete;
 
         void SetDevice(nvrhi::IDevice* device);
+        // Default is on. Must be called before Allocate(). A call after
+        // Allocate() records IncompatibleAccess and leaves the flag unchanged.
+        void SetTransientReuse(bool enabled);
         void Allocate();
         void Plan();
         AllocationStats GetAllocationStats() const { return m_stats; }
@@ -106,11 +121,13 @@ namespace renderlab::rdg::exec
         bool m_compileSuccess = false;
         std::vector<PassCullState> m_cullStates;
         std::vector<uint32_t> m_livePassOrder;
+        std::vector<ResourceLifetime> m_resourceLifetimes;
         PhysicalRegistry m_registry;
         PassContext m_context;
         std::vector<Error> m_errors;
         nvrhi::IDevice* m_device = nullptr;
         bool m_allocated = false;
+        bool m_transientReuse = true;
         bool m_planned = false;
         AccessPlan m_accessPlan;
         AllocationStats m_stats{};

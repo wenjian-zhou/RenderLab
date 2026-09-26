@@ -20,8 +20,9 @@ namespace renderlab::rdg
         D32Float,
     };
 
-    // Descriptors are value types; equality is the future pooling key
-    // (S5.7; UE precedent: FRDGBufferDesc::operator==).
+    // Descriptors are value types. operator== includes the debug name.
+    // S5.7 reuse ignores that name and matches format, width, and height
+    // (UE precedent for a descriptor key: FRDGBufferDesc::operator==).
     struct TextureDesc
     {
         std::string name;

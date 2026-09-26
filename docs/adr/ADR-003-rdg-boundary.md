@@ -134,8 +134,9 @@ budgeting.
 - `graphId` from a global counter allows multiple concurrent builders; no
   single-active-builder restriction (UE has one).
 - S5.2 must map `Format` → `nvrhi::Format` and descriptors → NVRHI
-  descriptors; S5.7 uses descriptor equality as the pooling key; S4.4
-  consumes `imported || exported` as the cull-root rule.
+  descriptors; S5.7 pools on format and size and ignores the debug name
+  stored in the descriptor; S4.4 consumes `imported || exported` as the
+  cull-root rule.
 - In S4.1, `StaleVersion` and `TypeMismatch` are reachable only through
   forged handles (no production write bumps a version yet, and honest code
   is caught at compile time) — an accepted, documented limitation until
@@ -288,3 +289,17 @@ Create*+Allocate, one present pass). GBuffer debug omits HDR and
 DeferredLighting. The app does not mirror those textures and does not copy
 HDR. `--manual-tonemap` is gone. `--dump-rdg` stays the M1-shaped
 representative. A GBuffer-debug frame does not produce HDRSceneColor.
+
+## S5.7 Extension (2026-09-26)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`, and `GraphBuilder::AddPass` still has no
+lambda. Within one `GraphExecutor::Allocate()`, exact-compatible `Create*`
+resources whose live-slot intervals do not overlap share one physical
+object. The compatibility key ignores descriptor debug names. Imported and
+exported resources are ineligible. There is no heap allocator and no
+cross-frame pool; the executor is still rebuilt every frame. `PlanTransientReuse`
+lives in `RenderLabRdgExec`. `--no-transient-reuse` disables aliasing.
+`--dump-rdg` stays the logical M1-shaped graph. The production raster graph
+has no disjoint compatible pair (`GBufferB` and `HDRSceneColor` overlap on
+`DeferredLighting`), so its physical texture count is unchanged.

@@ -1872,6 +1872,7 @@ namespace renderlab
         const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(built.Builder());
         auto executor = std::make_unique<rdg::exec::GraphExecutor>(built, compiled);
         executor->SetDevice(GetDevice());
+        executor->SetTransientReuse(m_options.transientReuse);
         executor->RegisterImport(outputImported, rdg::exec::PhysicalTexture{backBuffer, "BackBuffer"});
         executor->Allocate();
         executor->Plan();

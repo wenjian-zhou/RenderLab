@@ -1,6 +1,7 @@
 #include "GraphExecutor.h"
 #include "AccessMap.h"
 #include "FormatMap.h"
+#include "TransientReuse.h"
 
 #include <nvrhi/nvrhi.h>
 
@@ -30,6 +31,7 @@ namespace renderlab::rdg::exec
         , m_compileSuccess(result.IsSuccess())
         , m_cullStates(result.GetPassCullStates().begin(), result.GetPassCullStates().end())
         , m_livePassOrder(result.GetLivePassOrder().begin(), result.GetLivePassOrder().end())
+        , m_resourceLifetimes(result.GetResourceLifetimes().begin(), result.GetResourceLifetimes().end())
     {
         m_registry.Reset(builder.GetResourceCount());
     }
@@ -55,6 +57,21 @@ namespace renderlab::rdg::exec
             return;
         }
         m_device = device;
+    }
+
+    void GraphExecutor::SetTransientReuse(bool enabled)
+    {
+        if (m_allocated)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                "SetTransientReuse after Allocate()",
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+        m_transientReuse = enabled;
     }
 
     void GraphExecutor::Plan()
@@ -197,6 +214,8 @@ namespace renderlab::rdg::exec
 
         m_allocated = true;
         const size_t resourceCount = m_builder->GetResourceCount();
+        const TransientReusePlan reuse = PlanTransientReuse(
+            *m_builder, m_resourceLifetimes, m_livePassOrder, m_transientReuse);
         if (m_device != nullptr)
         {
             m_gpu = std::make_unique<GpuStorage>();
@@ -204,6 +223,44 @@ namespace renderlab::rdg::exec
             m_gpu->buffers.resize(resourceCount);
         }
 
+        const auto estimatedBytesOf = [](const ResourceRecord& record) -> uint64_t
+        {
+            if (record.kind == ResourceKind::Texture)
+            {
+                const TextureDesc& desc = std::get<TextureDesc>(record.desc);
+                return static_cast<uint64_t>(desc.width) * desc.height * BytesPerPixel(desc.format);
+            }
+            const BufferDesc& desc = std::get<BufferDesc>(record.desc);
+            return static_cast<uint64_t>(desc.bytesPerElement) * desc.numElements;
+        };
+        const auto account = [&](const ResourceRecord& record, bool physical)
+        {
+            const uint64_t bytes = estimatedBytesOf(record);
+            if (record.kind == ResourceKind::Texture)
+            {
+                ++m_stats.logicalTextureCount;
+                if (physical)
+                {
+                    ++m_stats.textureCount;
+                }
+            }
+            else
+            {
+                ++m_stats.logicalBufferCount;
+                if (physical)
+                {
+                    ++m_stats.bufferCount;
+                }
+            }
+            m_stats.peakLogicalBytes += bytes;
+            if (physical)
+            {
+                m_stats.estimatedBytes += bytes;
+                m_stats.peakPhysicalBytes += bytes;
+            }
+        };
+
+        std::vector<uint8_t> created(resourceCount, 0);
         for (uint32_t index = 0; index < resourceCount; ++index)
         {
             const ResourceRecord& record = m_builder->GetResource(index);
@@ -215,8 +272,7 @@ namespace renderlab::rdg::exec
             if (record.kind == ResourceKind::Texture)
             {
                 const TextureDesc& desc = std::get<TextureDesc>(record.desc);
-                const nvrhi::TextureDesc nv = MakeTextureDesc(desc);
-                if (nv.format == nvrhi::Format::UNKNOWN)
+                if (MakeTextureDesc(desc).format == nvrhi::Format::UNKNOWN)
                 {
                     AddError(
                         ErrorCategory::InvalidDescriptor,
@@ -226,7 +282,17 @@ namespace renderlab::rdg::exec
                         record.name);
                     continue;
                 }
+            }
 
+            if (index >= reuse.physicalOwner.size() || reuse.physicalOwner[index] != index)
+            {
+                continue;
+            }
+
+            if (record.kind == ResourceKind::Texture)
+            {
+                const TextureDesc& desc = std::get<TextureDesc>(record.desc);
+                const nvrhi::TextureDesc nv = MakeTextureDesc(desc);
                 if (m_device != nullptr)
                 {
                     nvrhi::TextureHandle handle = m_device->createTexture(nv);
@@ -251,17 +317,11 @@ namespace renderlab::rdg::exec
                     m_registry.SetTexture(index, PhysicalTexture{stub.get(), record.name});
                     m_cpuTextures.push_back(std::move(stub));
                 }
-
-                ++m_stats.textureCount;
-                m_stats.estimatedBytes +=
-                    static_cast<uint64_t>(desc.width) * desc.height * BytesPerPixel(desc.format);
             }
             else
             {
                 const BufferDesc& desc = std::get<BufferDesc>(record.desc);
                 const nvrhi::BufferDesc nv = MakeBufferDesc(desc);
-                const uint64_t byteSize = nv.byteSize;
-
                 if (m_device != nullptr)
                 {
                     nvrhi::BufferHandle handle = m_device->createBuffer(nv);
@@ -286,11 +346,71 @@ namespace renderlab::rdg::exec
                     m_registry.SetBuffer(index, PhysicalBuffer{stub.get(), record.name});
                     m_cpuBuffers.push_back(std::move(stub));
                 }
-
-                ++m_stats.bufferCount;
-                m_stats.estimatedBytes += byteSize;
             }
+
+            created[index] = 1;
+            account(record, true);
         }
+
+        for (const ReusePair& pair : reuse.reusePairs)
+        {
+            const bool ownerReady =
+                pair.ownerIndex < created.size() && pair.aliasIndex < resourceCount && created[pair.ownerIndex] != 0;
+            if (!ownerReady)
+            {
+                const std::string aliasName = pair.aliasIndex < resourceCount
+                    ? m_builder->GetResource(pair.aliasIndex).name
+                    : pair.aliasName;
+                AddError(
+                    ErrorCategory::AllocationFailed,
+                    std::format(
+                        "Allocate() failed to alias '{}' onto '{}'",
+                        aliasName,
+                        pair.ownerName),
+                    Error::kNoPass,
+                    "",
+                    aliasName);
+                continue;
+            }
+
+            const ResourceRecord& record = m_builder->GetResource(pair.aliasIndex);
+            void* native = nullptr;
+            if (record.kind == ResourceKind::Texture)
+            {
+                const PhysicalTexture* owner = m_registry.GetTexture(pair.ownerIndex);
+                native = owner != nullptr ? owner->native : nullptr;
+            }
+            else
+            {
+                const PhysicalBuffer* owner = m_registry.GetBuffer(pair.ownerIndex);
+                native = owner != nullptr ? owner->native : nullptr;
+            }
+            if (native == nullptr)
+            {
+                AddError(
+                    ErrorCategory::AllocationFailed,
+                    std::format(
+                        "Allocate() failed to alias '{}' onto '{}'",
+                        record.name,
+                        pair.ownerName),
+                    Error::kNoPass,
+                    "",
+                    record.name);
+                continue;
+            }
+            if (record.kind == ResourceKind::Texture)
+            {
+                m_registry.SetTexture(pair.aliasIndex, PhysicalTexture{native, record.name});
+            }
+            else
+            {
+                m_registry.SetBuffer(pair.aliasIndex, PhysicalBuffer{native, record.name});
+            }
+            account(record, false);
+            m_stats.reusePairs.push_back(pair);
+        }
+
+        m_stats.savedBytes = m_stats.peakLogicalBytes - m_stats.peakPhysicalBytes;
     }
 
     void GraphExecutor::RegisterImport(TextureHandle handle, PhysicalTexture physical)

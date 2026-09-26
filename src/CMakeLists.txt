@@ -104,6 +104,8 @@ set(RENDERLAB_RDG_EXEC_SOURCES
     rdg/exec/AccessMap.cpp
     rdg/exec/AccessPlan.h
     rdg/exec/AccessPlan.cpp
+    rdg/exec/TransientReuse.h
+    rdg/exec/TransientReuse.cpp
 )
 
 add_library(RenderLabRdgExec STATIC ${RENDERLAB_RDG_EXEC_SOURCES})

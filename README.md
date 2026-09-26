@@ -58,8 +58,12 @@ production `Allocate` of HDR); `DeferredLightingPass::Execute` and
 `PostProcessPass::Execute` are unchanged. **S5.6 is complete**: the raster
 frame is one RDG graph (`BuildRasterFrameGraph`); GBuffer, depth, and HDR
 exist only as Create*+Allocate; one `Execute` runs the live passes; GBuffer
-debug does not produce HDR. The next executable task is **S5.7: conservative
-transient reuse**.
+debug does not produce HDR. **S5.7 is complete**: `Allocate()` aliases
+exact-compatible Create* resources whose live-slot lifetimes do not overlap,
+reports reuse pairs and logical/physical bytes, and honors
+`--no-transient-reuse`. The production raster graph has no such pair.
+**Stage 5 / M2 is satisfied.** The next executable task is **S6.1: define
+DXR capability and scene contracts**.
 
 ## Plans
 

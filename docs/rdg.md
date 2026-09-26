@@ -1,8 +1,8 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.6)
+Status: **active design note — Stage 5** (implemented through S5.7; Stage 5 / M2 is satisfied)
 
-Step: S5.6
+Step: S5.7
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -16,6 +16,9 @@ schedules deferred lighting then tone map through `BuildLightingPresentGraph`
 (Create* HDR, first production `Allocate`). S5.6 gives the whole raster
 frame to one graph (`BuildRasterFrameGraph`): GBuffer, depth, and HDR are
 Create*+Allocate, and one `GraphExecutor::Execute` runs the live passes.
+S5.7 aliases exact-compatible Create* resources whose live-slot intervals
+do not overlap, inside one `Allocate()`, and reports reuse pairs plus
+logical and physical byte totals.
 How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
@@ -52,8 +55,9 @@ the **pure logical CPU model** of the render dependency graph:
   `BuildLightingPresentGraph`, and S5.6's `BuildRasterFrameGraph` live in
   `RenderLabRdg` (NVRHI-free, like `BuildM1ShapedGraph`). Production frames
   use `BuildRasterFrameGraph`'s declarations through exec-layer `AddPass`.
-  The older two factories stay for CPU tests. S5.7 reuses non-overlapping
-  logical intervals; this file only defines the intervals.
+  The older two factories stay for CPU tests. S5.7 aliases non-overlapping
+  intervals in `RenderLabRdgExec`; this file defines the intervals, and §10
+  defines the physical reuse rule.
 
 The renderer is untouched by Stage 4. S5.4 began integration against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)). S5.6: the
@@ -97,8 +101,11 @@ TextureDesc { name, width, height, format }
 BufferDesc  { name, bytesPerElement, numElements }
 ```
 
-Both are value types with `operator==` — the future pooling key for S5.7
-(UE precedent: `FRDGBufferDesc::operator==`).
+Both are value types with `operator==`, which includes the debug name.
+S5.7's reuse key ignores that name. Textures match on format, width, and
+height. Buffers match on `bytesPerElement` and `numElements` (a shared byte
+size with a different stride does not match). UE precedent for a descriptor
+key: `FRDGBufferDesc::operator==`.
 
 `Format` is a **neutral owned enum** (`SRGBA8Unorm`, `RGBA8Unorm`,
 `RGBA16Float`, `RGBA32Float`, `R32Float`, `D32Float`), covering the frozen
@@ -483,7 +490,7 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1–S5.6)
+## 10. Execution layer (S5.1–S5.7)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
 `renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
@@ -538,24 +545,36 @@ PassContext::GetTexture / GetBuffer
 - `AccessPlan::Dump()` explains every planned raster state request using
   `rdg::Access` names. `CompileResult::Dump()` / `--dump-rdg` stay
   logical-only. PIX agreement is local, not a ctest.
-- `Allocate()` mints one physical identity per non-imported `Create*` slot
+- `Allocate()` mints physical identities for non-imported `Create*` slots
   after a successful compile. Imported slots are skipped. A second
   `Allocate()` is `IncompatibleAccess`. Failed compile is `InvalidPass` and
-  fills nothing. There is no pooling; S5.7 owns exact-match reuse.
+  fills nothing. S5.7 may alias a later `Create*` onto an earlier physical
+  object; see the reuse rules below.
 - `native` is non-owning. With a null device, the executor owns CPU stubs
   and `native` is the stub address. With `SetDevice` before `Allocate()`,
   `native` is `nvrhi::ITexture*` / `IBuffer*` and the executor owns the
   NVRHI handles. `SetDevice` after `Allocate()` is `IncompatibleAccess`.
-  Physical identity is per resource index; versions do not mint new natives.
+  Versions of one resource do not mint new natives. An aliased resource's
+  registry entry points at the owner's native.
 - `RegisterImport` still refuses `Create*` slots. After `Allocate()` without
   `RegisterImport`, `GetTexture` of an imported handle is
   `UnregisteredImport`.
-- `GetAllocationStats()` reports successfully minted Create* counts and
-  estimated bytes (`width * height * BytesPerPixel`, or buffer `byteSize`).
-  Zero before `Allocate()`. PIX name agreement is a local check, not CI.
+- `GetAllocationStats()` reports physical counts and `estimatedBytes` for
+  objects actually created (`width * height * BytesPerPixel`, or
+  `bytesPerElement * numElements`). `logicalTextureCount`,
+  `logicalBufferCount`, and `peakLogicalBytes` also count aliased `Create*`
+  resources. `peakPhysicalBytes` equals `estimatedBytes`: objects are held
+  until the executor is destroyed, so that total is the frame high-water
+  mark. `savedBytes` is `peakLogicalBytes - peakPhysicalBytes`. `reusePairs`
+  lists `(owner, alias)` in alias-index order; the owner is the resource
+  that created the physical object. Stats are zero before `Allocate()`.
+  PIX name agreement is a local check, not CI. An alias registry entry keeps
+  the logical resource's `debugName`; the NVRHI object's debug name is the
+  owner's.
 - `GetExported` returns the registered or allocated token for the pinned
   exported version. It does not extract into a new object.
-- The constructor copies compile success, cull states, and live pass order.
+- The constructor copies compile success, cull states, live pass order, and
+  resource lifetimes.
   `Execute(graphicsCommandList)` walks that live order. `SelectCommandList`
   currently returns the graphics list for every pass; a later `PassFlags`
   value can choose another queue there without changing the loop. Each live
@@ -615,7 +634,30 @@ PassContext::GetTexture / GetBuffer
   Dumps and the HUD read a non-owning snapshot filled during the lambdas.
   A GBuffer-debug frame's HDR pointer is null: `--output-hdr` with
   `--gbuffer-view` fails and does not re-run DeferredLighting. `final.png`
-  calls `PostProcessPass::Execute` directly. Textures are new every frame
-  until S5.7, so pass framebuffer caches miss every frame. `--dump-rdg`
+  calls `PostProcessPass::Execute` directly. The executor is still rebuilt
+  every frame, so pass framebuffer caches miss across frames. `--dump-rdg`
   stays the M1-shaped 3-pass golden. Shape, access, allocate, and execute
   order are asserted in `tests/test_rdg_raster.cpp`.
+- S5.7 transient reuse: `PlanTransientReuse` runs inside `Allocate()`.
+  Eligible resources are non-imported, non-exported `Create*` with a mapped
+  descriptor. The key is texture `format + width + height`, or buffer
+  `bytesPerElement + numElements`. Debug names are not part of the key.
+  Overlap uses the closed live-slot interval of `ResourceLifetime`: two
+  resources alias only when `lastSlot < firstSlot` in one direction. Pass
+  indices are not compared as numbers, because `firstPass` is the pass at
+  the earliest slot and can be numerically larger than `lastPass`.
+  Candidates are ordered by first slot, then resource index. A candidate
+  reuses the free physical slot with the lowest owner index whose occupied
+  last slot ends before the candidate starts, then extends that slot.
+  `SetTransientReuse(false)` (default true; CLI `--no-transient-reuse`)
+  gives every `Create*` its own object. A call after `Allocate()` is
+  `IncompatibleAccess`. Unknown formats stay `InvalidDescriptor` and are
+  not pooled. If the owner's create fails, its aliases record
+  `AllocationFailed` and are not created separately. Reuse does not issue a
+  second clear; the alias's first live access is a write. The Final,
+  LightingDebug, and GBufferDebug production graphs have no reuse pair:
+  `GBufferB` and `HDRSceneColor` are both `RGBA16Float` at the viewport size
+  and both live on `DeferredLighting`. With reuse left on, those graphs
+  still report Final/M1 `textureCount == 5` and `1280 * 720 * 28` bytes, and
+  GBufferDebug `textureCount == 4` and `1280 * 720 * 20` bytes. Synthetic
+  interval cases are in `tests/test_rdg_reuse.cpp`.
