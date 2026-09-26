@@ -1614,7 +1614,7 @@ Next step: S5.5 - Migrate deferred lighting
 Step: S5.5
 State: Complete
 Date: 2026-09-16
-Commit: (this commit)
+Commit: 1208e1f
 Design: grill rounds froze BuildLightingPresentGraph in RenderLabRdg,
   two ExecutePass callbacks on one captured command list, Create*+Allocate HDR,
   Plan() audit-only keepInitialState path, HDR copy to app target for capture,
