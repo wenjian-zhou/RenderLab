@@ -9,6 +9,7 @@
 #include "renderer/LightingDebugPass.h"
 #include "renderer/RendererData.h"
 #include "rdg/GraphCompiler.h"
+#include "rdg/LightingPresentGraph.h"
 #include "rdg/ToneMapGraph.h"
 #include "rdg/exec/GraphExecutor.h"
 
@@ -1317,7 +1318,9 @@ namespace renderlab
                     m_lightingConstants.pointLightCount =
                         ClampPointLightCount(m_lightingConstants.pointLightCount);
                 }
-                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid())
+                const bool rdgLightingPresent =
+                    m_presentSource == PresentSource::Final && !m_options.manualTonemap;
+                if (m_gbuffer.IsValid() && m_hdrSceneColor.IsValid() && !rdgLightingPresent)
                 {
                     const DeferredLightingPassInputs lightingInputs = MakeDeferredLightingPassInputs(
                         m_gbuffer, m_viewConstants, m_lightingConstants);
@@ -1337,11 +1340,19 @@ namespace renderlab
                     UpdateDebugHud();
                     if (m_presentSource == PresentSource::Final)
                     {
-                        ExecuteToneMap(
-                            m_commandList,
-                            m_hdrSceneColor.GetTexture(),
-                            debugColor,
-                            rdg::ToneMapOutput::BackBuffer);
+                        if (rdgLightingPresent)
+                        {
+                            ExecuteLightingPresent(
+                                m_commandList, debugColor, rdg::ToneMapOutput::BackBuffer);
+                        }
+                        else
+                        {
+                            ExecuteToneMap(
+                                m_commandList,
+                                m_hdrSceneColor.GetTexture(),
+                                debugColor,
+                                rdg::ToneMapOutput::BackBuffer);
+                        }
                     }
                     else if (m_presentSource == PresentSource::LightingDebug)
                     {
@@ -1664,6 +1675,103 @@ namespace renderlab
         const LightingDebugModeInfo& lightingInfo = GetLightingDebugModeInfo(m_lightingDebugHud.mode);
         m_lightingDebugHud.channelName = lightingInfo.channelName;
         m_lightingDebugHud.decodeConvention = lightingInfo.decodeConvention;
+    }
+
+    void RenderingLabApp::ExecuteLightingPresent(
+        nvrhi::ICommandList* commandList,
+        nvrhi::ITexture* output,
+        rdg::ToneMapOutput outputKind)
+    {
+        if (!commandList || !output || !m_gbuffer.IsValid())
+        {
+            return;
+        }
+
+        const uint32_t width = m_gbuffer.GetWidth();
+        const uint32_t height = m_gbuffer.GetHeight();
+        rdg::GraphBuilder builder;
+        const rdg::LightingPresentGraph graph =
+            rdg::BuildLightingPresentGraph(builder, width, height, outputKind);
+        rdg::exec::GraphExecutor executor(builder, rdg::GraphCompiler::Compile(builder));
+        const char* outputName =
+            outputKind == rdg::ToneMapOutput::BackBuffer ? "BackBuffer" : "PostProcessColor";
+        executor.RegisterImport(
+            graph.gbufferA, {m_gbuffer.GetTexture(GBufferTarget::A), "GBufferA"});
+        executor.RegisterImport(
+            graph.gbufferB, {m_gbuffer.GetTexture(GBufferTarget::B), "GBufferB"});
+        executor.RegisterImport(
+            graph.gbufferC, {m_gbuffer.GetTexture(GBufferTarget::C), "GBufferC"});
+        executor.RegisterImport(
+            graph.gbufferDepth, {m_gbuffer.GetTexture(GBufferTarget::Depth), "GBufferDepth"});
+        executor.RegisterImport(graph.outputImported, {output, outputName});
+        executor.SetDevice(GetDevice());
+        executor.Allocate();
+        executor.Plan();
+
+        const auto logErrors = [&executor]() {
+            for (const rdg::Error& error : executor.GetErrors())
+            {
+                log::error("RDG lighting-present: %s", error.message.c_str());
+            }
+        };
+        if (!executor.GetErrors().empty())
+        {
+            logErrors();
+            return;
+        }
+
+        nvrhi::ITexture* rdgHdr = nullptr;
+        executor.ExecutePass(graph.deferredLightingPassIndex, [&](rdg::exec::PassContext& ctx) {
+            const rdg::exec::PhysicalTexture* a = ctx.GetTexture(graph.gbufferA);
+            const rdg::exec::PhysicalTexture* b = ctx.GetTexture(graph.gbufferB);
+            const rdg::exec::PhysicalTexture* c = ctx.GetTexture(graph.gbufferC);
+            const rdg::exec::PhysicalTexture* depth = ctx.GetTexture(graph.gbufferDepth);
+            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrWritten);
+            if (!a || !b || !c || !depth || !hdrPhys)
+            {
+                return;
+            }
+            rdgHdr = static_cast<nvrhi::ITexture*>(hdrPhys->native);
+            DeferredLightingPassInputs lightingInputs;
+            lightingInputs.gbufferA = static_cast<nvrhi::ITexture*>(a->native);
+            lightingInputs.gbufferB = static_cast<nvrhi::ITexture*>(b->native);
+            lightingInputs.gbufferC = static_cast<nvrhi::ITexture*>(c->native);
+            lightingInputs.gbufferDepth = static_cast<nvrhi::ITexture*>(depth->native);
+            lightingInputs.viewConstants = &m_viewConstants;
+            lightingInputs.lightingConstants = &m_lightingConstants;
+            DeferredLightingPassOutputs lightingOutputs;
+            lightingOutputs.hdrSceneColor = rdgHdr;
+            m_deferredLightingPass.Execute(commandList, lightingInputs, lightingOutputs);
+        });
+        if (!executor.GetErrors().empty())
+        {
+            logErrors();
+            return;
+        }
+
+        if (rdgHdr && m_hdrSceneColor.GetTexture())
+        {
+            commandList->copyTexture(
+                m_hdrSceneColor.GetTexture(), nvrhi::TextureSlice(), rdgHdr, nvrhi::TextureSlice());
+        }
+
+        executor.ExecutePass(graph.postProcessPassIndex, [&](rdg::exec::PassContext& ctx) {
+            const rdg::exec::PhysicalTexture* hdrPhys = ctx.GetTexture(graph.hdrWritten);
+            const rdg::exec::PhysicalTexture* outPhys = ctx.GetTexture(graph.outputWritten);
+            if (!hdrPhys || !outPhys)
+            {
+                return;
+            }
+            const PostProcessPassInputs postInputs = MakePostProcessPassInputs(
+                static_cast<nvrhi::ITexture*>(hdrPhys->native), m_tonemapConstants);
+            PostProcessPassOutputs postOutputs;
+            postOutputs.finalColor = static_cast<nvrhi::ITexture*>(outPhys->native);
+            m_postProcessPass.Execute(commandList, postInputs, postOutputs);
+        });
+        if (!executor.GetErrors().empty())
+        {
+            logErrors();
+        }
     }
 
     void RenderingLabApp::ExecuteToneMap(

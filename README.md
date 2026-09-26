@@ -52,8 +52,12 @@ declares an auditable raster access-state plan (`rdg::Access` + `AccessMap`)
 without issuing GPU barriers; `keepInitialState = true` stays the one NVRHI
 path. **S5.4 is complete**: RDG controls order and resources for tone
 mapping (`BuildToneMapGraph` + app `ExecutePass`); `PostProcessPass::Execute`
-is unchanged; `--manual-tonemap` is the temporary A/B. The next executable
-task is **S5.5: migrate deferred lighting**.
+is unchanged; `--manual-tonemap` is the temporary A/B. **S5.5 is complete**:
+RDG owns the lighting-to-present chain (`BuildLightingPresentGraph` + first
+production `Allocate` of HDR); `DeferredLightingPass::Execute` and
+`PostProcessPass::Execute` are unchanged; `--manual-tonemap` covers the
+whole chain. The next executable task is **S5.6: migrate GBuffer and remove
+the manual scheduler**.
 
 ## Plans
 

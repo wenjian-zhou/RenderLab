@@ -1,8 +1,8 @@
 # RDG Model and Boundary Contract
 
-Status: **active design note — Stage 5** (implemented through S5.4)
+Status: **active design note — Stage 5** (implemented through S5.5)
 
-Step: S5.4
+Step: S5.5
 
 This file records the mini RDG's logical model: handles, resource
 descriptors, pass records, read/write declarations, version provenance,
@@ -11,7 +11,9 @@ resource lifetimes, and compiled-graph text/DOT dumps. S5.1 adds the
 execution layer that binds imported handles to opaque physical tokens.
 S5.2 maps descriptors to NVRHI and allocates internal Create* identities.
 S5.3 plans raster access states from those declarations. S5.4 schedules
-the existing `PostProcessPass` through a one-pass imported leaf.
+the existing `PostProcessPass` through a one-pass imported leaf. S5.5
+schedules deferred lighting then tone map through `BuildLightingPresentGraph`
+(Create* HDR, first production `Allocate`).
 How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
@@ -44,14 +46,15 @@ the **pure logical CPU model** of the render dependency graph:
   separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
   `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
   (not donut). Access-state planning (`GraphExecutor::Plan()`) lives in this
-  same Exec target. S5.4's `BuildToneMapGraph` lives in `RenderLabRdg`
-  (NVRHI-free, like `BuildM1ShapedGraph`). S5.7 reuses non-overlapping
+  same Exec target. S5.4's `BuildToneMapGraph` and S5.5's
+  `BuildLightingPresentGraph` live in `RenderLabRdg` (NVRHI-free, like
+  `BuildM1ShapedGraph`). S5.7 reuses non-overlapping
   logical intervals; this file only defines the intervals.
 
-The renderer is untouched by Stage 4. S5.4 begins integration against the
-frozen M1 reference ([`m1-reference.md`](m1-reference.md)): RDG controls
-order and resources for tone mapping; GBuffer, deferred lighting, and
-debug present stay manual.
+The renderer is untouched by Stage 4. S5.4 began integration against the
+frozen M1 reference ([`m1-reference.md`](m1-reference.md)). S5.5: RDG owns
+the lighting-to-present chain; GBuffer creation/raster and debug present
+stay manual.
 
 ## 2. Handles
 
@@ -464,7 +467,7 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 `--dump-rdg <dir>` writes the M1-shaped representative graph's `rdg.txt` and
 `rdg.dot` and exits before creating a device.
 
-## 10. Execution layer (S5.1–S5.4)
+## 10. Execution layer (S5.1–S5.5)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
 `renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
@@ -539,8 +542,9 @@ PassContext::GetTexture / GetBuffer
 - `ExecutePass` copies compile success, cull states, and live pass order in
   the constructor, requires a live pass, activates one executor-owned
   `PassContext` for the callback, then deactivates it. There is no command
-  list on `PassContext`. The S5.4 app captures `nvrhi::ICommandList*` in
-  the `ExecutePass` lambda and calls `PostProcessPass::Execute`.
+  list on `PassContext`. The app captures `nvrhi::ICommandList*` in the
+  `ExecutePass` lambda and calls `DeferredLightingPass::Execute` then
+  `PostProcessPass::Execute`.
 - `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
   list, including the exact declared version (read version or write output
   version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,
@@ -557,3 +561,20 @@ PassContext::GetTexture / GetBuffer
   `PresentSource::Final` and `--output-hdr` `final.png`. `--dump-rdg` stays
   the M1-shaped 3-pass graph; the one-pass dump is asserted in
   `tests/test_rdg_tonemap.cpp`.
+- S5.5 lighting-to-present: `BuildLightingPresentGraph` imports GBufferA/B/C
+  and GBufferDepth, Create*s `HDRSceneColor` (`RGBA16Float`), and imports
+  either `BackBuffer` (imported+exported Present) or `PostProcessColor`
+  (imported-only dump target). Two live Raster passes (`DeferredLighting`,
+  `PostProcess`) plus a declare-only `LightingDebug` branch that culls as
+  `unused-leaf`. The app rebuilds GraphBuilder + Compile + GraphExecutor on
+  every Final run, `RegisterImport`s GBuffer/depth/output, `SetDevice`s,
+  `Allocate`s HDR, `Plan()`s, then two `ExecutePass` callbacks on one
+  captured command list (`GetTexture` of the write-minted HDR handle). After
+  lighting, `copyTexture` mirrors RDG HDR into app-owned `HDRSceneColorTarget`
+  so `DumpHdrCapture` is unchanged. FormatMap is not flipped (RGBA16Float
+  create-time clear stays `(0,0,0,0)`; lighting `Execute` still clears
+  `(0,0,0,1)`). `--manual-tonemap` restores manual lighting into app HDR plus
+  `PostProcessPass::Execute` for on-screen Final; `final.png` still uses
+  `ExecuteToneMap`. LightingDebug / GBufferDebug stay fully manual including
+  lighting. `--dump-rdg` stays the M1-shaped 3-pass graph; the runtime graph
+  dump is asserted in `tests/test_rdg_lighting.cpp`.

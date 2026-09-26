@@ -5,11 +5,12 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 
 ## Current State
 
-- Active step: **S5.5 - Migrate deferred lighting**
-- State: **S5.4 complete** — RDG controls order and resources for tone
-  mapping (`BuildToneMapGraph` + app `ExecutePass`); `PostProcessPass::Execute`
-  is unchanged; `Plan()` stays the audit of `keepInitialState` auto-tracking;
-  `--manual-tonemap` is the temporary A/B (docs/rdg.md, ADR-003)
+- Active step: **S5.6 - Migrate GBuffer and remove the manual scheduler**
+- State: **S5.5 complete** — RDG owns the lighting-to-present chain
+  (`BuildLightingPresentGraph` + first production `Allocate` of HDR);
+  `DeferredLightingPass::Execute` and `PostProcessPass::Execute` are
+  unchanged; `Plan()` stays the audit of `keepInitialState` auto-tracking;
+  `--manual-tonemap` covers lighting+tonemap (docs/rdg.md, ADR-003)
 - Last updated: 2026-09-16
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -18,7 +19,7 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
 - Stage 2: **S2.1 through S2.4 complete**; Stage 2 gate satisfied
 - Stage 3: **S3.1 through S3.3 complete**; Stage 3 gate / **M1 satisfied**
 - Stage 4: **S4.1-S4.6 complete**; Stage 4 gate satisfied
-- Stage 5: **S5.1–S5.4 complete**; next is S5.5
+- Stage 5: **S5.1–S5.5 complete**; next is S5.6
 - Style pass 2026-09-08 (between S4.1 and S4.2): adopted
   [docs/code-style.md](code-style.md) — rdg methods renamed to PascalCase
   (`AddPass`, `CreateTexture`, `GetErrors`, ...), and `renderer_cb.h` view /
@@ -1605,6 +1606,64 @@ Known limitations: --manual-tonemap is temporary until S5.6; GBuffer,
   (no setTextureState); --dump-rdg remains the M1-shaped 3-pass graph;
   PIX agreement is local-only; GraphBuilder still has no execute lambda.
 Next step: S5.5 - Migrate deferred lighting
+```
+
+### S5.5 - Migrate deferred lighting
+
+```text
+Step: S5.5
+State: Complete
+Date: 2026-09-16
+Commit: (this commit)
+Design: grill rounds froze BuildLightingPresentGraph in RenderLabRdg,
+  two ExecutePass callbacks on one captured command list, Create*+Allocate HDR,
+  Plan() audit-only keepInitialState path, HDR copy to app target for capture,
+  --manual-tonemap widened to lighting+tonemap, declare-only LightingDebug cull,
+  rebuild-each-run, CPU dump Checks not a new CLI, test_rdg_lighting.cpp
+Commands:
+  cmake --build --preset windows-debug --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Debug -R RenderLabDataContractTests --output-on-failure
+  cmake --build --preset windows-release --target RenderLabDataContractTests
+  ctest --test-dir out/build/windows-vs2022 -C Release -R RenderLabDataContractTests --output-on-failure
+  git diff --check
+  Select-String on src/rdg/*.h,src/rdg/*.cpp for nvrhi includes / donut includes
+  (exec/ may include nvrhi; donut is forbidden there too)
+  powershell -NoProfile -File scripts\golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts\golden-hdr.ps1 -Mode Verify -Configuration Debug
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.5 RDG lighting-present tests". RenderLabRdg still links only
+  RenderLab::ProjectOptions. DeferredLightingPass and PostProcessPass
+  draw/shaders/markers/goldens unchanged. --dump-rdg still matches
+  tests/golden/rdg/rdg.txt. golden.ps1 and golden-hdr.ps1 Verify Debug
+  passed (hdr-scene-color.rlhdr mae=0, final.png mae=0 on the default RDG
+  path). git diff --check clean. FormatMap keepInitialState still true;
+  RGBA16Float create-time clear still (0,0,0,0). HDRSceneColorTarget::Create
+  still runs at resize.
+Automated tests: 0 failures in both configurations. S5.5 checks cover two
+  live Raster passes, Create* HDR not imported, imported GBufferA/B/C+depth,
+  BackBuffer imported+exported Present, LightingDebug culled unused-leaf,
+  DumpTarget PostProcessColor imported-only, AccessPlan before/after/restore,
+  Allocate without SetDevice, GetTexture(hdrWritten) on both live passes,
+  RegisterImport of Create* HDR is IncompatibleAccess, UnregisteredImport of
+  GBufferA, ExecutePass of culled LightingDebug is InvalidPass, Plan-optional
+  ExecutePass still resolves HDR. Existing S4 and S5.1–S5.4 suites stay green.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug
+  (NVIDIA GeForce RTX 5060 Laptop GPU). No D3D12 ctest.
+Artifacts:
+  src/rdg/LightingPresentGraph.h / LightingPresentGraph.cpp
+  tests/test_rdg_lighting.cpp
+  src/app/RenderingLabApp.cpp ExecuteLightingPresent
+  src/app/main.cpp --manual-tonemap help
+  docs/rdg.md and docs/adr/ADR-003-rdg-boundary.md
+  README.md / IMPLEMENTATION_PLAN.md / docs/PROGRESS.md
+  docs/superpowers/plans/2026-09-16-s55-migrate-deferred-lighting.md
+Known limitations: --manual-tonemap is temporary until S5.6 and now covers
+  lighting+tonemap; dual HDR (Allocate draw target + app mirror) until S5.6;
+  per-frame Allocate (no pooling until S5.7); GBuffer and debug present stay
+  manual; Plan() is not issued (no setTextureState); --dump-rdg remains the
+  M1-shaped 3-pass graph; PIX agreement is local-only; GraphBuilder still
+  has no execute lambda.
+Next step: S5.6 - Migrate GBuffer and remove the manual scheduler
 ```
 
 Selected baseline:

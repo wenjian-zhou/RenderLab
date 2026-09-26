@@ -193,6 +193,10 @@ namespace renderlab
             nvrhi::ITexture* hdr,
             nvrhi::ITexture* output,
             rdg::ToneMapOutput outputKind);
+        void ExecuteLightingPresent(
+            nvrhi::ICommandList* commandList,
+            nvrhi::ITexture* output,
+            rdg::ToneMapOutput outputKind);
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;

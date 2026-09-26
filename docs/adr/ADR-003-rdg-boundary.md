@@ -258,3 +258,17 @@ app captures `nvrhi::ICommandList*` in the `ExecutePass` callback.
 `Plan()` remains the CPU audit of `keepInitialState = true` auto-tracking;
 S5.4 does not issue `setTextureState`. GBuffer, deferred lighting, and
 debug present stay manual. `--dump-rdg` stays the M1-shaped representative.
+
+## S5.5 Extension (2026-09-16)
+
+The logical boundary is unchanged: `RenderLabRdg` still links only
+`RenderLab::ProjectOptions`. `RenderingLabApp` schedules
+`DeferredLightingPass` then `PostProcessPass` through
+`BuildLightingPresentGraph` (Create* HDR, first production `Allocate`).
+`PassContext` still has no command list; the app captures
+`nvrhi::ICommandList*` in two `ExecutePass` callbacks. `Plan()` remains
+the CPU audit of `keepInitialState = true` auto-tracking; S5.5 does not
+issue `setTextureState`. FormatMap is not flipped. GBuffer creation/raster
+and LightingDebug / GBufferDebug present stay manual. After lighting, the
+app `copyTexture`s RDG HDR into the persistent `HDRSceneColorTarget` mirror
+for capture. `--dump-rdg` stays the M1-shaped representative.

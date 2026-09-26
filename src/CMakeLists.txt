@@ -54,6 +54,8 @@ set(RENDERLAB_RDG_SOURCES
     rdg/M1ShapedGraph.cpp
     rdg/ToneMapGraph.h
     rdg/ToneMapGraph.cpp
+    rdg/LightingPresentGraph.h
+    rdg/LightingPresentGraph.cpp
 )
 
 # The Stage 4 RDG compiler model is a pure logical CPU model: it must not
