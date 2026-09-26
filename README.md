@@ -62,6 +62,10 @@ debug does not produce HDR. **S5.7 is complete**: `Allocate()` aliases
 exact-compatible Create* resources whose live-slot lifetimes do not overlap,
 reports reuse pairs and logical/physical bytes, and honors
 `--no-transient-reuse`. The production raster graph has no such pair.
+**The RDG module is one target:** `RenderLab::Rdg` links `nvrhi` (not donut).
+`GraphBuilder::AddPass` takes an optional pass lambda. `Compile()` stays a
+public CPU step, and `RenderLabDataContractTests` still runs with no GPU
+device ([ADR-004](docs/adr/ADR-004-rdg-single-module.md)).
 **Stage 5 / M2 is satisfied.** The next executable task is **S6.1: define
 DXR capability and scene contracts**.
 

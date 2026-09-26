@@ -10,7 +10,7 @@
 #include <utility>
 #include <variant>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     namespace
     {
@@ -34,12 +34,6 @@ namespace renderlab::rdg::exec
         , m_resourceLifetimes(result.GetResourceLifetimes().begin(), result.GetResourceLifetimes().end())
     {
         m_registry.Reset(builder.GetResourceCount());
-    }
-
-    GraphExecutor::GraphExecutor(const ExecGraph& graph, const CompileResult& result)
-        : GraphExecutor(graph.Builder(), result)
-    {
-        m_graph = &graph;
     }
 
     GraphExecutor::~GraphExecutor() = default;
@@ -568,7 +562,7 @@ namespace renderlab::rdg::exec
     bool GraphExecutor::RunLivePass(nvrhi::ICommandList* commandList, uint32_t passIndex)
     {
         const std::string& passName = m_builder->GetPass(passIndex).name;
-        const PassLambda* lambda = m_graph != nullptr ? m_graph->FindLambda(passIndex) : nullptr;
+        const PassLambda* lambda = m_builder->FindLambda(passIndex);
         if (lambda == nullptr)
         {
             AddError(

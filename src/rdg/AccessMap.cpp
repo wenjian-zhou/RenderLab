@@ -1,6 +1,6 @@
 #include "AccessMap.h"
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     nvrhi::ResourceStates ToNvStates(Access access)
     {

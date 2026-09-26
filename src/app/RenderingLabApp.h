@@ -8,8 +8,8 @@
 #include "renderer/LightingContract.h"
 #include "renderer/PostProcessPass.h"
 #include "renderer/RendererData.h"
-#include "rdg/exec/ExecGraph.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/GraphBuilder.h"
+#include "rdg/GraphExecutor.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
@@ -238,8 +238,8 @@ namespace renderlab
         bool m_hdrDumpSucceeded = false;
         uint32_t m_backBufferWidth = 0;
         uint32_t m_backBufferHeight = 0;
-        std::unique_ptr<rdg::exec::ExecGraph> m_frameGraph;
-        std::unique_ptr<rdg::exec::GraphExecutor> m_frameExecutor;
+        std::unique_ptr<rdg::GraphBuilder> m_frameGraph;
+        std::unique_ptr<rdg::GraphExecutor> m_frameExecutor;
         RasterFrameHandles m_frameHandles;
         RasterFrameSnapshot m_frameSnapshot;
         bool m_stopRasterFrame = false;

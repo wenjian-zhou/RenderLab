@@ -58,10 +58,26 @@ set(RENDERLAB_RDG_SOURCES
     rdg/RasterFrameGraph.cpp
     rdg/LightingPresentGraph.h
     rdg/LightingPresentGraph.cpp
+    rdg/PhysicalResource.h
+    rdg/PhysicalRegistry.h
+    rdg/PhysicalRegistry.cpp
+    rdg/PassContext.h
+    rdg/PassContext.cpp
+    rdg/GraphExecutor.h
+    rdg/GraphExecutor.cpp
+    rdg/FormatMap.h
+    rdg/FormatMap.cpp
+    rdg/AccessMap.h
+    rdg/AccessMap.cpp
+    rdg/AccessPlan.h
+    rdg/AccessPlan.cpp
+    rdg/TransientReuse.h
+    rdg/TransientReuse.cpp
 )
 
-# The Stage 4 RDG compiler model is a pure logical CPU model: it must not
-# include or link Donut/NVRHI (ADR-003). ProjectOptions only.
+# One RDG module (ADR-004). Links ProjectOptions and nvrhi, not donut.
+# GraphBuilder.h forward-declares nvrhi::ICommandList and does not include
+# an NVRHI header.
 add_library(RenderLabRdg STATIC ${RENDERLAB_RDG_SOURCES})
 add_library(RenderLab::Rdg ALIAS RenderLabRdg)
 
@@ -71,6 +87,7 @@ target_link_libraries(
     RenderLabRdg
     PUBLIC
         RenderLab::ProjectOptions
+        nvrhi
 )
 
 set_target_properties(
@@ -84,53 +101,6 @@ set_target_properties(
 
 if(MSVC)
     target_compile_options(RenderLabRdg PRIVATE /wd4100)
-endif()
-
-# S5.3 execution layer: import bind, FormatMap, allocation, and access planning.
-# Links RenderLab::Rdg and nvrhi (not donut).
-set(RENDERLAB_RDG_EXEC_SOURCES
-    rdg/exec/PhysicalResource.h
-    rdg/exec/PhysicalRegistry.h
-    rdg/exec/PhysicalRegistry.cpp
-    rdg/exec/PassContext.h
-    rdg/exec/PassContext.cpp
-    rdg/exec/GraphExecutor.h
-    rdg/exec/GraphExecutor.cpp
-    rdg/exec/ExecGraph.h
-    rdg/exec/ExecGraph.cpp
-    rdg/exec/FormatMap.h
-    rdg/exec/FormatMap.cpp
-    rdg/exec/AccessMap.h
-    rdg/exec/AccessMap.cpp
-    rdg/exec/AccessPlan.h
-    rdg/exec/AccessPlan.cpp
-    rdg/exec/TransientReuse.h
-    rdg/exec/TransientReuse.cpp
-)
-
-add_library(RenderLabRdgExec STATIC ${RENDERLAB_RDG_EXEC_SOURCES})
-add_library(RenderLab::RdgExec ALIAS RenderLabRdgExec)
-
-target_include_directories(RenderLabRdgExec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-
-target_link_libraries(
-    RenderLabRdgExec
-    PUBLIC
-        RenderLab::Rdg
-        nvrhi
-)
-
-set_target_properties(
-    RenderLabRdgExec
-    PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-        FOLDER RenderLab
-)
-
-if(MSVC)
-    target_compile_options(RenderLabRdgExec PRIVATE /wd4100)
 endif()
 
 set(RENDERLAB_RENDERER_SOURCES
@@ -201,7 +171,6 @@ target_link_libraries(
     PRIVATE
         RenderLab::Renderer
         RenderLab::Rdg
-        RenderLab::RdgExec
         donut_app
         bcrypt
 )

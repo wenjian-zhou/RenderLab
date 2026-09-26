@@ -2,15 +2,22 @@
 
 #include "Handle.h"
 #include "Pass.h"
+#include "PassContext.h"
 #include "ResourceDesc.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
+
+namespace nvrhi
+{
+    class ICommandList;
+}
 
 namespace renderlab::rdg
 {
@@ -93,6 +100,11 @@ namespace renderlab::rdg
         uint32_t m_passIndex = 0;
     };
 
+    // Stored at AddPass time and invoked later by GraphExecutor::Execute.
+    // The command list is the one Execute selected for this pass. Device-free
+    // tests pass nullptr. PassRecord stays name, flags, and accesses.
+    using PassLambda = std::function<void(nvrhi::ICommandList*, PassContext&)>;
+
     class GraphBuilder
     {
     public:
@@ -109,6 +121,9 @@ namespace renderlab::rdg
         BufferHandle ImportBuffer(const BufferDesc& desc);
 
         PassBuilder AddPass(std::string_view name, PassFlags flags);
+        PassBuilder AddPass(std::string_view name, PassFlags flags, PassLambda lambda);
+
+        const PassLambda* FindLambda(uint32_t passIndex) const;
 
         void ExportTexture(TextureHandle handle);
         void ExportBuffer(BufferHandle handle);
@@ -160,6 +175,7 @@ namespace renderlab::rdg
         uint32_t m_graphId;
         std::vector<ResourceRecord> m_resources;
         std::vector<PassRecord> m_passes;
+        std::vector<PassLambda> m_lambdas;
         std::vector<Error> m_errors;
     };
 }

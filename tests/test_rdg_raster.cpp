@@ -1,8 +1,7 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/RasterFrameGraph.h"
-#include "rdg/exec/AccessPlan.h"
-#include "rdg/exec/ExecGraph.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/AccessPlan.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -11,7 +10,6 @@
 #include <vector>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -336,7 +334,7 @@ int RunRdgRasterFrameTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle a = graph.CreateTexture({"A", 4, 4, Format::RGBA8Unorm});
         TextureHandle b = graph.CreateTexture({"B", 4, 4, Format::RGBA8Unorm});
         TextureHandle output = graph.ImportTexture({"BackBuffer", 4, 4, Format::SRGBA8Unorm});
@@ -357,7 +355,7 @@ int RunRdgRasterFrameTests()
         output = third.Write(output);
         graph.ExportTexture(output);
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         GraphExecutor executor(graph, compiled);
         executor.Execute(nullptr);
         Check(executor.GetErrors().empty(), "Execute of a fully bound graph has no errors");
@@ -368,7 +366,7 @@ int RunRdgRasterFrameTests()
             for (size_t index = 0; index < ran.size(); ++index)
             {
                 const uint32_t passIndex = compiled.GetLivePassOrder()[index];
-                if (graph.Builder().GetPass(passIndex).name != ran[index])
+                if (graph.GetPass(passIndex).name != ran[index])
                 {
                     orderMatches = false;
                 }
@@ -378,7 +376,7 @@ int RunRdgRasterFrameTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle output = graph.ImportTexture({"BackBuffer", 4, 4, Format::SRGBA8Unorm});
         bool culledRan = false;
         bool liveRan = false;
@@ -388,7 +386,7 @@ int RunRdgRasterFrameTests()
         });
         output = live.Write(output);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(liveRan && !culledRan, "Execute skips a culled pass lambda");
         Check(!HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
@@ -396,7 +394,7 @@ int RunRdgRasterFrameTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle internal = graph.CreateTexture({"Temp", 4, 4, Format::RGBA8Unorm});
         TextureHandle output = graph.ImportTexture({"BackBuffer", 4, 4, Format::SRGBA8Unorm});
         bool secondRan = false;
@@ -408,7 +406,7 @@ int RunRdgRasterFrameTests()
         second.Read(internal);
         output = second.Write(output);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(!secondRan, "missing lambda stops later passes");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
@@ -423,14 +421,14 @@ int RunRdgRasterFrameTests()
         executor.Allocate();
         executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
-            "Execute without an ExecGraph lambda table is InvalidPass");
+            "Execute without a pass lambda is InvalidPass");
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport) == false,
             "missing lambdas stop before an unregistered BackBuffer lookup");
         (void)graph;
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         RasterFrameGraph built{};
         built.gbufferA = graph.CreateTexture({"GBufferA", 8, 8, Format::SRGBA8Unorm});
         built.gbufferB = graph.CreateTexture({"GBufferB", 8, 8, Format::RGBA16Float});
@@ -458,7 +456,7 @@ int RunRdgRasterFrameTests()
         post.Read(built.hdrWritten);
         built.outputWritten = post.Write(built.outputImported);
         graph.ExportTexture(built.outputWritten);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
         Check(backBuffer == nullptr, "unregistered BackBuffer resolves to null");

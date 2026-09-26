@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <format>
+#include <utility>
 
 namespace renderlab::rdg
 {
@@ -210,6 +211,35 @@ namespace renderlab::rdg
         const uint32_t index = static_cast<uint32_t>(m_passes.size());
         m_passes.push_back(PassRecord{std::string(name), flags, {}});
         return PassBuilder{*this, index};
+    }
+
+    PassBuilder GraphBuilder::AddPass(std::string_view name, PassFlags flags, PassLambda lambda)
+    {
+        const size_t countBefore = GetPassCount();
+        PassBuilder pass = AddPass(name, flags);
+        if (!pass.IsValid() || GetPassCount() == countBefore)
+        {
+            return pass;
+        }
+        if (m_lambdas.size() < GetPassCount())
+        {
+            m_lambdas.resize(GetPassCount());
+        }
+        m_lambdas[pass.PassIndex()] = std::move(lambda);
+        return pass;
+    }
+
+    const PassLambda* GraphBuilder::FindLambda(uint32_t passIndex) const
+    {
+        if (passIndex >= m_lambdas.size())
+        {
+            return nullptr;
+        }
+        if (!m_lambdas[passIndex])
+        {
+            return nullptr;
+        }
+        return &m_lambdas[passIndex];
     }
 
     bool GraphBuilder::DeclareAccess(uint32_t passIndex, TextureHandle handle, AccessMode mode)

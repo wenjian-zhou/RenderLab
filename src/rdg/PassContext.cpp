@@ -3,7 +3,7 @@
 
 #include <format>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     namespace
     {

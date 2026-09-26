@@ -1,14 +1,13 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/M1ShapedGraph.h"
 #include "rdg/RasterFrameGraph.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdio>
 #include <span>
 #include <string>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -84,7 +83,7 @@ namespace
 
     void CheckDisjointTexturesShareNative()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle createdA = graph.CreateTexture({"First", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdB = graph.CreateTexture({"Second", 8, 4, Format::RGBA8Unorm});
         BufferHandle createdOrder = graph.CreateBuffer({"Order", 4, 1});
@@ -107,7 +106,7 @@ namespace
         TextureHandle back = writeSecond.Write(backImported);
         graph.ExportTexture(back);
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Disjoint textures compile");
         GraphExecutor executor(graph, compiled);
@@ -142,7 +141,7 @@ namespace
 
     void CheckSamePassRejectsReuse()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle createdA = graph.CreateTexture({"Left", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdB = graph.CreateTexture({"Right", 8, 4, Format::RGBA8Unorm});
         TextureHandle backImported = graph.ImportTexture({"Back", 8, 4, Format::RGBA8Unorm});
@@ -156,7 +155,7 @@ namespace
         right.handle = pass.Write(createdB);
         graph.ExportTexture(pass.Write(backImported));
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Same-pass textures compile");
         GraphExecutor executor(graph, compiled);
@@ -173,7 +172,7 @@ namespace
 
     void CheckTouchingSlotsRejectReuse()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle createdA = graph.CreateTexture({"EndsHere", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdB = graph.CreateTexture({"StartsHere", 8, 4, Format::RGBA8Unorm});
         TextureHandle backImported = graph.ImportTexture({"Back", 8, 4, Format::RGBA8Unorm});
@@ -190,7 +189,7 @@ namespace
         starts.handle = second.Write(createdB);
         graph.ExportTexture(second.Write(backImported));
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Touching lifetimes compile");
         GraphExecutor executor(graph, compiled);
@@ -205,7 +204,7 @@ namespace
 
     void CheckIncompatibleDescriptorsStayDistinct()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle createdA = graph.CreateTexture({"Color", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdFormat = graph.CreateTexture({"Wide", 8, 4, Format::RGBA16Float});
         TextureHandle createdSize = graph.CreateTexture({"Tall", 16, 4, Format::RGBA8Unorm});
@@ -229,7 +228,7 @@ namespace
         tall.handle = second.Write(createdSize);
         graph.ExportTexture(second.Write(backImported));
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Incompatible descriptors compile");
         GraphExecutor executor(graph, compiled);
@@ -245,7 +244,7 @@ namespace
 
     void CheckBuffersReuseAndRejectStrideOrTexture()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         BufferHandle createdA = graph.CreateBuffer({"BufA", 16, 4});
         BufferHandle createdB = graph.CreateBuffer({"BufB", 16, 4});
         BufferHandle createdStride = graph.CreateBuffer({"Stride", 8, 8});
@@ -273,7 +272,7 @@ namespace
         stride.handle = second.Write(createdStride);
         graph.ExportTexture(second.Write(backImported));
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Buffer reuse graph compiles");
         GraphExecutor executor(graph, compiled);
@@ -296,7 +295,7 @@ namespace
 
     void CheckImportAndExportAreIneligible()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle ghostImported = graph.ImportTexture({"Ghost", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdInternal = graph.CreateTexture({"Internal", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdEarly = graph.CreateTexture({"Early", 8, 4, Format::RGBA8Unorm});
@@ -321,7 +320,7 @@ namespace
         graph.ExportTexture(exported.handle);
         (void)ghostImported;
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Import and export eligibility graph compiles");
         GraphExecutor executor(graph, compiled);
@@ -344,7 +343,7 @@ namespace
 
     void CheckReversedPassIndicesStillOverlap()
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle createdSpan = graph.CreateTexture({"Span", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdMiddle = graph.CreateTexture({"MiddleTex", 8, 4, Format::RGBA8Unorm});
         BufferHandle createdToken = graph.CreateBuffer({"Token", 4, 1});
@@ -370,7 +369,7 @@ namespace
         latePass.Read(span.handle);
         graph.ExportTexture(latePass.Write(backImported));
 
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         PrintCompileErrors(compiled);
         Check(compiled.IsSuccess(), "Reversed pass-index graph compiles");
         const uint32_t earlyIndex = earlyPass.PassIndex();
@@ -404,7 +403,7 @@ namespace
 
     void CheckLowestOwnerAndChain()
     {
-        ExecGraph overlap;
+        GraphBuilder overlap;
         TextureHandle createdA = overlap.CreateTexture({"A", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdB = overlap.CreateTexture({"B", 8, 4, Format::RGBA8Unorm});
         TextureHandle createdC = overlap.CreateTexture({"C", 8, 4, Format::RGBA8Unorm});
@@ -428,7 +427,7 @@ namespace
         c.handle = later.Write(createdC);
         overlap.ExportTexture(later.Write(backImported));
 
-        const CompileResult overlapCompiled = GraphCompiler::Compile(overlap.Builder());
+        const CompileResult overlapCompiled = GraphCompiler::Compile(overlap);
         PrintCompileErrors(overlapCompiled);
         Check(overlapCompiled.IsSuccess(), "Lowest-owner graph compiles");
         GraphExecutor overlapExecutor(overlap, overlapCompiled);
@@ -444,7 +443,7 @@ namespace
         Check(overlapStats.textureCount == 2 && overlapStats.logicalTextureCount == 3,
               "Overlapping pair plus one alias is two physical textures");
 
-        ExecGraph chain;
+        GraphBuilder chain;
         TextureHandle chainACreated = chain.CreateTexture({"ChainA", 8, 4, Format::RGBA8Unorm});
         TextureHandle chainBCreated = chain.CreateTexture({"ChainB", 8, 4, Format::RGBA8Unorm});
         TextureHandle chainCCreated = chain.CreateTexture({"ChainC", 8, 4, Format::RGBA8Unorm});
@@ -474,7 +473,7 @@ namespace
         chainC.handle = pass2.Write(chainCCreated);
         chain.ExportTexture(pass2.Write(chainBack));
 
-        const CompileResult chainCompiled = GraphCompiler::Compile(chain.Builder());
+        const CompileResult chainCompiled = GraphCompiler::Compile(chain);
         PrintCompileErrors(chainCompiled);
         Check(chainCompiled.IsSuccess(), "Alias chain compiles");
         GraphExecutor chainExecutor(chain, chainCompiled);
@@ -496,7 +495,7 @@ namespace
 
     void CheckDisableSwitchLowersNothingBelowBaseline()
     {
-        auto build = [](ExecGraph& graph, TextureUse& first, TextureUse& second) {
+        auto build = [](GraphBuilder& graph, TextureUse& first, TextureUse& second) {
             TextureHandle createdA = graph.CreateTexture({"First", 8, 4, Format::RGBA8Unorm});
             TextureHandle createdB = graph.CreateTexture({"Second", 8, 4, Format::RGBA8Unorm});
             BufferHandle createdOrder = graph.CreateBuffer({"Order", 4, 1});
@@ -515,21 +514,21 @@ namespace
             graph.ExportTexture(writeSecond.Write(backImported));
         };
 
-        ExecGraph enabledGraph;
+        GraphBuilder enabledGraph;
         TextureUse enabledFirst;
         TextureUse enabledSecond;
         build(enabledGraph, enabledFirst, enabledSecond);
-        const CompileResult enabledCompiled = GraphCompiler::Compile(enabledGraph.Builder());
+        const CompileResult enabledCompiled = GraphCompiler::Compile(enabledGraph);
         Check(enabledCompiled.IsSuccess(), "Enabled reuse graph compiles");
         GraphExecutor enabled(enabledGraph, enabledCompiled);
         enabled.Allocate();
         enabled.Execute(nullptr);
 
-        ExecGraph disabledGraph;
+        GraphBuilder disabledGraph;
         TextureUse disabledFirst;
         TextureUse disabledSecond;
         build(disabledGraph, disabledFirst, disabledSecond);
-        const CompileResult disabledCompiled = GraphCompiler::Compile(disabledGraph.Builder());
+        const CompileResult disabledCompiled = GraphCompiler::Compile(disabledGraph);
         Check(disabledCompiled.IsSuccess(), "Disabled reuse graph compiles");
         GraphExecutor disabled(disabledGraph, disabledCompiled);
         disabled.SetTransientReuse(false);

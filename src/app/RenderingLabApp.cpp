@@ -9,7 +9,7 @@
 #include "renderer/RendererData.h"
 #include "rdg/GraphCompiler.h"
 #include "rdg/RasterFrameGraph.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/GraphExecutor.h"
 
 #include <donut/app/DeviceManager.h>
 #include <donut/core/log.h>
@@ -39,7 +39,7 @@ namespace renderlab
     {
         const nvrhi::Color kClearColor(0.08f, 0.09f, 0.12f, 1.0f);
 
-        nvrhi::ITexture* NativeTexture(const rdg::exec::PhysicalTexture* physical)
+        nvrhi::ITexture* NativeTexture(const rdg::PhysicalTexture* physical)
         {
             return physical != nullptr ? static_cast<nvrhi::ITexture*>(physical->native) : nullptr;
         }
@@ -1665,8 +1665,8 @@ namespace renderlab
         const rdg::RasterPresent present = RasterPresentFor(m_presentSource);
         const bool withHdr = present != rdg::RasterPresent::GBufferDebug;
 
-        auto graph = std::make_unique<rdg::exec::ExecGraph>();
-        rdg::exec::ExecGraph& built = *graph;
+        auto graph = std::make_unique<rdg::GraphBuilder>();
+        rdg::GraphBuilder& built = *graph;
 
         rdg::TextureHandle gbufferA =
             built.CreateTexture({"GBufferA", width, height, rdg::Format::SRGBA8Unorm});
@@ -1682,7 +1682,7 @@ namespace renderlab
         rdg::PassBuilder gbufferPass = built.AddPass(
             "GBuffer",
             rdg::PassFlags::Raster,
-            [this](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+            [this](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
                 if (m_stopRasterFrame)
                 {
                     return;
@@ -1727,7 +1727,7 @@ namespace renderlab
             rdg::PassBuilder lightingPass = built.AddPass(
                 "DeferredLighting",
                 rdg::PassFlags::Raster,
-                [this](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+                [this](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
                     if (m_stopRasterFrame)
                     {
                         return;
@@ -1775,7 +1775,7 @@ namespace renderlab
         rdg::PassBuilder presentPass = built.AddPass(
             presentName,
             rdg::PassFlags::Raster,
-            [this, present](nvrhi::ICommandList* commandList, rdg::exec::PassContext& ctx) {
+            [this, present](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
                 if (m_stopRasterFrame)
                 {
                     return;
@@ -1869,11 +1869,11 @@ namespace renderlab
         m_frameHandles.hdrWritten = hdrWritten;
         m_frameHandles.outputWritten = outputWritten;
 
-        const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(built.Builder());
-        auto executor = std::make_unique<rdg::exec::GraphExecutor>(built, compiled);
+        const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(built);
+        auto executor = std::make_unique<rdg::GraphExecutor>(built, compiled);
         executor->SetDevice(GetDevice());
         executor->SetTransientReuse(m_options.transientReuse);
-        executor->RegisterImport(outputImported, rdg::exec::PhysicalTexture{backBuffer, "BackBuffer"});
+        executor->RegisterImport(outputImported, rdg::PhysicalTexture{backBuffer, "BackBuffer"});
         executor->Allocate();
         executor->Plan();
 

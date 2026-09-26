@@ -23,7 +23,8 @@ How this design relates to UE 5.8.1's render
 dependency graph — what is adopted,
 diverged, and skipped, with `file:line` citations — lives in
 [`ue-rdg-survey.md`](ue-rdg-survey.md) and
-[`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md); this file does
+[`adr/ADR-003-rdg-boundary.md`](adr/ADR-003-rdg-boundary.md) and
+[`adr/ADR-004-rdg-single-module.md`](adr/ADR-004-rdg-single-module.md); this file does
 not repeat those arguments. Renderer terminology follows
 [`renderer-conventions.md`](renderer-conventions.md). A drawn walkthrough of
 the S4.2–S4.6 code — version history, the declaration flow, the per-method
@@ -32,8 +33,8 @@ field-access matrix, compilation, culling, lifetimes, and compiled dumps — is 
 
 ## 1. Scope and boundary
 
-The `src/rdg` module (`RenderLabRdg` target, namespace `renderlab::rdg`) is
-the **pure logical CPU model** of the render dependency graph:
+The `src/rdg` module (`RenderLab::Rdg` target, namespace `renderlab::rdg`)
+owns the logical graph and the execution layer that runs it (ADR-004):
 
 - It owns logical resource identity, descriptors, pass records, explicit
   read/write declarations, logical versions with producer/reader provenance,
@@ -41,23 +42,25 @@ the **pure logical CPU model** of the render dependency graph:
   RAW/WAR/WAW dependency edges, a deterministic pass order or cycle
   diagnostic, output-driven pass culling with stable reasons, logical
   first/last-use lifetimes after culling, and stable text/DOT dumps of the
-  compiled graph.
-- It must not include or link Donut/NVRHI. `RenderLabRdg` links only
-  `RenderLab::ProjectOptions`; the link closure is the proof, and review
-  keeps it that way (ADR-003).
-- Tests construct graphs with **no GPU device**; `RenderLabDataContractTests`
-  runs entirely on CPU, including the CI runners.
-- Physical import bind, format mapping, and internal allocation live in a
-  separate target, `RenderLabRdgExec` (`src/rdg/exec`, namespace
-  `renderlab::rdg::exec`). That target links `RenderLab::Rdg` and `nvrhi`
-  (not donut). Access-state planning (`GraphExecutor::Plan()`) lives in this
-  same Exec target. S5.4's `BuildToneMapGraph`, S5.5's
-  `BuildLightingPresentGraph`, and S5.6's `BuildRasterFrameGraph` live in
-  `RenderLabRdg` (NVRHI-free, like `BuildM1ShapedGraph`). Production frames
-  use `BuildRasterFrameGraph`'s declarations through exec-layer `AddPass`.
-  The older two factories stay for CPU tests. S5.7 aliases non-overlapping
-  intervals in `RenderLabRdgExec`; this file defines the intervals, and §10
-  defines the physical reuse rule.
+  compiled graph. The same target binds imports, maps formats, allocates
+  internals, plans access states, and runs pass lambdas.
+- It links `RenderLab::ProjectOptions` and `nvrhi`, not donut. `GraphBuilder.h`
+  forward-declares `nvrhi::ICommandList` and does not include an NVRHI header.
+  `FormatMap` and `GraphExecutor.cpp` include NVRHI. Versioned handles,
+  explicit read/write, collected errors, and the neutral `rdg::Format` /
+  `rdg::Access` enums stay as in ADR-003.
+- Tests construct graphs with **no GPU device**; `Allocate()` without
+  `SetDevice` uses CPU stubs. `RenderLabDataContractTests` runs entirely on
+  CPU, including the CI runners.
+- `GraphBuilder::AddPass(name, flags, lambda)` stores the pass lambda.
+  The no-lambda overload stays for compile-only tests and the declaration
+  factories. `BuildToneMapGraph`, `BuildLightingPresentGraph`,
+  `BuildRasterFrameGraph`, and `BuildM1ShapedGraph` stay no-lambda factories.
+  Production frames use `BuildRasterFrameGraph`'s declarations through the
+  lambda overload. `Compile()` stays a public CPU step.
+  `GraphExecutor::Execute(ICommandList*)` is the only public run entry.
+  S5.7 aliases non-overlapping intervals inside `Allocate()`; this file
+  defines the intervals, and §10 defines the physical reuse rule.
 
 The renderer is untouched by Stage 4. S5.4 began integration against the
 frozen M1 reference ([`m1-reference.md`](m1-reference.md)). S5.6: the
@@ -187,17 +190,18 @@ hdrSceneColor = pass.Write(hdrSceneColor);
 - Accepted reads pin the input version; accepted writes pin the new output
   version. Same-resource conflicts follow the S4.2 rules above.
 - Pass and resource names must be non-empty; duplicates are allowed.
-- Logical `GraphBuilder::AddPass` has no execute lambda. `PassRecord` stays
-  name, flags, and accesses, so the compiler never inspects a
-  `std::function`. S4.3 compiles declarations into a pass order; S4.4 culls
-  passes that cannot affect an exported resource or declared side effect.
-  `ExecGraph::AddPass` (RenderLabRdgExec) stores a
-  `std::function<void(nvrhi::ICommandList*, PassContext&)>` at that pass
-  index when the pass is added. The command list is a pointer so device-free
-  tests can pass nullptr. `GraphExecutor::Execute` is the only public run
-  entry: it walks the compiled live order, skips culled passes, and calls
-  the stored lambda. A live pass with no lambda is `InvalidPass` and stops
-  later passes. Lookup errors recorded inside a lambda do not stop the walk.
+- `PassRecord` stays name, flags, and accesses, so the compiler never
+  inspects a `std::function`. S4.3 compiles declarations into a pass order;
+  S4.4 culls passes that cannot affect an exported resource or declared side
+  effect. `GraphBuilder::AddPass(name, flags, lambda)` stores a
+  `std::function<void(nvrhi::ICommandList*, PassContext&)>` in a side table
+  at that pass index, and only when the pass was actually added. The
+  no-lambda overload does not store a function. The command list is a
+  pointer so device-free tests can pass nullptr. `GraphExecutor::Execute`
+  is the only public run entry: it walks the compiled live order, skips
+  culled passes, and calls the stored lambda. A live pass with no lambda is
+  `InvalidPass` and stops later passes. A culled pass is not invoked.
+  Lookup errors recorded inside a lambda do not stop the walk.
 
 ## 5. Failure taxonomy
 
@@ -493,7 +497,7 @@ renderable proof. Locally: `dot -Tpng rdg.dot -o rdg.png`.
 ## 10. Execution layer (S5.1–S5.7)
 
 `GraphBuilder::ImportTexture({desc})` stays logical-only. After compile,
-`renderlab::rdg::exec::GraphExecutor` binds imports, allocates internals,
+`renderlab::rdg::GraphExecutor` binds imports, allocates internals,
 and plans access states:
 
 ```text
@@ -579,9 +583,9 @@ PassContext::GetTexture / GetBuffer
   currently returns the graphics list for every pass; a later `PassFlags`
   value can choose another queue there without changing the loop. Each live
   pass activates one executor-owned `PassContext`, calls the lambda stored
-  by `ExecGraph::AddPass`, then deactivates the context. There is no command
-  list on `PassContext`. Culled passes are not called. `Execute` on a
-  `GraphBuilder` that has no lambda table is `InvalidPass` and runs nothing.
+  by `GraphBuilder::AddPass`, then deactivates the context. There is no command
+  list on `PassContext`. Culled passes are not called. A live pass with no
+  lambda is `InvalidPass` and stops later passes.
 - `GetTexture` / `GetBuffer` resolve only the declaring pass's read/write
   list, including the exact declared version (read version or write output
   version). Undeclared, stale, null, foreign-graph, type-mismatched, expired,
@@ -593,7 +597,7 @@ PassContext::GetTexture / GetBuffer
 - S5.4 one-pass leaf: `BuildToneMapGraph` imports `HDRSceneColor`
   (`RGBA16Float`) and either `BackBuffer` (imported+exported Present) or
   `PostProcessColor` (imported-only dump target). One live Raster
-  `PostProcess` pass. The app (`RenderLab` links `RenderLab::RdgExec`)
+  `PostProcess` pass. The app (`RenderLab` links `RenderLab::Rdg`)
   rebuilds GraphBuilder + Compile + GraphExecutor on every tone-map run,
   `RegisterImport`s, `Plan()`s, then `ExecutePass`. No `Allocate` (no
   `Create*`). `--manual-tonemap` restores the pre-S5.4 `Execute` call for
@@ -624,7 +628,7 @@ PassContext::GetTexture / GetBuffer
   the present pass reads it. GBufferDebug omits the HDR chain so compile
   does not report `ZeroUseAllocation`. BackBuffer stays imported and
   exported; GBuffer and HDR are not exported. The app mirrors those
-  declarations with `ExecGraph::AddPass` lambdas that call the existing
+  declarations with `GraphBuilder::AddPass` lambdas that call the existing
   pass `Execute` functions, then `Compile`, `SetDevice`, `RegisterImport`
   of the back buffer, `Allocate`, `Plan`, and one `Execute`. RDG errors are
   logged and the frame does not fall back to a manual schedule. The

@@ -1,8 +1,8 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/LightingPresentGraph.h"
 #include "rdg/Pass.h"
-#include "rdg/exec/AccessPlan.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/AccessPlan.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -11,7 +11,6 @@
 #include <utility>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -95,7 +94,7 @@ namespace
 
     struct LightingExec
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle gbufferA;
         TextureHandle gbufferB;
         TextureHandle gbufferC;
@@ -334,7 +333,7 @@ int RunRdgLightingTests()
                 postHdr = ctx.GetTexture(built.hdrWritten);
                 postOut = ctx.GetTexture(built.outputWritten);
             });
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
         executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
         executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
@@ -382,7 +381,7 @@ int RunRdgLightingTests()
             },
             Noop(),
             Noop());
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
         executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});
         executor.RegisterImport(built.gbufferDepth, PhysicalTexture{&depthNative, "GBufferDepth"});
@@ -402,7 +401,7 @@ int RunRdgLightingTests()
             Noop(),
             [&](nvrhi::ICommandList*, PassContext&) { debugCalled = true; },
             Noop());
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.Execute(nullptr);
         Check(!debugCalled, "Execute does not invoke culled LightingDebug");
         Check(!HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
@@ -423,7 +422,7 @@ int RunRdgLightingTests()
             [&](nvrhi::ICommandList*, PassContext& ctx) { lightingHdr = ctx.GetTexture(built.hdrWritten); },
             Noop(),
             Noop());
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.gbufferA, PhysicalTexture{&aNative, "GBufferA"});
         executor.RegisterImport(built.gbufferB, PhysicalTexture{&bNative, "GBufferB"});
         executor.RegisterImport(built.gbufferC, PhysicalTexture{&cNative, "GBufferC"});

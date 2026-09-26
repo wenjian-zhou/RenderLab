@@ -1,11 +1,11 @@
 #pragma once
 
-#include "../Pass.h"
-#include "../ResourceDesc.h"
+#include "Pass.h"
+#include "ResourceDesc.h"
 
 #include <nvrhi/nvrhi.h>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     nvrhi::ResourceStates ToNvStates(Access access);
     Access FromNvStates(nvrhi::ResourceStates states);

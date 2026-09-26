@@ -1,14 +1,14 @@
 #pragma once
 
-#include "../GraphBuilder.h"
-#include "../GraphCompiler.h"
+#include "GraphBuilder.h"
+#include "GraphCompiler.h"
 
 #include <cstdint>
 #include <span>
 #include <string>
 #include <vector>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     // Sentinel in TransientReusePlan::physicalOwner. Imported resources and
     // unmappable textures stay here; Allocate skips or reports them itself.

@@ -1,6 +1,6 @@
 #include "rdg/GraphCompiler.h"
-#include "rdg/exec/FormatMap.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/FormatMap.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdio>
 #include <span>
@@ -8,7 +8,6 @@
 #include <utility>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -37,9 +36,9 @@ namespace
         return false;
     }
 
-    struct M1ExecGraph
+    struct M1Graph
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle gbufferA;
         TextureHandle gbufferB;
         TextureHandle gbufferC;
@@ -50,7 +49,7 @@ namespace
     };
 
     void BuildM1Exec(
-        M1ExecGraph& built, PassLambda gbufferPass, PassLambda deferredPass, PassLambda postPass)
+        M1Graph& built, PassLambda gbufferPass, PassLambda deferredPass, PassLambda postPass)
     {
         TextureHandle gbufferA = built.graph.CreateTexture({"GBufferA", 1280, 720, Format::SRGBA8Unorm});
         TextureHandle gbufferB = built.graph.CreateTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
@@ -164,7 +163,7 @@ int RunRdgAllocTests()
     RunFormatMapTests();
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle internalCreated = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         TextureHandle internal;
@@ -178,7 +177,7 @@ int RunRdgAllocTests()
         consume.Read(internal);
         output = consume.Write(outputImported);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         const AllocationStats before = executor.GetAllocationStats();
         Check(before.textureCount == 0 && before.bufferCount == 0 && before.estimatedBytes == 0,
               "Stats are zero before Allocate");
@@ -190,7 +189,7 @@ int RunRdgAllocTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         BufferHandle internalCreated = graph.CreateBuffer({"Scratch", 16, 4});
         BufferHandle internal;
@@ -204,7 +203,7 @@ int RunRdgAllocTests()
         consume.Read(internal);
         output = consume.Write(outputImported);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
         Check(resolved != nullptr && resolved->native != nullptr, "Allocated internal buffer resolves");
@@ -216,7 +215,7 @@ int RunRdgAllocTests()
         int phase = 0;
         const PhysicalTexture* imported = nullptr;
         const PhysicalTexture* allocated = nullptr;
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle backImported = graph.ImportTexture({"BackBuffer", 8, 8, Format::SRGBA8Unorm});
         TextureHandle internalCreated = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         TextureHandle internal;
@@ -235,7 +234,7 @@ int RunRdgAllocTests()
         present.Read(internal);
         backBuffer = present.Write(backImported);
         graph.ExportTexture(backBuffer);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Allocate();
         executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
@@ -299,7 +298,7 @@ int RunRdgAllocTests()
         const PhysicalTexture* hdrPhysical = nullptr;
         const PhysicalTexture* presentBack = nullptr;
         const PhysicalTexture* presentHdr = nullptr;
-        M1ExecGraph built;
+        M1Graph built;
         BuildM1Exec(
             built,
             [&](nvrhi::ICommandList*, PassContext& ctx) {
@@ -313,7 +312,7 @@ int RunRdgAllocTests()
                 presentBack = ctx.GetTexture(built.backBuffer);
                 presentHdr = ctx.GetTexture(built.hdr);
             });
-        const CompileResult compiled = GraphCompiler::Compile(built.graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(built.graph);
         Check(compiled.IsSuccess(), "M1-shaped graph compiles for Allocate");
         GraphExecutor executor(built.graph, compiled);
         executor.Allocate();
@@ -344,7 +343,7 @@ int RunRdgAllocTests()
         void* natives[3][5] = {};
         for (int iteration = 0; iteration < 3; ++iteration)
         {
-            M1ExecGraph built;
+            M1Graph built;
             BuildM1Exec(
                 built,
                 [&](nvrhi::ICommandList*, PassContext& ctx) {
@@ -362,7 +361,7 @@ int RunRdgAllocTests()
                     natives[iteration][4] = hdr ? hdr->native : nullptr;
                 },
                 Noop());
-            GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+            GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
             executor.Allocate();
             executor.Execute(nullptr);
             Check(natives[iteration][0] && natives[iteration][1] && natives[iteration][2] && natives[iteration][3] &&

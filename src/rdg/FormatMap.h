@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../ResourceDesc.h"
+#include "ResourceDesc.h"
 
 #include <nvrhi/nvrhi.h>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     nvrhi::Format ToNvFormat(Format format);
     Format FromNvFormat(nvrhi::Format format);

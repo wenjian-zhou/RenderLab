@@ -1,8 +1,7 @@
 #pragma once
 
-#include "../GraphCompiler.h"
+#include "GraphCompiler.h"
 #include "AccessPlan.h"
-#include "ExecGraph.h"
 #include "PassContext.h"
 #include "PhysicalRegistry.h"
 #include "PhysicalResource.h"
@@ -20,7 +19,7 @@ namespace nvrhi
     class IDevice;
 }
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     struct AllocationStats
     {
@@ -42,15 +41,14 @@ namespace renderlab::rdg::exec
 
     // Binds logical imported handles to opaque physical tokens, allocates
     // internal Create* identities, plans access states, and runs the pass
-    // lambdas stored on an ExecGraph. The builder (and ExecGraph, when used)
-    // must outlive the executor. Compile result is read in the constructor
-    // (success flag, cull states, live pass order, and resource lifetimes
-    // are copied); it does not need to outlive Plan, Allocate, or Execute.
+    // lambdas stored on a GraphBuilder. The builder must outlive the
+    // executor. Compile result is read in the constructor (success flag,
+    // cull states, live pass order, and resource lifetimes are copied); it
+    // does not need to outlive Plan, Allocate, or Execute.
     class GraphExecutor
     {
     public:
         GraphExecutor(const GraphBuilder& builder, const CompileResult& result);
-        GraphExecutor(const ExecGraph& graph, const CompileResult& result);
         ~GraphExecutor();
 
         GraphExecutor(const GraphExecutor&) = delete;
@@ -117,7 +115,6 @@ namespace renderlab::rdg::exec
         struct GpuStorage;
 
         const GraphBuilder* m_builder = nullptr;
-        const ExecGraph* m_graph = nullptr;
         bool m_compileSuccess = false;
         std::vector<PassCullState> m_cullStates;
         std::vector<uint32_t> m_livePassOrder;

@@ -1,5 +1,12 @@
 # ADR-003: RDG Boundary — Stage 4 Is a Pure Logical CPU Model
 
+> **Superseded in part by [ADR-004](ADR-004-rdg-single-module.md).** The split
+> into an NVRHI-free `RenderLabRdg` compiler target and a `RenderLabRdgExec`
+> execution target is no longer the module boundary. Versioned handles,
+> explicit read/write, collected errors, the neutral `rdg::Format` /
+> `rdg::Access` enums, public `Compile()`, and device-free CPU tests still
+> stand. The S4–S5.7 sections below are historical.
+
 - Status: Accepted
 - Date: 2026-09-08
 - Step: S4.1

@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     // Non-owning physical identity. Imports store a caller pointer (tests use
     // a stack dummy; a device path stores ITexture*/IBuffer*). Internals store

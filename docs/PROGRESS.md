@@ -11,8 +11,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
   physical object; imported and exported resources stay ineligible; stats
   report reuse pairs, saved bytes, and peak logical/physical bytes;
   `--no-transient-reuse` disables aliasing. The production raster graph has
-  no reuse pair. Stage 5 / M2 is satisfied
-  (docs/rdg.md, ADR-003)
+  no reuse pair. The execution layer now lives in the same
+  `RenderLab::Rdg` target, which links `nvrhi` (not donut);
+  `GraphBuilder::AddPass` takes an optional pass lambda (ADR-004).
+  Stage 5 / M2 is satisfied
+  (docs/rdg.md, ADR-003, ADR-004)
 - Last updated: 2026-09-26
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
@@ -1782,6 +1785,57 @@ Known limitations: reuse is within one Allocate() only; the executor is
   HDRSceneColor overlap; Plan() is still not issued as GPU barriers;
   --dump-rdg remains the M1-shaped 3-pass graph; a GBuffer-debug frame has
   no HDR; PIX agreement is local-only.
+Next step: S6.1 - Define DXR capability and scene contracts
+```
+
+### RDG single module
+
+```text
+Step: RDG single module (between S5.7 and S6.1)
+State: complete — RenderLabRdg and RenderLabRdgExec are one target,
+  RenderLab::Rdg, which links RenderLab::ProjectOptions and nvrhi (not
+  donut). Namespace renderlab::rdg::exec is gone. GraphBuilder::AddPass
+  takes an optional pass lambda in a side table; PassRecord stays name,
+  flags, and accesses. Compile() stays a public CPU step.
+  GraphExecutor::Execute(ICommandList*) stays the only public run entry.
+  Allocate() without SetDevice still uses CPU stubs.
+Date: 2026-09-26
+Commit: uncommitted working tree
+Commands:
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
+  out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Release
+  out/build/windows-vs2022/bin/Release/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLab --config Debug
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.6 RDG raster-frame tests" and
+  "RenderLab S5.7 RDG transient reuse tests". Debug RenderLab.exe built.
+  Search under src/ and tests/ found no RenderLabRdgExec, RenderLab::RdgExec,
+  rdg::exec, rdg/exec/, or ExecGraph. src/rdg includes no donut/.
+Automated tests: 0 failures in both configurations. Existing S5.6 raster-frame
+  and S5.7 reuse checks still pass. GPU goldens were not required.
+GPU validation/capture: not run. This change does not alter pass order,
+  allocations, or shaders.
+Artifacts:
+  src/rdg/GraphBuilder.h / GraphBuilder.cpp
+  src/rdg/GraphExecutor.h / GraphExecutor.cpp
+  src/rdg/PassContext.h / PassContext.cpp
+  src/rdg/PhysicalResource.h
+  src/rdg/PhysicalRegistry.h / PhysicalRegistry.cpp
+  src/rdg/FormatMap.h / FormatMap.cpp
+  src/rdg/AccessMap.h / AccessMap.cpp
+  src/rdg/AccessPlan.h / AccessPlan.cpp
+  src/rdg/TransientReuse.h / TransientReuse.cpp
+  src/CMakeLists.txt
+  src/app/RenderingLabApp.h / RenderingLabApp.cpp
+  tests/CMakeLists.txt and the RDG execution tests
+  docs/adr/ADR-004-rdg-single-module.md
+  docs/adr/ADR-003-rdg-boundary.md
+  docs/rdg.md, README.md, IMPLEMENTATION_PLAN.md, docs/PROGRESS.md
+Known limitations: pass lambdas, snapshot fills, and the manual Read/Write
+  lists in ExecuteRasterFrame are unchanged; Plan() is still not issued as
+  GPU barriers; the executor is still rebuilt every frame; --dump-rdg remains
+  the M1-shaped graph; reuse rules and --no-transient-reuse are unchanged.
 Next step: S6.1 - Define DXR capability and scene contracts
 ```
 

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <variant>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     namespace
     {

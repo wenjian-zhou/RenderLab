@@ -35,7 +35,6 @@ target_link_libraries(
     PRIVATE
         RenderLab::Renderer
         RenderLab::Rdg
-        RenderLab::RdgExec
         stb
         jsoncpp_static
 )

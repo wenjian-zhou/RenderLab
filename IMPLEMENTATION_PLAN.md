@@ -42,7 +42,11 @@ one `Execute` runs the live passes; GBuffer debug does not produce HDR.
 resources with non-overlapping live-slot intervals share a physical object;
 imported and exported resources stay ineligible; stats expose reuse pairs,
 saved bytes, and peak logical/physical bytes; `--no-transient-reuse` disables
-aliasing. The production raster graph has no reuse pair. **Stage 5 / M2 is
+aliasing. The production raster graph has no reuse pair. **The RDG module
+is one target:** `RenderLab::Rdg` links `nvrhi` (not donut).
+`GraphBuilder::AddPass` takes an optional pass lambda. `Compile()` stays a
+public CPU step, and `RenderLabDataContractTests` still runs with no GPU
+device ([ADR-004](docs/adr/ADR-004-rdg-single-module.md)). **Stage 5 / M2 is
 satisfied.** The next step is **S6.1 — Define DXR capability and scene contracts**.
 The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2

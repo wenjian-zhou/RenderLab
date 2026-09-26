@@ -2,9 +2,9 @@
 #include "rdg/M1ShapedGraph.h"
 #include "rdg/Pass.h"
 #include "rdg/ResourceDesc.h"
-#include "rdg/exec/AccessMap.h"
-#include "rdg/exec/FormatMap.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/AccessMap.h"
+#include "rdg/FormatMap.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +12,6 @@
 #include <string>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -378,7 +377,7 @@ int RunRdgAccessTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle output;
         bool ran = false;
@@ -387,7 +386,7 @@ int RunRdgAccessTests()
         });
         output = pass.Write(imported);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.Execute(nullptr);
         Check(ran && executor.GetErrors().empty(), "Execute without Plan still runs");
     }

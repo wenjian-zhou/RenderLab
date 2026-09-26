@@ -1,12 +1,12 @@
 #pragma once
 
-#include "../Pass.h"
+#include "Pass.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     struct ResourceBoundary
     {

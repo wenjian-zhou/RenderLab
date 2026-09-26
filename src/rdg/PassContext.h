@@ -1,13 +1,13 @@
 #pragma once
 
-#include "../Handle.h"
-#include "../Pass.h"
+#include "Handle.h"
+#include "Pass.h"
 #include "PhysicalResource.h"
 
 #include <cstdint>
 #include <span>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     class GraphExecutor;
 

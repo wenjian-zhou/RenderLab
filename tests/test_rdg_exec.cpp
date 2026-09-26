@@ -1,14 +1,12 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/M1ShapedGraph.h"
-#include "rdg/exec/ExecGraph.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdio>
 #include <span>
 #include <string>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -206,7 +204,7 @@ int RunRdgExecTests()
 
     {
         int dummy = 7;
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture({"BackBuffer", 1280, 720, Format::SRGBA8Unorm});
         TextureHandle backBuffer;
         const PhysicalTexture* resolved = nullptr;
@@ -215,7 +213,7 @@ int RunRdgExecTests()
         });
         backBuffer = pass.Write(imported);
         graph.ExportTexture(backBuffer);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(imported, PhysicalTexture{&dummy, "BackBuffer"});
         executor.Execute(nullptr);
         Check(resolved != nullptr && resolved->native == &dummy,
@@ -225,7 +223,7 @@ int RunRdgExecTests()
 
     {
         int dummy = 9;
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle imported = graph.ImportTexture({"Input", 8, 8, Format::RGBA8Unorm});
         const PhysicalTexture* resolved = nullptr;
         PassBuilder pass = graph.AddPass(
@@ -233,7 +231,7 @@ int RunRdgExecTests()
                 resolved = ctx.GetTexture(imported);
             });
         pass.Read(imported);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(imported, PhysicalTexture{&dummy, "Input"});
         executor.Execute(nullptr);
         Check(resolved != nullptr && resolved->native == &dummy, "Read-only imported texture resolves at v0");
@@ -244,7 +242,7 @@ int RunRdgExecTests()
         int nativeA = 10;
         int nativeB = 11;
         int bufferNative = 12;
-        ExecGraph graph;
+        GraphBuilder graph;
         GraphBuilder other;
         TextureHandle aImported = graph.ImportTexture({"A", 8, 8, Format::RGBA8Unorm});
         TextureHandle bImported = graph.ImportTexture({"B", 8, 8, Format::RGBA8Unorm});
@@ -260,12 +258,12 @@ int RunRdgExecTests()
                   "Pass A resolves declared A");
             Check(ctx.GetTexture(b) == nullptr, "Pass A must not resolve B");
             Check(ctx.GetTexture(aV0) == nullptr, "Pass A GetTexture of superseded A v0 fails");
-            TextureHandle future{a.index, a.version + 1, graph.Builder().GetGraphId()};
+            TextureHandle future{a.index, a.version + 1, graph.GetGraphId()};
             Check(ctx.GetTexture(future) == nullptr, "Forged future version of A fails");
             Check(ctx.GetTexture({}) == nullptr, "Null GetTexture fails");
             TextureHandle foreign{a.index, a.version, other.GetGraphId()};
             Check(ctx.GetTexture(foreign) == nullptr, "Foreign-graph GetTexture fails");
-            TextureHandle asTexture{buffer.index, buffer.version, graph.Builder().GetGraphId()};
+            TextureHandle asTexture{buffer.index, buffer.version, graph.GetGraphId()};
             Check(ctx.GetTexture(asTexture) == nullptr, "Type-mismatched GetTexture fails");
         });
         a = pass0.Write(aImported);
@@ -281,7 +279,7 @@ int RunRdgExecTests()
         buffer = pass1.Write(bufferImported);
         graph.ExportTexture(b);
         graph.ExportBuffer(buffer);
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(compiled.IsSuccess(), "Two-import graph compiles");
 
         GraphExecutor executor(graph, compiled);
@@ -309,7 +307,7 @@ int RunRdgExecTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle internal = graph.CreateTexture({"Temp", 8, 8, Format::RGBA8Unorm});
         TextureHandle output;
@@ -321,7 +319,7 @@ int RunRdgExecTests()
         consume.Read(internal);
         output = consume.Write(outputImported);
         graph.ExportTexture(output);
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         int dummy = 13;
         executor.RegisterImport(outputImported, PhysicalTexture{&dummy, "Out"});
         executor.Execute(nullptr);
@@ -330,7 +328,7 @@ int RunRdgExecTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         bool culledCalled = false;
         graph.AddPass("Culled", PassFlags::Raster, [&](nvrhi::ICommandList*, PassContext&) { culledCalled = true; });
@@ -338,7 +336,7 @@ int RunRdgExecTests()
         PassBuilder live = graph.AddPass("Live", PassFlags::Raster, [](nvrhi::ICommandList*, PassContext&) {});
         output = live.Write(outputImported);
         graph.ExportTexture(output);
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(compiled.IsSuccess(), "Graph with a culled empty pass compiles");
         Check(compiled.GetPassCullStates()[0].culled, "Empty pass is culled");
 
@@ -352,7 +350,7 @@ int RunRdgExecTests()
     }
 
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle outputImported = graph.ImportTexture({"Out", 8, 8, Format::RGBA8Unorm});
         TextureHandle output;
         bool called = false;
@@ -362,7 +360,7 @@ int RunRdgExecTests()
         output = pass.Write(outputImported);
         graph.ExportTexture(output);
         graph.CreateTexture({"", 8, 8, Format::RGBA8Unorm});
-        const CompileResult compiled = GraphCompiler::Compile(graph.Builder());
+        const CompileResult compiled = GraphCompiler::Compile(graph);
         Check(!compiled.IsSuccess(), "Builder declaration errors fail compilation");
 
         GraphExecutor executor(graph, compiled);
@@ -383,7 +381,7 @@ int RunRdgExecTests()
         Check(!backBuffer.IsNull() && !hdr.IsNull(), "M1 BackBuffer and HDRSceneColor handles resolve by name");
 
         int native = 1;
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle gbufferA = graph.CreateTexture({"GBufferA", 1280, 720, Format::SRGBA8Unorm});
         TextureHandle gbufferB = graph.CreateTexture({"GBufferB", 1280, 720, Format::RGBA16Float});
         TextureHandle gbufferC = graph.CreateTexture({"GBufferC", 1280, 720, Format::RGBA8Unorm});
@@ -417,7 +415,7 @@ int RunRdgExecTests()
         backWritten = postPass.Write(backImported);
         graph.ExportTexture(backWritten);
 
-        GraphExecutor executor(graph, GraphCompiler::Compile(graph.Builder()));
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
         executor.RegisterImport(backImported, PhysicalTexture{&native, "BackBuffer"});
         executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UndeclaredAccess),

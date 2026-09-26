@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     void PhysicalRegistry::Reset(size_t resourceCount)
     {

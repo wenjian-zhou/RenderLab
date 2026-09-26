@@ -1,6 +1,6 @@
 #include "FormatMap.h"
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     nvrhi::Format ToNvFormat(Format format)
     {

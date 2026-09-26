@@ -3,7 +3,7 @@
 #include <format>
 #include <string_view>
 
-namespace renderlab::rdg::exec
+namespace renderlab::rdg
 {
     namespace
     {

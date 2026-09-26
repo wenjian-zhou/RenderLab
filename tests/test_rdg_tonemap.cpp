@@ -1,8 +1,8 @@
 #include "rdg/GraphCompiler.h"
 #include "rdg/Pass.h"
 #include "rdg/ToneMapGraph.h"
-#include "rdg/exec/AccessPlan.h"
-#include "rdg/exec/GraphExecutor.h"
+#include "rdg/AccessPlan.h"
+#include "rdg/GraphExecutor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -11,7 +11,6 @@
 #include <utility>
 
 using namespace renderlab::rdg;
-using namespace renderlab::rdg::exec;
 
 namespace
 {
@@ -95,7 +94,7 @@ namespace
 
     struct ToneExec
     {
-        ExecGraph graph;
+        GraphBuilder graph;
         TextureHandle hdr;
         TextureHandle outputImported;
         TextureHandle outputWritten;
@@ -197,7 +196,7 @@ int RunRdgTonemapTests()
             gotHdr = ctx.GetTexture(built.hdr);
             gotOut = ctx.GetTexture(built.outputWritten);
         });
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.hdr, PhysicalTexture{&hdrNative, "HDRSceneColor"});
         executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
         executor.Plan();
@@ -213,7 +212,7 @@ int RunRdgTonemapTests()
         BuildToneExec(built, ToneMapOutput::BackBuffer, [&](nvrhi::ICommandList*, PassContext& ctx) {
             Check(ctx.GetTexture(built.hdr) == nullptr, "unregistered HDR is null");
         });
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.Plan();
         executor.Execute(nullptr);
         Check(HasCategory(executor.GetErrors(), ErrorCategory::UnregisteredImport),
@@ -231,7 +230,7 @@ int RunRdgTonemapTests()
             Check(ctx.GetTexture(foreign) == nullptr, "foreign-graph handle is null");
             Check(ctx.GetTexture(built.outputImported) == nullptr, "imported v0 during write is null");
         });
-        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph.Builder()));
+        GraphExecutor executor(built.graph, GraphCompiler::Compile(built.graph));
         executor.RegisterImport(built.hdr, PhysicalTexture{&hdrNative, "HDRSceneColor"});
         executor.RegisterImport(built.outputImported, PhysicalTexture{&bbNative, "BackBuffer"});
         executor.Plan();
