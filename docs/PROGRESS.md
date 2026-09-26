@@ -1800,7 +1800,7 @@ State: complete — RenderLabRdg and RenderLabRdgExec are one target,
   GraphExecutor::Execute(ICommandList*) stays the only public run entry.
   Allocate() without SetDevice still uses CPU stubs.
 Date: 2026-09-26
-Commit: uncommitted working tree
+Commit: 05724bd
 Commands:
   cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
   out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
