@@ -1914,7 +1914,7 @@ State: complete — BuildRasterFrameGraph stays a no-lambda declaration
   GBufferPass::Execute. hasHdr is set only when the lighting method reached
   DeferredLightingPass::Execute. RasterFrameHandles is gone.
 Date: 2026-09-27
-Commit: uncommitted working tree
+Commit: 2ae8c06ed01fb0419e4675e47d4a52b4d97ee862
 Commands:
   cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
   out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
