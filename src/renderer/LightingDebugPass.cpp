@@ -194,17 +194,22 @@ namespace renderlab
         return true;
     }
 
-    void LightingDebugPass::ReleaseSizeDependentResources()
+    void LightingDebugPass::ReleaseFrameResources()
     {
         m_framebuffer = nullptr;
         m_framebufferColor = nullptr;
-        m_pipeline = nullptr;
-        m_hasPipelineInfo = false;
-        m_dumpTarget = nullptr;
         if (m_bindingCache)
         {
             m_bindingCache->Clear();
         }
+    }
+
+    void LightingDebugPass::ReleaseSizeDependentResources()
+    {
+        ReleaseFrameResources();
+        m_pipeline = nullptr;
+        m_hasPipelineInfo = false;
+        m_dumpTarget = nullptr;
     }
 
     nvrhi::ITexture* LightingDebugPass::GetOrCreateDumpTarget(uint32_t width, uint32_t height)

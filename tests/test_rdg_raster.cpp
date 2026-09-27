@@ -508,6 +508,11 @@ int RunRdgRasterFrameTests()
             {"GBufferDepth", lighting.PassIndex(), Access::DepthWrite, Access::ShaderResource},
             {"HDRSceneColor", post.PassIndex(), Access::RenderTarget, Access::ShaderResource},
             {"BackBuffer", post.PassIndex(), Access::Present, Access::RenderTarget},
+            {"GBufferA", Error::kNoPass, Access::ShaderResource, Access::RenderTarget},
+            {"GBufferB", Error::kNoPass, Access::ShaderResource, Access::RenderTarget},
+            {"GBufferC", Error::kNoPass, Access::ShaderResource, Access::RenderTarget},
+            {"GBufferDepth", Error::kNoPass, Access::ShaderResource, Access::DepthWrite},
+            {"HDRSceneColor", Error::kNoPass, Access::ShaderResource, Access::RenderTarget},
             {"BackBuffer", Error::kNoPass, Access::RenderTarget, Access::Present},
         };
         bool matches = log.size() == std::size(expected);
@@ -518,7 +523,7 @@ int RunRdgRasterFrameTests()
                 log[index].before == expected[index].before &&
                 log[index].after == expected[index].after;
         }
-        Check(matches, "Final-frame transition log is lighting reads, HDR read, and back-buffer present");
+        Check(matches, "Final-frame transition log restores Create* resources and the back buffer");
     }
 
     {

@@ -305,7 +305,9 @@ lambda. Within one `GraphExecutor::Allocate()`, exact-compatible `Create*`
 resources whose live-slot intervals do not overlap share one physical
 object. The compatibility key ignores descriptor debug names. Imported and
 exported resources are ineligible. There is no heap allocator and no
-cross-frame pool; the executor is still rebuilt every frame. `PlanTransientReuse`
+cross-frame pool. The app keeps one `GraphExecutor` until the back-buffer
+size or `RasterPresent` changes, and rebinds the imported back buffer each
+frame. `PlanTransientReuse`
 lives in `RenderLabRdgExec`. `--no-transient-reuse` disables aliasing.
 `--dump-rdg` stays the logical M1-shaped graph. The production raster graph
 has no disjoint compatible pair (`GBufferB` and `HDRSceneColor` overlap on

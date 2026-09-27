@@ -429,5 +429,95 @@ int RunRdgExecTests()
               "Deferred GetTexture(HDRSceneColor) is UnregisteredImport");
     }
 
+    {
+        int first = 11;
+        int second = 12;
+        GraphBuilder builder;
+        TextureHandle imported = builder.ImportTexture({"BackBuffer", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::Present);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RegisterImport(imported, PhysicalTexture{&first, "first"});
+        executor.RebindImport(imported, PhysicalTexture{&second, "second"});
+        const PhysicalTexture* exported = executor.GetExported(imported);
+        Check(executor.GetErrors().empty(), "RebindImport of a new native records no errors");
+        Check(exported != nullptr && exported->native == &second, "RebindImport replaces the native");
+        Check(exported != nullptr && exported->debugName == "second", "RebindImport replaces the debug name");
+
+        executor.RebindImport(imported, PhysicalTexture{&second, "second-again"});
+        exported = executor.GetExported(imported);
+        Check(executor.GetErrors().empty(), "RebindImport of the same native records no errors");
+        Check(exported != nullptr && exported->native == &second, "Same-native rebind keeps the native");
+        Check(exported != nullptr && exported->debugName == "second", "Same-native rebind keeps the previous token");
+    }
+
+    {
+        int native = 13;
+        GraphBuilder builder;
+        TextureHandle imported = builder.ImportTexture({"BackBuffer", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::Present);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RebindImport(imported, PhysicalTexture{&native, "missing"});
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::IncompatibleAccess),
+              "RebindImport before RegisterImport is IncompatibleAccess");
+        Check(executor.GetExported(imported) == nullptr, "Unregistered rebind does not bind");
+    }
+
+    {
+        int native = 14;
+        GraphBuilder builder;
+        TextureHandle created = builder.CreateTexture({"Internal", 8, 8, Format::RGBA8Unorm});
+        TextureHandle imported = builder.ImportTexture({"BackBuffer", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        pass.Use(created, Access::RenderTarget);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportTexture(imported, Access::RenderTarget);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RebindImport(created, PhysicalTexture{&native, "Internal"});
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::IncompatibleAccess),
+              "RebindImport of a CreateTexture handle is IncompatibleAccess");
+    }
+
+    {
+        int firstNative = 15;
+        int secondNative = 16;
+        GraphBuilder builder;
+        TextureHandle first = builder.ImportTexture({"A", 8, 8, Format::RGBA8Unorm});
+        TextureHandle second = builder.ImportTexture({"B", 8, 8, Format::RGBA8Unorm});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        pass.Use(first, Access::RenderTarget);
+        pass.Use(second, Access::ShaderResource);
+        builder.ExportTexture(first, Access::RenderTarget);
+        builder.ExportTexture(second, Access::ShaderResource);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RegisterImport(first, PhysicalTexture{&firstNative, "A"});
+        executor.RegisterImport(second, PhysicalTexture{&secondNative, "B"});
+        executor.RebindImport(first, PhysicalTexture{&secondNative, "A-onto-B"});
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::IncompatibleAccess),
+              "RebindImport onto another resource's native is IncompatibleAccess");
+        const PhysicalTexture* exported = executor.GetExported(first);
+        Check(exported != nullptr && exported->native == &firstNative,
+              "Conflicting rebind keeps the previous native");
+    }
+
+    {
+        int first = 17;
+        int second = 18;
+        GraphBuilder builder;
+        BufferHandle imported = builder.ImportBuffer({"Buf", 16, 4});
+        PassBuilder pass = builder.AddPass("P", PassFlags::Raster);
+        pass.Use(imported, Access::RenderTarget);
+        builder.ExportBuffer(imported, Access::ShaderResource);
+        GraphExecutor executor(builder, GraphCompiler::Compile(builder));
+        executor.RegisterImport(imported, PhysicalBuffer{&first, "first"});
+        executor.RebindImport(imported, PhysicalBuffer{&second, "second"});
+        const PhysicalBuffer* exported = executor.GetExported(imported);
+        Check(executor.GetErrors().empty() && exported != nullptr && exported->native == &second,
+              "RebindImport replaces a buffer native");
+    }
+
     return g_failures;
 }

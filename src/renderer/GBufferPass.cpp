@@ -256,13 +256,18 @@ namespace renderlab
         return true;
     }
 
-    void GBufferPass::ReleaseSizeDependentResources()
+    void GBufferPass::ReleaseFrameResources()
     {
         m_framebuffer = nullptr;
         m_framebufferA = nullptr;
         m_framebufferB = nullptr;
         m_framebufferC = nullptr;
         m_framebufferDepth = nullptr;
+    }
+
+    void GBufferPass::ReleaseSizeDependentResources()
+    {
+        ReleaseFrameResources();
     }
 
     bool GBufferPass::EnsureDummyVertexCapacity(nvrhi::ICommandList* commandList, uint32_t vertexCount)

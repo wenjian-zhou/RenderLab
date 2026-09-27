@@ -1656,13 +1656,19 @@ namespace renderlab
 
     void RenderingLabApp::ReleaseFrameGraph()
     {
+        m_gbufferPass.ReleaseFrameResources();
+        m_deferredLightingPass.ReleaseFrameResources();
+        m_postProcessPass.ReleaseFrameResources();
+        m_gbufferDebugPass.ReleaseFrameResources();
+        m_lightingDebugPass.ReleaseFrameResources();
         m_frameExecutor.reset();
         m_frameGraph.reset();
         m_frameSnapshot = {};
-        m_stopRasterFrame = false;
-        m_rasterGBufferRan = false;
-        m_rasterLightingRan = false;
-        m_framePresented = false;
+        m_frameShape = {};
+        m_frameGraphWidth = 0;
+        m_frameGraphHeight = 0;
+        m_frameGraphPresent = rdg::RasterPresent::Final;
+        m_frameGraphValid = false;
     }
 
     void RenderingLabApp::LogRasterFrameErrors() const
@@ -1679,16 +1685,46 @@ namespace renderlab
 
     void RenderingLabApp::ExecuteRasterFrame(nvrhi::ITexture* backBuffer)
     {
-        ReleaseFrameGraph();
+        m_stopRasterFrame = false;
+        m_rasterGBufferRan = false;
+        m_rasterLightingRan = false;
+        m_framePresented = false;
 
         const uint32_t width = m_backBufferWidth;
         const uint32_t height = m_backBufferHeight;
         if (width == 0 || height == 0 || backBuffer == nullptr)
         {
+            ReleaseFrameGraph();
             return;
         }
 
         const rdg::RasterPresent present = RasterPresentFor(m_presentSource);
+        const bool reuse =
+            m_frameGraphValid && m_frameGraph && m_frameExecutor &&
+            m_frameGraphWidth == width && m_frameGraphHeight == height &&
+            m_frameGraphPresent == present;
+        if (reuse)
+        {
+            const size_t errorCount = m_frameExecutor->GetErrors().size();
+            m_frameExecutor->RebindImport(
+                m_frameShape.outputImported, rdg::PhysicalTexture{backBuffer, "BackBuffer"});
+            if (m_frameExecutor->GetErrors().size() != errorCount)
+            {
+                LogRasterFrameErrors();
+                return;
+            }
+
+            m_frameExecutor->Execute(m_commandList);
+            CaptureRasterSnapshot(m_frameShape);
+            if (m_frameExecutor->GetErrors().size() != errorCount)
+            {
+                LogRasterFrameErrors();
+            }
+            return;
+        }
+
+        ReleaseFrameGraph();
+
         auto graph = std::make_unique<rdg::GraphBuilder>();
         const rdg::RasterFrameGraph shape =
             rdg::BuildRasterFrameGraph(*graph, width, height, present);
@@ -1725,8 +1761,15 @@ namespace renderlab
         if (!compiled.IsSuccess() || !m_frameExecutor->GetErrors().empty())
         {
             LogRasterFrameErrors();
+            ReleaseFrameGraph();
             return;
         }
+
+        m_frameShape = shape;
+        m_frameGraphWidth = width;
+        m_frameGraphHeight = height;
+        m_frameGraphPresent = present;
+        m_frameGraphValid = true;
 
         m_frameExecutor->Execute(m_commandList);
         CaptureRasterSnapshot(shape);

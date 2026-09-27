@@ -55,6 +55,7 @@ namespace renderlab
     {
     public:
         bool Init(nvrhi::IDevice* device, donut::engine::ShaderFactory& shaderFactory);
+        void ReleaseFrameResources();
         void ReleaseSizeDependentResources();
 
         void Execute(

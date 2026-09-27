@@ -81,8 +81,9 @@ namespace renderlab
         uint32_t dumpCount = 0;
     };
 
-    // Non-owning textures from the frame that just executed. Valid until the
-    // next RenderScene or BackBufferResizing drops the executor.
+    // Non-owning textures from the frame that just executed. Valid until
+    // ReleaseFrameGraph drops the executor (resize, present-mode change, or a
+    // zero-size back buffer).
     struct RasterFrameSnapshot
     {
         nvrhi::ITexture* gbufferA = nullptr;
@@ -244,6 +245,11 @@ namespace renderlab
         uint32_t m_backBufferHeight = 0;
         std::unique_ptr<rdg::GraphBuilder> m_frameGraph;
         std::unique_ptr<rdg::GraphExecutor> m_frameExecutor;
+        rdg::RasterFrameGraph m_frameShape{};
+        uint32_t m_frameGraphWidth = 0;
+        uint32_t m_frameGraphHeight = 0;
+        rdg::RasterPresent m_frameGraphPresent = rdg::RasterPresent::Final;
+        bool m_frameGraphValid = false;
         RasterFrameSnapshot m_frameSnapshot;
         bool m_stopRasterFrame = false;
         bool m_rasterGBufferRan = false;

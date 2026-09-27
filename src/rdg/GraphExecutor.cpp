@@ -573,6 +573,150 @@ namespace renderlab::rdg
         m_registry.SetBuffer(handle.index, std::move(physical));
     }
 
+    void GraphExecutor::RebindImport(TextureHandle handle, PhysicalTexture physical)
+    {
+        const ResourceRecord* record = ValidateHandle(
+            ResourceKind::Texture,
+            handle.index,
+            handle.graphId,
+            Error::kNoPass,
+            "",
+            "import rebind");
+        if (record == nullptr)
+        {
+            return;
+        }
+        if (!record->imported)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot rebind physical texture '{}' (index {}): resource is not imported",
+                    record->name,
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        if (!m_registry.HasTexture(handle.index))
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot rebind physical texture '{}' (index {}): import is not registered",
+                    record->name,
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        const PhysicalTexture* existing = m_registry.GetTexture(handle.index);
+        if (existing != nullptr && existing->native == physical.native)
+        {
+            return;
+        }
+        if (physical.native != nullptr)
+        {
+            for (uint32_t index = 0; index < m_builder->GetResourceCount(); ++index)
+            {
+                if (index == handle.index)
+                {
+                    continue;
+                }
+                const PhysicalTexture* other = m_registry.GetTexture(index);
+                if (other != nullptr && other->native == physical.native)
+                {
+                    AddError(
+                        ErrorCategory::IncompatibleAccess,
+                        std::format(
+                            "cannot rebind physical texture '{}' (index {}): native is already bound to index {}",
+                            record->name,
+                            handle.index,
+                            index),
+                        Error::kNoPass,
+                        "",
+                        record->name);
+                    return;
+                }
+            }
+        }
+        m_registry.SetTexture(handle.index, std::move(physical));
+    }
+
+    void GraphExecutor::RebindImport(BufferHandle handle, PhysicalBuffer physical)
+    {
+        const ResourceRecord* record = ValidateHandle(
+            ResourceKind::Buffer,
+            handle.index,
+            handle.graphId,
+            Error::kNoPass,
+            "",
+            "import rebind");
+        if (record == nullptr)
+        {
+            return;
+        }
+        if (!record->imported)
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot rebind physical buffer '{}' (index {}): resource is not imported",
+                    record->name,
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        if (!m_registry.HasBuffer(handle.index))
+        {
+            AddError(
+                ErrorCategory::IncompatibleAccess,
+                std::format(
+                    "cannot rebind physical buffer '{}' (index {}): import is not registered",
+                    record->name,
+                    handle.index),
+                Error::kNoPass,
+                "",
+                record->name);
+            return;
+        }
+        const PhysicalBuffer* existing = m_registry.GetBuffer(handle.index);
+        if (existing != nullptr && existing->native == physical.native)
+        {
+            return;
+        }
+        if (physical.native != nullptr)
+        {
+            for (uint32_t index = 0; index < m_builder->GetResourceCount(); ++index)
+            {
+                if (index == handle.index)
+                {
+                    continue;
+                }
+                const PhysicalBuffer* other = m_registry.GetBuffer(index);
+                if (other != nullptr && other->native == physical.native)
+                {
+                    AddError(
+                        ErrorCategory::IncompatibleAccess,
+                        std::format(
+                            "cannot rebind physical buffer '{}' (index {}): native is already bound to index {}",
+                            record->name,
+                            handle.index,
+                            index),
+                        Error::kNoPass,
+                        "",
+                        record->name);
+                    return;
+                }
+            }
+        }
+        m_registry.SetBuffer(handle.index, std::move(physical));
+    }
+
     const PhysicalTexture* GraphExecutor::GetExported(TextureHandle handle)
     {
         const ResourceRecord* record = ValidateHandle(
@@ -864,12 +1008,12 @@ namespace renderlab::rdg
         if (m_planned)
         {
             bool queued = false;
+            // Non-exported Create* resources end the frame in their last use.
+            // The next Execute begins tracking at `initial`, which Plan stores
+            // as `final` for anything that is not exported. Restore every
+            // resource so a reused texture matches that declaration.
             for (const ResourceBoundary& resource : m_accessPlan.resources)
             {
-                if (!resource.exported)
-                {
-                    continue;
-                }
                 if (QueueTransition(
                         graphicsCommandList, resource.resourceIndex, Error::kNoPass, resource.final))
                 {

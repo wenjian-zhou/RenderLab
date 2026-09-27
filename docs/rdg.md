@@ -641,16 +641,22 @@ PassContext::GetTexture / GetBuffer
   exported; GBuffer and HDR are not exported. The app mirrors those
   declarations with `GraphBuilder::AddPass` lambdas that call the existing
   pass `Execute` functions, then `Compile`, `SetDevice`, `RegisterImport`
-  of the back buffer, `Allocate`, `Plan`, and one `Execute`. RDG errors are
-  logged and the frame does not fall back to a manual schedule. The
-  executor and graph stay members until the next frame or
-  `BackBufferResizing` (pass framebuffers released first, then the
-  executor, then device idle / GC). Zero-size frames do not `Allocate`.
-  Dumps and the HUD read a non-owning snapshot filled during the lambdas.
-  A GBuffer-debug frame's HDR pointer is null: `--output-hdr` with
-  `--gbuffer-view` fails and does not re-run DeferredLighting. `final.png`
-  calls `PostProcessPass::Execute` directly. The executor is still rebuilt
-  every frame, so pass framebuffer caches miss across frames. `--dump-rdg`
+  of the back buffer, `Allocate`, `Plan`, and one `Execute`. Later frames
+  with the same back-buffer size and `RasterPresent` keep that executor.
+  Each of those frames `RebindImport`s the current swap-chain back buffer
+  and does not `Allocate` again. `Execute` transitions every planned
+  resource back to its `final` access, which for Create* textures is the
+  initial state the next frame's `beginTracking` declares. RDG errors are
+  logged and the frame does not fall back to a manual schedule. A size
+  change, a present-mode change, or a zero-size back buffer releases the
+  pass framebuffers and the binding sets that hold Create* textures, then
+  the executor, before device idle / GC. Zero-size frames do not
+  `Allocate`. Dumps and the HUD read a non-owning snapshot filled during
+  the lambdas. A GBuffer-debug frame's HDR pointer is null: `--output-hdr`
+  with `--gbuffer-view` fails and does not re-run DeferredLighting.
+  `final.png` calls `PostProcessPass::Execute` directly. GBuffer and HDR
+  framebuffer caches hit across frames; present framebuffers still follow
+  the rotating swap-chain buffer. `--dump-rdg`
   stays the M1-shaped 3-pass golden. Shape, access, allocate, and execute
   order are asserted in `tests/test_rdg_raster.cpp`.
 - S5.7 transient reuse: `PlanTransientReuse` runs inside `Allocate()`.

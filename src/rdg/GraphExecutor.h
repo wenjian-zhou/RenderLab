@@ -65,6 +65,13 @@ namespace renderlab::rdg
         void RegisterImport(TextureHandle handle, PhysicalTexture physical);
         void RegisterImport(BufferHandle handle, PhysicalBuffer physical);
 
+        // Replaces the native of an import RegisterImport already bound.
+        // Does not allocate or replan. The same native is a no-op. A native
+        // already bound to another resource is IncompatibleAccess and the
+        // previous token is kept.
+        void RebindImport(TextureHandle handle, PhysicalTexture physical);
+        void RebindImport(BufferHandle handle, PhysicalBuffer physical);
+
         const PhysicalTexture* GetExported(TextureHandle handle);
         const PhysicalBuffer* GetExported(BufferHandle handle);
 

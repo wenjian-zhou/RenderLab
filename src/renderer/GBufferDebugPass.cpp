@@ -239,17 +239,22 @@ namespace renderlab
         return true;
     }
 
-    void GBufferDebugPass::ReleaseSizeDependentResources()
+    void GBufferDebugPass::ReleaseFrameResources()
     {
         m_framebuffer = nullptr;
         m_framebufferColor = nullptr;
-        m_pipeline = nullptr;
-        m_hasPipelineInfo = false;
-        m_dumpTarget = nullptr;
         if (m_bindingCache)
         {
             m_bindingCache->Clear();
         }
+    }
+
+    void GBufferDebugPass::ReleaseSizeDependentResources()
+    {
+        ReleaseFrameResources();
+        m_pipeline = nullptr;
+        m_hasPipelineInfo = false;
+        m_dumpTarget = nullptr;
     }
 
     nvrhi::ITexture* GBufferDebugPass::GetOrCreateDumpTarget(uint32_t width, uint32_t height)

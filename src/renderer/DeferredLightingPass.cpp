@@ -117,16 +117,21 @@ namespace renderlab
         return true;
     }
 
-    void DeferredLightingPass::ReleaseSizeDependentResources()
+    void DeferredLightingPass::ReleaseFrameResources()
     {
         m_framebuffer = nullptr;
         m_framebufferColor = nullptr;
-        m_pipeline = nullptr;
-        m_hasPipelineInfo = false;
         if (m_bindingCache)
         {
             m_bindingCache->Clear();
         }
+    }
+
+    void DeferredLightingPass::ReleaseSizeDependentResources()
+    {
+        ReleaseFrameResources();
+        m_pipeline = nullptr;
+        m_hasPipelineInfo = false;
     }
 
     bool DeferredLightingPass::EnsureFramebuffer(nvrhi::ITexture* hdrSceneColor)
