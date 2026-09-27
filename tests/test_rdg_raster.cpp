@@ -521,5 +521,77 @@ int RunRdgRasterFrameTests()
         Check(matches, "Final-frame transition log is lighting reads, HDR read, and back-buffer present");
     }
 
+    {
+        GraphBuilder graph;
+        TextureHandle color = graph.CreateTexture({"Color", 4, 4, Format::RGBA8Unorm});
+        TextureHandle output = graph.ImportTexture({"BackBuffer", 4, 4, Format::SRGBA8Unorm});
+        graph.SetInitialAccess(output, Access::RenderTarget);
+        PassBuilder producer = graph.AddPass("Producer", PassFlags::Raster);
+        producer.Use(color, Access::RenderTarget);
+        PassBuilder consumer = graph.AddPass("Consumer", PassFlags::Raster);
+        consumer.Use(color, Access::ShaderResource);
+        consumer.Use(output, Access::RenderTarget);
+        graph.ExportTexture(output, Access::RenderTarget);
+
+        bool producerRan = false;
+        bool consumerRan = false;
+        bool rejectedRan = false;
+        graph.SetLambda(producer.PassIndex(), [&](nvrhi::ICommandList*, PassContext&) { producerRan = true; });
+        graph.SetLambda(consumer.PassIndex(), [&](nvrhi::ICommandList*, PassContext&) { consumerRan = true; });
+        const CompileResult compiled = GraphCompiler::Compile(graph);
+        GraphExecutor executor(graph, compiled);
+        executor.Allocate();
+        executor.Execute(nullptr);
+        Check(producerRan && consumerRan && executor.GetErrors().empty(),
+            "SetLambda on a real pass runs during Execute");
+
+        graph.SetLambda(consumer.PassIndex(), PassLambda{});
+        producerRan = false;
+        consumerRan = false;
+        executor.Execute(nullptr);
+        Check(producerRan && !consumerRan, "empty SetLambda skips that live pass");
+        Check(HasCategory(executor.GetErrors(), ErrorCategory::InvalidPass),
+            "empty SetLambda leaves that live pass InvalidPass");
+
+        graph.SetLambda(consumer.PassIndex(), [&](nvrhi::ICommandList*, PassContext&) { consumerRan = true; });
+        graph.SetLambda(99u, [&](nvrhi::ICommandList*, PassContext&) { rejectedRan = true; });
+        Check(HasCategory(graph.GetErrors(), ErrorCategory::InvalidPass),
+            "out-of-range SetLambda records InvalidPass");
+        Check(graph.FindLambda(consumer.PassIndex()) != nullptr,
+            "out-of-range SetLambda keeps the later pass lambda");
+        producerRan = false;
+        consumerRan = false;
+        GraphExecutor later(graph, compiled);
+        later.Allocate();
+        later.Execute(nullptr);
+        Check(producerRan && consumerRan && !rejectedRan && later.GetErrors().empty(),
+            "out-of-range SetLambda does not affect later passes");
+    }
+
+    {
+        GraphBuilder graph;
+        TextureHandle created = graph.CreateTexture({"Color", 4, 4, Format::RGBA8Unorm});
+        TextureHandle imported = graph.ImportTexture({"Import", 4, 4, Format::RGBA8Unorm});
+        graph.SetInitialAccess(imported, Access::RenderTarget);
+        PassBuilder pass = graph.AddPass("Write", PassFlags::Raster);
+        pass.Use(created, Access::RenderTarget);
+        pass.Use(imported, Access::RenderTarget);
+        graph.ExportTexture(imported, Access::RenderTarget);
+        graph.SetLambda(pass.PassIndex(), [](nvrhi::ICommandList*, PassContext&) {});
+        GraphBuilder other;
+        GraphExecutor executor(graph, GraphCompiler::Compile(graph));
+        executor.Allocate();
+        const PhysicalTexture* stub = executor.FindTexture(created);
+        Check(stub != nullptr && stub->native != nullptr, "FindTexture returns the Create* CPU stub");
+        Check(executor.FindTexture(TextureHandle{}) == nullptr, "FindTexture on a null handle returns null");
+        TextureHandle foreign = created;
+        foreign.graphId = other.GetGraphId();
+        Check(executor.FindTexture(foreign) == nullptr, "FindTexture on a foreign graph returns null");
+        Check(executor.FindTexture(imported) == nullptr, "FindTexture on an unregistered import returns null");
+        TextureHandle unknown{99u, graph.GetGraphId()};
+        Check(executor.FindTexture(unknown) == nullptr, "FindTexture on an unknown index returns null");
+        Check(executor.GetErrors().empty(), "FindTexture outside a pass records no errors");
+    }
+
     return g_failures;
 }

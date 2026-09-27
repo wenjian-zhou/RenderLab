@@ -17,9 +17,11 @@ live in [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
   Resource identity follows ADR-005: one handle per resource,
   `Use(handle, Access)`, `AddPass` order, last-producer edges, explicit
   initial and final access, and barriers issued in
-  `GraphExecutor::Execute`. Stage 5 / M2 is satisfied
+  `GraphExecutor::Execute`. Production frames call `BuildRasterFrameGraph`,
+  attach lambdas with `SetLambda`, and fill the frame snapshot from
+  `FindTexture` after `Execute`. Stage 5 / M2 is satisfied
   (docs/rdg.md, ADR-003, ADR-004, ADR-005)
-- Last updated: 2026-09-26
+- Last updated: 2026-09-27
 - Current branch: `main`
 - Legacy snapshot: `backup/legacy-d3d12-20260818` at `856b4c2`
 - Stage 0 gate: **M0 satisfied**
@@ -1895,6 +1897,55 @@ Known limitations: the executor is still rebuilt every frame; --dump-rdg
   command list that samples Create* textures must beginTracking from the
   access those textures still have (ShaderResource after a Final frame);
   non-exported plan restores are not issued; PIX agreement is local-only.
+Next step: S6.1 - Define DXR capability and scene contracts
+```
+
+### Short AddPass call sites
+
+```text
+Step: Short AddPass call sites (between S5.7 and S6.1)
+State: complete — BuildRasterFrameGraph stays a no-lambda declaration
+  factory. ExecuteRasterFrame calls that factory, then GraphBuilder::SetLambda
+  on the returned pass indices. Each lambda is one call into
+  RunRasterGBuffer, RunRasterLighting, or RunRasterPresent. Those methods
+  keep the resolve-and-Execute glue and do not write the snapshot.
+  CaptureRasterSnapshot runs after Execute and copies ITexture* through
+  FindTexture. valid is set only when the GBuffer method reached
+  GBufferPass::Execute. hasHdr is set only when the lighting method reached
+  DeferredLightingPass::Execute. RasterFrameHandles is gone.
+Date: 2026-09-27
+Commit: uncommitted working tree
+Commands:
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Debug
+  out/build/windows-vs2022/bin/Debug/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLabDataContractTests --config Release
+  out/build/windows-vs2022/bin/Release/RenderLabDataContractTests.exe
+  cmake --build out/build/windows-vs2022 --target RenderLab --config Debug
+  powershell -NoProfile -File scripts/golden.ps1 -Mode Verify -Configuration Debug
+  powershell -NoProfile -File scripts/golden-hdr.ps1 -Mode Verify -Configuration Debug
+Evidence: Debug and Release DataContractTests 0 failures; both printed
+  "RenderLab S5.6 RDG raster-frame tests" and
+  "RenderLab S5.7 RDG transient reuse tests". New checks cover SetLambda
+  execution, an empty lambda as InvalidPass, an out-of-range index that
+  leaves later passes alone, and FindTexture for a Create* CPU stub, a null
+  handle, a foreign graph, and an unregistered import. golden.ps1 and
+  golden-hdr.ps1 Verify Debug passed (mae=0, validation errors=0) on
+  NVIDIA GeForce RTX 5060 Laptop GPU. src/rdg includes no donut/.
+  src/renderer includes no rdg/.
+Automated tests: 0 failures in both configurations, including the existing
+  S5.6 / S5.7 checks.
+GPU validation/capture: local golden.ps1 / golden-hdr.ps1 Verify Debug.
+  No D3D12 ctest.
+Artifacts:
+  src/rdg/GraphBuilder.h / GraphBuilder.cpp
+  src/rdg/GraphExecutor.h / GraphExecutor.cpp
+  src/app/RenderingLabApp.h / RenderingLabApp.cpp
+  tests/test_rdg_raster.cpp
+  docs/rdg.md, README.md, IMPLEMENTATION_PLAN.md, docs/PROGRESS.md
+Known limitations: BuildToneMapGraph and BuildLightingPresentGraph stay
+  CPU-test factories; pass Execute still owns clear and setGraphicsState;
+  the executor is still rebuilt every frame; --dump-rdg remains the
+  M1-shaped graph; a GBuffer-debug frame has no HDR.
 Next step: S6.1 - Define DXR capability and scene contracts
 ```
 

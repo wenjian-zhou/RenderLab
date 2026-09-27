@@ -1658,9 +1658,10 @@ namespace renderlab
     {
         m_frameExecutor.reset();
         m_frameGraph.reset();
-        m_frameHandles = {};
         m_frameSnapshot = {};
         m_stopRasterFrame = false;
+        m_rasterGBufferRan = false;
+        m_rasterLightingRan = false;
         m_framePresented = false;
     }
 
@@ -1688,220 +1689,34 @@ namespace renderlab
         }
 
         const rdg::RasterPresent present = RasterPresentFor(m_presentSource);
-        const bool withHdr = present != rdg::RasterPresent::GBufferDebug;
-
         auto graph = std::make_unique<rdg::GraphBuilder>();
-        rdg::GraphBuilder& built = *graph;
-
-        rdg::TextureHandle gbufferA =
-            built.CreateTexture({"GBufferA", width, height, rdg::Format::SRGBA8Unorm});
-        rdg::TextureHandle gbufferB =
-            built.CreateTexture({"GBufferB", width, height, rdg::Format::RGBA16Float});
-        rdg::TextureHandle gbufferC =
-            built.CreateTexture({"GBufferC", width, height, rdg::Format::RGBA8Unorm});
-        rdg::TextureHandle gbufferDepth =
-            built.CreateTexture({"GBufferDepth", width, height, rdg::Format::D32Float});
-        rdg::TextureHandle outputImported =
-            built.ImportTexture({"BackBuffer", width, height, rdg::Format::SRGBA8Unorm});
-        built.SetInitialAccess(outputImported, rdg::Access::Present);
-
-        rdg::PassBuilder gbufferPass = built.AddPass(
-            "GBuffer",
-            rdg::PassFlags::Raster,
-            [this](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
-                if (m_stopRasterFrame)
-                {
-                    return;
-                }
-                nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
-                nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
-                nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
-                nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
-                if (!a || !b || !c || !depth)
-                {
-                    m_stopRasterFrame = true;
-                    return;
-                }
-                GBufferPassInputs inputs;
-                inputs.sceneDraws = &m_drawList;
-                inputs.frameConstants = &m_frameConstants;
-                inputs.viewConstants = &m_viewConstants;
-                GBufferPassOutputs outputs;
-                outputs.gbufferA = a;
-                outputs.gbufferB = b;
-                outputs.gbufferC = c;
-                outputs.gbufferDepth = depth;
-                m_gbufferPass.Execute(commandList, inputs, outputs);
-                m_frameSnapshot.gbufferA = a;
-                m_frameSnapshot.gbufferB = b;
-                m_frameSnapshot.gbufferC = c;
-                m_frameSnapshot.gbufferDepth = depth;
-                m_frameSnapshot.width = m_backBufferWidth;
-                m_frameSnapshot.height = m_backBufferHeight;
-                m_frameSnapshot.valid = true;
+        const rdg::RasterFrameGraph shape =
+            rdg::BuildRasterFrameGraph(*graph, width, height, present);
+        graph->SetLambda(
+            shape.gbufferPassIndex,
+            [this, shape](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
+                RunRasterGBuffer(commandList, ctx, shape);
             });
-        gbufferPass.Use(gbufferA, rdg::Access::RenderTarget);
-        gbufferPass.Use(gbufferB, rdg::Access::RenderTarget);
-        gbufferPass.Use(gbufferC, rdg::Access::RenderTarget);
-        gbufferPass.Use(gbufferDepth, rdg::Access::DepthWrite);
-
-        rdg::TextureHandle hdrWritten;
-        if (withHdr)
+        if (shape.hasHdr)
         {
-            rdg::TextureHandle hdrCreated =
-                built.CreateTexture({"HDRSceneColor", width, height, rdg::Format::RGBA16Float});
-            rdg::PassBuilder lightingPass = built.AddPass(
-                "DeferredLighting",
-                rdg::PassFlags::Raster,
-                [this](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
-                    if (m_stopRasterFrame)
-                    {
-                        return;
-                    }
-                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
-                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
-                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
-                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
-                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
-                    if (!a || !b || !c || !depth || !hdr)
-                    {
-                        m_stopRasterFrame = true;
-                        return;
-                    }
-                    DeferredLightingPassInputs inputs;
-                    inputs.gbufferA = a;
-                    inputs.gbufferB = b;
-                    inputs.gbufferC = c;
-                    inputs.gbufferDepth = depth;
-                    inputs.viewConstants = &m_viewConstants;
-                    inputs.lightingConstants = &m_lightingConstants;
-                    DeferredLightingPassOutputs outputs;
-                    outputs.hdrSceneColor = hdr;
-                    m_deferredLightingPass.Execute(commandList, inputs, outputs);
-                    m_frameSnapshot.hdrSceneColor = hdr;
-                    m_frameSnapshot.hasHdr = true;
+            graph->SetLambda(
+                shape.deferredLightingPassIndex,
+                [this, shape](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
+                    RunRasterLighting(commandList, ctx, shape);
                 });
-            lightingPass.Use(gbufferA, rdg::Access::ShaderResource);
-            lightingPass.Use(gbufferB, rdg::Access::ShaderResource);
-            lightingPass.Use(gbufferC, rdg::Access::ShaderResource);
-            lightingPass.Use(gbufferDepth, rdg::Access::ShaderResource);
-            lightingPass.Use(hdrCreated, rdg::Access::RenderTarget);
-            hdrWritten = hdrCreated;
         }
-
-        const char* presentName = "PostProcess";
-        if (present == rdg::RasterPresent::LightingDebug)
-        {
-            presentName = "LightingDebug";
-        }
-        else if (present == rdg::RasterPresent::GBufferDebug)
-        {
-            presentName = "GBufferDebug";
-        }
-
-        rdg::PassBuilder presentPass = built.AddPass(
-            presentName,
-            rdg::PassFlags::Raster,
-            [this, present](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
-                if (m_stopRasterFrame)
-                {
-                    return;
-                }
-                nvrhi::ITexture* output = NativeTexture(ctx.GetTexture(m_frameHandles.outputWritten));
-                if (!output)
-                {
-                    m_stopRasterFrame = true;
-                    return;
-                }
-                if (present == rdg::RasterPresent::Final)
-                {
-                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
-                    if (!hdr)
-                    {
-                        m_stopRasterFrame = true;
-                        return;
-                    }
-                    const PostProcessPassInputs inputs = MakePostProcessPassInputs(hdr, m_tonemapConstants);
-                    PostProcessPassOutputs outputs;
-                    outputs.finalColor = output;
-                    m_postProcessPass.Execute(commandList, inputs, outputs);
-                }
-                else if (present == rdg::RasterPresent::LightingDebug)
-                {
-                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
-                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
-                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
-                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
-                    nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(m_frameHandles.hdrWritten));
-                    if (!a || !b || !c || !depth || !hdr)
-                    {
-                        m_stopRasterFrame = true;
-                        return;
-                    }
-                    LightingDebugPassInputs inputs;
-                    inputs.gbufferA = a;
-                    inputs.gbufferB = b;
-                    inputs.gbufferC = c;
-                    inputs.gbufferDepth = depth;
-                    inputs.hdrSceneColor = hdr;
-                    inputs.viewConstants = &m_viewConstants;
-                    inputs.lightingConstants = &m_lightingConstants;
-                    inputs.mode = m_lightingDebugHud.mode;
-                    LightingDebugPassOutputs outputs;
-                    outputs.debugColor = output;
-                    m_lightingDebugPass.Execute(commandList, inputs, outputs);
-                }
-                else
-                {
-                    nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferA));
-                    nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferB));
-                    nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferC));
-                    nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(m_frameHandles.gbufferDepth));
-                    if (!a || !b || !c || !depth)
-                    {
-                        m_stopRasterFrame = true;
-                        return;
-                    }
-                    GBufferDebugPassInputs inputs;
-                    inputs.gbufferA = a;
-                    inputs.gbufferB = b;
-                    inputs.gbufferC = c;
-                    inputs.gbufferDepth = depth;
-                    inputs.viewConstants = &m_viewConstants;
-                    inputs.mode = m_gbufferDebugHud.mode;
-                    GBufferDebugPassOutputs outputs;
-                    outputs.debugColor = output;
-                    m_gbufferDebugPass.Execute(commandList, inputs, outputs);
-                }
-                m_framePresented = true;
+        graph->SetLambda(
+            shape.presentPassIndex,
+            [this, shape](nvrhi::ICommandList* commandList, rdg::PassContext& ctx) {
+                RunRasterPresent(commandList, ctx, shape);
             });
-        if (present != rdg::RasterPresent::Final)
-        {
-            presentPass.Use(gbufferA, rdg::Access::ShaderResource);
-            presentPass.Use(gbufferB, rdg::Access::ShaderResource);
-            presentPass.Use(gbufferC, rdg::Access::ShaderResource);
-            presentPass.Use(gbufferDepth, rdg::Access::ShaderResource);
-        }
-        if (withHdr)
-        {
-            presentPass.Use(hdrWritten, rdg::Access::ShaderResource);
-        }
-        presentPass.Use(outputImported, rdg::Access::RenderTarget);
-        rdg::TextureHandle outputWritten = outputImported;
-        built.ExportTexture(outputWritten, rdg::Access::Present);
 
-        m_frameHandles.gbufferA = gbufferA;
-        m_frameHandles.gbufferB = gbufferB;
-        m_frameHandles.gbufferC = gbufferC;
-        m_frameHandles.gbufferDepth = gbufferDepth;
-        m_frameHandles.hdrWritten = hdrWritten;
-        m_frameHandles.outputWritten = outputWritten;
-
-        const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(built);
-        auto executor = std::make_unique<rdg::GraphExecutor>(built, compiled);
+        const rdg::CompileResult compiled = rdg::GraphCompiler::Compile(*graph);
+        auto executor = std::make_unique<rdg::GraphExecutor>(*graph, compiled);
         executor->SetDevice(GetDevice());
         executor->SetTransientReuse(m_options.transientReuse);
-        executor->RegisterImport(outputImported, rdg::PhysicalTexture{backBuffer, "BackBuffer"});
+        executor->RegisterImport(
+            shape.outputImported, rdg::PhysicalTexture{backBuffer, "BackBuffer"});
         executor->Allocate();
         executor->Plan();
 
@@ -1914,9 +1729,186 @@ namespace renderlab
         }
 
         m_frameExecutor->Execute(m_commandList);
+        CaptureRasterSnapshot(shape);
         if (!m_frameExecutor->GetErrors().empty())
         {
             LogRasterFrameErrors();
+        }
+    }
+
+    void RenderingLabApp::RunRasterGBuffer(
+        nvrhi::ICommandList* commandList,
+        rdg::PassContext& ctx,
+        const rdg::RasterFrameGraph& shape)
+    {
+        if (m_stopRasterFrame)
+        {
+            return;
+        }
+        nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(shape.gbufferA));
+        nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(shape.gbufferB));
+        nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(shape.gbufferC));
+        nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(shape.gbufferDepth));
+        if (!a || !b || !c || !depth)
+        {
+            m_stopRasterFrame = true;
+            return;
+        }
+        GBufferPassInputs inputs;
+        inputs.sceneDraws = &m_drawList;
+        inputs.frameConstants = &m_frameConstants;
+        inputs.viewConstants = &m_viewConstants;
+        GBufferPassOutputs outputs;
+        outputs.gbufferA = a;
+        outputs.gbufferB = b;
+        outputs.gbufferC = c;
+        outputs.gbufferDepth = depth;
+        m_gbufferPass.Execute(commandList, inputs, outputs);
+        m_rasterGBufferRan = true;
+    }
+
+    void RenderingLabApp::RunRasterLighting(
+        nvrhi::ICommandList* commandList,
+        rdg::PassContext& ctx,
+        const rdg::RasterFrameGraph& shape)
+    {
+        if (m_stopRasterFrame)
+        {
+            return;
+        }
+        nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(shape.gbufferA));
+        nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(shape.gbufferB));
+        nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(shape.gbufferC));
+        nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(shape.gbufferDepth));
+        nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(shape.hdrWritten));
+        if (!a || !b || !c || !depth || !hdr)
+        {
+            m_stopRasterFrame = true;
+            return;
+        }
+        DeferredLightingPassInputs inputs;
+        inputs.gbufferA = a;
+        inputs.gbufferB = b;
+        inputs.gbufferC = c;
+        inputs.gbufferDepth = depth;
+        inputs.viewConstants = &m_viewConstants;
+        inputs.lightingConstants = &m_lightingConstants;
+        DeferredLightingPassOutputs outputs;
+        outputs.hdrSceneColor = hdr;
+        m_deferredLightingPass.Execute(commandList, inputs, outputs);
+        m_rasterLightingRan = true;
+    }
+
+    void RenderingLabApp::RunRasterPresent(
+        nvrhi::ICommandList* commandList,
+        rdg::PassContext& ctx,
+        const rdg::RasterFrameGraph& shape)
+    {
+        if (m_stopRasterFrame)
+        {
+            return;
+        }
+        nvrhi::ITexture* output = NativeTexture(ctx.GetTexture(shape.outputWritten));
+        if (!output)
+        {
+            m_stopRasterFrame = true;
+            return;
+        }
+        const rdg::RasterPresent present = RasterPresentFor(m_presentSource);
+        if (present == rdg::RasterPresent::Final)
+        {
+            nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(shape.hdrWritten));
+            if (!hdr)
+            {
+                m_stopRasterFrame = true;
+                return;
+            }
+            const PostProcessPassInputs inputs = MakePostProcessPassInputs(hdr, m_tonemapConstants);
+            PostProcessPassOutputs outputs;
+            outputs.finalColor = output;
+            m_postProcessPass.Execute(commandList, inputs, outputs);
+        }
+        else if (present == rdg::RasterPresent::LightingDebug)
+        {
+            nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(shape.gbufferA));
+            nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(shape.gbufferB));
+            nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(shape.gbufferC));
+            nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(shape.gbufferDepth));
+            nvrhi::ITexture* hdr = NativeTexture(ctx.GetTexture(shape.hdrWritten));
+            if (!a || !b || !c || !depth || !hdr)
+            {
+                m_stopRasterFrame = true;
+                return;
+            }
+            LightingDebugPassInputs inputs;
+            inputs.gbufferA = a;
+            inputs.gbufferB = b;
+            inputs.gbufferC = c;
+            inputs.gbufferDepth = depth;
+            inputs.hdrSceneColor = hdr;
+            inputs.viewConstants = &m_viewConstants;
+            inputs.lightingConstants = &m_lightingConstants;
+            inputs.mode = m_lightingDebugHud.mode;
+            LightingDebugPassOutputs outputs;
+            outputs.debugColor = output;
+            m_lightingDebugPass.Execute(commandList, inputs, outputs);
+        }
+        else
+        {
+            nvrhi::ITexture* a = NativeTexture(ctx.GetTexture(shape.gbufferA));
+            nvrhi::ITexture* b = NativeTexture(ctx.GetTexture(shape.gbufferB));
+            nvrhi::ITexture* c = NativeTexture(ctx.GetTexture(shape.gbufferC));
+            nvrhi::ITexture* depth = NativeTexture(ctx.GetTexture(shape.gbufferDepth));
+            if (!a || !b || !c || !depth)
+            {
+                m_stopRasterFrame = true;
+                return;
+            }
+            GBufferDebugPassInputs inputs;
+            inputs.gbufferA = a;
+            inputs.gbufferB = b;
+            inputs.gbufferC = c;
+            inputs.gbufferDepth = depth;
+            inputs.viewConstants = &m_viewConstants;
+            inputs.mode = m_gbufferDebugHud.mode;
+            GBufferDebugPassOutputs outputs;
+            outputs.debugColor = output;
+            m_gbufferDebugPass.Execute(commandList, inputs, outputs);
+        }
+        m_framePresented = true;
+    }
+
+    void RenderingLabApp::CaptureRasterSnapshot(const rdg::RasterFrameGraph& shape)
+    {
+        if (!m_frameExecutor)
+        {
+            return;
+        }
+        if (m_rasterGBufferRan)
+        {
+            nvrhi::ITexture* a = NativeTexture(m_frameExecutor->FindTexture(shape.gbufferA));
+            nvrhi::ITexture* b = NativeTexture(m_frameExecutor->FindTexture(shape.gbufferB));
+            nvrhi::ITexture* c = NativeTexture(m_frameExecutor->FindTexture(shape.gbufferC));
+            nvrhi::ITexture* depth = NativeTexture(m_frameExecutor->FindTexture(shape.gbufferDepth));
+            if (a && b && c && depth)
+            {
+                m_frameSnapshot.gbufferA = a;
+                m_frameSnapshot.gbufferB = b;
+                m_frameSnapshot.gbufferC = c;
+                m_frameSnapshot.gbufferDepth = depth;
+                m_frameSnapshot.width = m_backBufferWidth;
+                m_frameSnapshot.height = m_backBufferHeight;
+                m_frameSnapshot.valid = true;
+            }
+        }
+        if (m_rasterLightingRan)
+        {
+            nvrhi::ITexture* hdr = NativeTexture(m_frameExecutor->FindTexture(shape.hdrWritten));
+            if (hdr)
+            {
+                m_frameSnapshot.hdrSceneColor = hdr;
+                m_frameSnapshot.hasHdr = true;
+            }
         }
     }
 

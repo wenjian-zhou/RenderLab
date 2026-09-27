@@ -72,7 +72,9 @@ resource, `Use(handle, Access)`, `AddPass` order, last-producer edges,
 explicit initial and final access, and barriers issued in
 `GraphExecutor::Execute`. That replaces the versioned-handle and `Read` /
 `Write` model, and `FormatMap` no longer leaves `keepInitialState` set on
-the textures and buffers it creates. The next executable task is **S6.1:
+the textures and buffers it creates. Production frames call
+`BuildRasterFrameGraph`, attach lambdas with `SetLambda`, and fill the frame
+snapshot from `FindTexture` after `Execute`. The next executable task is **S6.1:
 define DXR capability and scene contracts**.
 
 ## Plans

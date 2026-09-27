@@ -66,8 +66,9 @@ owns the logical graph and the execution layer that runs it (ADR-004):
   The no-lambda overload stays for compile-only tests and the declaration
   factories. `BuildToneMapGraph`, `BuildLightingPresentGraph`,
   `BuildRasterFrameGraph`, and `BuildM1ShapedGraph` stay no-lambda factories.
-  Production frames use `BuildRasterFrameGraph`'s declarations through the
-  lambda overload. `Compile()` stays a public CPU step.
+  The app calls `BuildRasterFrameGraph`, attaches lambdas with `SetLambda`,
+  and fills `RasterFrameSnapshot` from `FindTexture` after `Execute`.
+  `Compile()` stays a public CPU step.
   `GraphExecutor::Execute(ICommandList*)` is the only public run entry.
   S5.7 aliases non-overlapping intervals inside `Allocate()`; this file
   defines the intervals, and §10 defines the physical reuse rule.

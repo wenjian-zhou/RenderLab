@@ -10,6 +10,7 @@
 #include "renderer/RendererData.h"
 #include "rdg/GraphBuilder.h"
 #include "rdg/GraphExecutor.h"
+#include "rdg/RasterFrameGraph.h"
 
 #include <donut/app/ApplicationBase.h>
 #include <donut/app/Camera.h>
@@ -201,17 +202,20 @@ namespace renderlab
         void UpdateDebugHud();
         void ReleaseFrameGraph();
         void ExecuteRasterFrame(nvrhi::ITexture* backBuffer);
+        void RunRasterGBuffer(
+            nvrhi::ICommandList* commandList,
+            rdg::PassContext& ctx,
+            const rdg::RasterFrameGraph& shape);
+        void RunRasterLighting(
+            nvrhi::ICommandList* commandList,
+            rdg::PassContext& ctx,
+            const rdg::RasterFrameGraph& shape);
+        void RunRasterPresent(
+            nvrhi::ICommandList* commandList,
+            rdg::PassContext& ctx,
+            const rdg::RasterFrameGraph& shape);
+        void CaptureRasterSnapshot(const rdg::RasterFrameGraph& shape);
         void LogRasterFrameErrors() const;
-
-        struct RasterFrameHandles
-        {
-            rdg::TextureHandle gbufferA;
-            rdg::TextureHandle gbufferB;
-            rdg::TextureHandle gbufferC;
-            rdg::TextureHandle gbufferDepth;
-            rdg::TextureHandle hdrWritten;
-            rdg::TextureHandle outputWritten;
-        };
 
         std::shared_ptr<donut::engine::ShaderFactory> m_shaderFactory;
         std::shared_ptr<donut::vfs::IFileSystem> m_fileSystem;
@@ -240,9 +244,10 @@ namespace renderlab
         uint32_t m_backBufferHeight = 0;
         std::unique_ptr<rdg::GraphBuilder> m_frameGraph;
         std::unique_ptr<rdg::GraphExecutor> m_frameExecutor;
-        RasterFrameHandles m_frameHandles;
         RasterFrameSnapshot m_frameSnapshot;
         bool m_stopRasterFrame = false;
+        bool m_rasterGBufferRan = false;
+        bool m_rasterLightingRan = false;
         bool m_framePresented = false;
     };
 }

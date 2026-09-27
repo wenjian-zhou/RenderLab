@@ -230,6 +230,25 @@ namespace renderlab::rdg
         return pass;
     }
 
+    void GraphBuilder::SetLambda(uint32_t passIndex, PassLambda lambda)
+    {
+        if (passIndex >= GetPassCount())
+        {
+            AddError(
+                ErrorCategory::InvalidPass,
+                std::format("SetLambda() pass index {} is out of range", passIndex),
+                Error::kNoPass,
+                "",
+                "");
+            return;
+        }
+        if (m_lambdas.size() < GetPassCount())
+        {
+            m_lambdas.resize(GetPassCount());
+        }
+        m_lambdas[passIndex] = std::move(lambda);
+    }
+
     const PassLambda* GraphBuilder::FindLambda(uint32_t passIndex) const
     {
         if (passIndex >= m_lambdas.size())

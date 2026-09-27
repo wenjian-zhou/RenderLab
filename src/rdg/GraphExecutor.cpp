@@ -647,6 +647,40 @@ namespace renderlab::rdg
         return physical;
     }
 
+    const PhysicalTexture* GraphExecutor::FindTexture(TextureHandle handle) const
+    {
+        if (handle.IsNull() || handle.graphId != m_builder->GetGraphId())
+        {
+            return nullptr;
+        }
+        if (handle.index >= m_builder->GetResourceCount())
+        {
+            return nullptr;
+        }
+        if (m_builder->GetResource(handle.index).kind != ResourceKind::Texture)
+        {
+            return nullptr;
+        }
+        return m_registry.GetTexture(handle.index);
+    }
+
+    const PhysicalBuffer* GraphExecutor::FindBuffer(BufferHandle handle) const
+    {
+        if (handle.IsNull() || handle.graphId != m_builder->GetGraphId())
+        {
+            return nullptr;
+        }
+        if (handle.index >= m_builder->GetResourceCount())
+        {
+            return nullptr;
+        }
+        if (m_builder->GetResource(handle.index).kind != ResourceKind::Buffer)
+        {
+            return nullptr;
+        }
+        return m_registry.GetBuffer(handle.index);
+    }
+
     nvrhi::ICommandList* GraphExecutor::SelectCommandList(
         uint32_t passIndex,
         nvrhi::ICommandList* graphicsCommandList) const

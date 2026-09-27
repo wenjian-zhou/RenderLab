@@ -53,7 +53,9 @@ resource, `Use(handle, Access)`, `AddPass` order, last-producer edges,
 explicit initial and final access, and barriers issued in
 `GraphExecutor::Execute`. That replaces the versioned-handle and `Read` /
 `Write` model, and `FormatMap` no longer leaves `keepInitialState` set on
-the textures and buffers it creates. The next step is **S6.1 — Define DXR capability and scene contracts**.
+the textures and buffers it creates. Production frames call
+`BuildRasterFrameGraph`, attach lambdas with `SetLambda`, and fill the frame
+snapshot from `FindTexture` after `Execute`. The next step is **S6.1 — Define DXR capability and scene contracts**.
 The S3.1 exposure and output-transfer
 contract is [`docs/postprocess.md`](docs/postprocess.md) (implemented by the S3.2
 `PostProcessPass`); the HDR + tone-mapped-LDR golden contract is

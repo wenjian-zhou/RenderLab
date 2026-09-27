@@ -68,6 +68,12 @@ namespace renderlab::rdg
         const PhysicalTexture* GetExported(TextureHandle handle);
         const PhysicalBuffer* GetExported(BufferHandle handle);
 
+        // Physical token after Allocate(), including Create* resources.
+        // Null when the handle is null, foreign, unknown, not allocated, or an
+        // import that was not registered. Does not check pass declarations.
+        const PhysicalTexture* FindTexture(TextureHandle handle) const;
+        const PhysicalBuffer* FindBuffer(BufferHandle handle) const;
+
         // Walks the compiled live order and invokes each pass lambda.
         // graphicsCommandList is the list used for raster passes. Selection
         // of the list for a pass lives in SelectCommandList so a later flag

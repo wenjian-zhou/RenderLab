@@ -114,6 +114,10 @@ namespace renderlab::rdg
         PassBuilder AddPass(std::string_view name, PassFlags flags);
         PassBuilder AddPass(std::string_view name, PassFlags flags, PassLambda lambda);
 
+        // Stores the lambda when passIndex was added. An empty function clears
+        // the slot. An out-of-range index records InvalidPass and does not store.
+        void SetLambda(uint32_t passIndex, PassLambda lambda);
+
         const PassLambda* FindLambda(uint32_t passIndex) const;
 
         void SetInitialAccess(TextureHandle handle, Access access);
